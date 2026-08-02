@@ -1,0 +1,196 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Space Grotesk', sans-serif;
+  }
+}
+
+/* Glassmorphism Styles & Centralized Theme System */
+:root {
+  --app-bg: #f8fafc;
+  --panel-bg: rgba(255, 255, 255, 0.95);
+  --card-bg: #ffffff;
+  --card-subtle-bg: #f1f5f9;
+  --input-bg: #ffffff;
+  --border-color: #e2e8f0;
+  --text-main: #0f172a;
+  --text-sub: #475569;
+  --text-muted: #64748b;
+}
+
+.dark {
+  --app-bg: #0f172a;
+  --panel-bg: rgba(15, 23, 42, 0.75);
+  --card-bg: rgba(30, 41, 59, 0.7);
+  --card-subtle-bg: rgba(2, 6, 23, 0.75);
+  --input-bg: #020617;
+  --border-color: rgba(255, 255, 255, 0.08);
+  --text-main: #f8fafc;
+  --text-sub: #cbd5e1;
+  --text-muted: #94a3b8;
+}
+
+.glass-panel {
+  background: var(--panel-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-color);
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+}
+
+.glass-card {
+  background: var(--card-bg);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05), 0 2px 6px -1px rgba(0, 0, 0, 0.03);
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+}
+
+.dark .glass-card {
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.25);
+}
+
+/* Light Mode Centralized Overrides for Complete Readability */
+html:not(.dark) .glass-card,
+html:not(.dark) .glass-panel {
+  color: #0f172a;
+}
+
+html:not(.dark) .bg-slate-950,
+html:not(.dark) .bg-slate-950\/70,
+html:not(.dark) .bg-slate-950\/80,
+html:not(.dark) .bg-slate-950\/90,
+html:not(.dark) .bg-slate-950\/95,
+html:not(.dark) .bg-slate-900,
+html:not(.dark) .bg-slate-900\/60,
+html:not(.dark) .bg-slate-900\/70,
+html:not(.dark) .bg-slate-900\/80,
+html:not(.dark) .bg-slate-900\/90,
+html:not(.dark) .bg-slate-900\/95 {
+  background-color: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+}
+
+html:not(.dark) .border-slate-800,
+html:not(.dark) .border-slate-800\/50,
+html:not(.dark) .border-slate-800\/60,
+html:not(.dark) .border-slate-800\/80,
+html:not(.dark) .border-slate-700,
+html:not(.dark) .border-slate-700\/80 {
+  border-color: #e2e8f0 !important;
+}
+
+html:not(.dark) .text-slate-200,
+html:not(.dark) .text-slate-300,
+html:not(.dark) .text-slate-400 {
+  color: #475569 !important;
+}
+
+html:not(.dark) .text-white:not(button *):not(.btn-primary *):not(.bg-blue-600 *):not(.bg-purple-600 *):not(.bg-emerald-600 *):not(.bg-indigo-600 *):not(.bg-red-500 *):not(.bg-gradient-to-r *):not(.bg-gradient-to-br *) {
+  color: #0f172a !important;
+}
+
+html:not(.dark) input,
+html:not(.dark) textarea,
+html:not(.dark) select {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+html:not(.dark) input::placeholder,
+html:not(.dark) textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* Button behavior & animations */
+.btn-primary {
+  background: linear-gradient(135deg, #2563EB 0%, #7C3AED 100%);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3);
+  color: white !important;
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 8px 25px rgba(124, 58, 237, 0.4);
+}
+
+.btn-primary:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.tanglish-badge {
+  background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+  color: white !important;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+}
+
+/* Premium Soft Animated Border Glow for Welcome Summary Card (Glow intensity reduced by ~25%) */
+@keyframes borderSweepGlow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.animated-border-glow-wrapper {
+  position: relative;
+  border-radius: 1.5rem;
+  padding: 1.5px;
+  background: linear-gradient(
+    90deg,
+    rgba(56, 189, 248, 0.22),
+    rgba(129, 140, 248, 0.48),
+    rgba(192, 132, 252, 0.38),
+    rgba(56, 189, 248, 0.64),
+    rgba(56, 189, 248, 0.22)
+  );
+  background-size: 300% 300%;
+  animation: borderSweepGlow 4.5s ease infinite;
+  box-shadow: 0 10px 25px -5px rgba(56, 189, 248, 0.16);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.5);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.8);
+}
+
+/* Continuous Left-to-Right Button Shine Animation */
+@keyframes shineContinuous {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(250%);
+  }
+}
+
+.animate-shine-continuous {
+  animation: shineContinuous 2.5s infinite linear;
+}

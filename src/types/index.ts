@@ -1,0 +1,322 @@
+export type LanguagePreference = 'English' | 'Tanglish';
+
+export interface UserProfile {
+  id: string;
+  name: string;
+  email: string;
+  college: string;
+  department: string;
+  year: string;
+  dreamCompany: string;
+  preferredLanguage: LanguagePreference;
+  avatarUrl?: string;
+  createdAt: string;
+}
+
+export interface ReadinessScore {
+  overall: number; // 0 to 100
+  resume: number;
+  coding: number;
+  aptitude: number;
+  interview: number;
+  communication: number;
+  lastUpdated: string;
+}
+
+export type InterviewType = 'HR' | 'Technical' | 'Company';
+
+export interface InterviewQuestion {
+  id: string;
+  category: InterviewType;
+  company?: string;
+  question: string;
+  contextHint: string;
+  expectedKeypoints: string[];
+}
+
+export type AnswerEvaluationStatus = 'Correct' | 'Partially Correct' | 'Incorrect' | 'Unrelated Answer';
+
+export interface DetailedMistake {
+  type: string;
+  explanation: string;
+}
+
+export type GrammarEvaluationCase = 
+  | 'GIBBERISH' 
+  | 'HAS_ERRORS' 
+  | 'PERFECT_GRAMMAR' 
+  | 'GRAMMAR_OK_CONTENT_UNRELATED' 
+  | 'GRAMMAR_ERRORS_AND_CONTENT_UNRELATED';
+
+export interface GrammarMistakeDetail {
+  yourSentence: string;
+  incorrectPart: string;
+  correctVersion: string;
+  reason: string;
+  tanglishReason: string;
+}
+
+export interface DetailedGrammarReport {
+  grammarCase: GrammarEvaluationCase;
+  statusHeader: string;
+  statusSubtext?: string;
+  gibberishReason?: string;
+  gibberishSuggestion?: string;
+  mistakes: GrammarMistakeDetail[];
+  contentStatusMessage?: string;
+}
+
+export interface DualLanguageFeedback {
+  // AI Evaluation Status & Explanation
+  status: AnswerEvaluationStatus;
+  statusExplanation: string;
+  mistakes: DetailedMistake[];
+  correctProfessionalAnswer: string;
+  explanationText: string;
+  grammarReport: DetailedGrammarReport;
+  grammarDetail?: GrammarMistakeDetail[];
+
+  // Breakdown Score Factors & Explanation
+  relevanceScore: number;
+  technicalAccuracyScore: number;
+  grammarScore: number;
+  communicationScore: number;
+  clarityScore: number;
+  completenessScore: number;
+  professionalismScore: number;
+  overallScore: number;
+  scoreExplanation: string;
+
+  // Legacy Compatibility Fields
+  englishExplanation: string;
+  tanglishExplanation: string;
+  grammarCorrections: string[];
+  vocabularySuggestions: string[];
+  improvedAnswer: string;
+  confidenceScore: number; // 0 to 100
+  communicationRating: 'Excellent' | 'Good' | 'Needs Work';
+}
+
+export interface InterviewSession {
+  id: string;
+  date: string;
+  type: InterviewType;
+  company?: string;
+  questionsCount: number;
+  averageScore: number;
+  status: 'completed' | 'in_progress';
+}
+
+export interface SavedInterviewState {
+  id: string;
+  selectedType: 'HR' | 'Technical';
+  difficulty: 'Easy' | 'Medium' | 'Hard';
+  currentQuestionIndex: number;
+  activeQuestions: InterviewQuestion[];
+  userAnswer: string;
+  timerSeconds: number;
+  recSeconds?: number;
+  cameraActive?: boolean;
+  micMuted?: boolean;
+  answersHistory: {
+    question: InterviewQuestion;
+    userAnswer: string;
+    feedback: DualLanguageFeedback;
+  }[];
+  sessionActive?: boolean;
+  savedAtTimestamp?: number;
+  timestamp: string;
+}
+
+export interface InterviewFinalReport {
+  overallScore: number;
+  technicalScore: number;
+  grammarScore: number;
+  communicationScore: number;
+  confidenceScore: number;
+  relevanceScore: number;
+  strengths: string[];
+  weaknesses: string[];
+  mistakes: DetailedMistake[];
+  recommendedTopics: string[];
+  aiSuggestions: string[];
+}
+
+export interface InterviewAnswerSubmission {
+  questionId: string;
+  questionText: string;
+  userAnswer: string;
+  feedback: DualLanguageFeedback;
+}
+
+export interface ResumeData {
+  fullName: string;
+  email: string;
+  phone: string;
+  location: string;
+  summary: string;
+  education: Array<{
+    institution: string;
+    degree: string;
+    year: string;
+    cgpa: string;
+  }>;
+  skills: string[];
+  projects: Array<{
+    title: string;
+    description: string;
+    techStack: string[];
+  }>;
+  experience: Array<{
+    role: string;
+    company: string;
+    duration: string;
+    description: string;
+  }>;
+}
+
+export interface ResumeAnalysis {
+  atsScore: number; // 0 to 100
+  matchedSkills: string[];
+  missingSkills: string[];
+  formattingSuggestions: string[];
+  actionableImprovements: {
+    section: string;
+    issue: string;
+    recommendation: string;
+  }[];
+  summary?: string;
+  grammarReview?: string[];
+}
+
+export type CodingLanguage = 'Java' | 'Python' | 'C' | 'C++' | 'SQL';
+export type DifficultyLevel = 'Easy' | 'Medium' | 'Hard';
+
+export interface CodingChallenge {
+  id: string;
+  title: string;
+  language: CodingLanguage;
+  difficulty: DifficultyLevel;
+  description: string;
+  starterCode: string;
+  sampleInput: string;
+  sampleOutput: string;
+  constraints: string[];
+  testCases: Array<{
+    input: string;
+    expectedOutput: string;
+  }>;
+}
+
+export interface CodingSubmissionResult {
+  status: 'Success' | 'Failed Test Cases' | 'Compilation Error';
+  passed: boolean;
+  score: number;
+  executionTimeMs: number;
+  passedTestCasesCount?: number;
+  totalTestCasesCount?: number;
+  errorMessage?: string;
+  aiCodeReview?: {
+    timeComplexity: string;
+    spaceComplexity: string;
+    optimizations: string[];
+    englishAdvice: string;
+    tanglishAdvice: string;
+  };
+}
+
+export type AptitudeCategory = 'Quantitative' | 'Logical' | 'Verbal';
+
+export interface AptitudeQuestion {
+  id: string;
+  category: AptitudeCategory;
+  difficulty: DifficultyLevel;
+  question: string;
+  options: string[];
+  correctIndex: number;
+  explanationEnglish: string;
+  explanationTanglish: string;
+}
+
+export interface SkillGapItem {
+  skill: string;
+  requiredForCompany: string;
+  currentProficiency: number; // 0-100
+  targetProficiency: number; // 0-100
+  status: 'Missing' | 'In Progress' | 'Mastered';
+  recommendedResource: string;
+}
+
+export interface RoadmapTask {
+  id: string;
+  period: 'Daily' | 'Weekly' | 'Monthly';
+  title: string;
+  description: string;
+  completed: boolean;
+  category: 'Resume' | 'Coding' | 'Interview' | 'Aptitude' | 'Communication';
+  dueDate: string;
+}
+
+export interface AppNotification {
+  id: string;
+  title: string;
+  message: string;
+  time: string;
+  read: boolean;
+  type: 'interview' | 'coding' | 'resume' | 'general';
+}
+
+export interface AchievementBadge {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+  unlockedAt?: string;
+  isUnlocked: boolean;
+}
+
+export interface UserSettings {
+  notifications: {
+    dailyPracticeReminder: boolean;
+    mockInterviewReminder: boolean;
+    codingPracticeReminder: boolean;
+    aptitudePracticeReminder: boolean;
+  };
+  appearance: {
+    theme: 'dark' | 'light' | 'system';
+    accentColor: 'blue' | 'purple' | 'emerald' | 'amber' | 'pink';
+    reduceAnimations: boolean;
+  };
+  language: {
+    defaultExplanation: LanguagePreference;
+    autoVoicePlayback: boolean;
+    speechSpeed: number; // 0.5 to 1.5
+  };
+  security: {
+    twoFactorEnabled: boolean;
+    supabaseSync: boolean;
+  };
+}
+
+export const DEFAULT_SETTINGS: UserSettings = {
+  notifications: {
+    dailyPracticeReminder: true,
+    mockInterviewReminder: true,
+    codingPracticeReminder: true,
+    aptitudePracticeReminder: true
+  },
+  appearance: {
+    theme: 'dark',
+    accentColor: 'purple',
+    reduceAnimations: false
+  },
+  language: {
+    defaultExplanation: 'English',
+    autoVoicePlayback: true,
+    speechSpeed: 1.0
+  },
+  security: {
+    twoFactorEnabled: false,
+    supabaseSync: true
+  }
+};
