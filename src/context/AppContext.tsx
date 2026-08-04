@@ -9,9 +9,17 @@ import {
   UserSettings,
   DEFAULT_SETTINGS
 } from '../types';
-import { SupabaseService, ActivityItem } from '../services/supabaseClient';
+import {
+  supabase,
+  SupabaseService,
+  ActivityItem,
+  INITIAL_READINESS,
+  getInitialProfileForEmail,
+  getInitialResumeForEmail,
+  isSupabaseConfigured
+} from '../services/supabaseClient';
 
-export type ActiveTab = 
+export type ActiveTab =
   | 'home'
   | 'resume'
   | 'interview'
@@ -26,14 +34,14 @@ export type ActiveTab =
   | 'login';
 
 const STORAGE_KEY_SETTINGS = 'acehire_user_settings';
-const STORAGE_KEY_AUTH = 'acehire_is_logged_in';
 
 interface AppContextType {
   user: UserProfile;
   setUser: (user: UserProfile) => void;
   isLoggedIn: boolean;
-  login: (email: string, pass: string) => void;
-  logout: () => void;
+  login: (email: string, pass: string) => Promise<boolean>;
+  signup: (email: string, pass: string, details?: Partial<UserProfile>) => Promise<boolean>;
+  logout: () => Promise<void>;
   updateLanguagePreference: (lang: LanguagePreference) => void;
   readinessScore: ReadinessScore;
   setReadinessScore: React.Dispatch<React.SetStateAction<ReadinessScore>>;
@@ -48,7 +56,12 @@ interface AppContextType {
   setShowSplash: (val: boolean) => void;
   navigateToWelcomePage: () => void;
   recentActivities: ActivityItem[];
-  recordUserActivity: (module: keyof Omit<ReadinessScore, 'overall' | 'lastUpdated'>, title: string, scoreVal: number, typeLabel: string) => void;
+  recordUserActivity: (
+    module: keyof Omit<ReadinessScore, 'overall' | 'lastUpdated'>,
+    title: string,
+    scoreVal: number,
+    typeLabel: string
+  ) => void;
   recordActivity: (title: string, typeLabel: string, scoreText?: string, targetTab?: ActiveTab) => void;
   clearRecentActivities: () => void;
   completedTasksCount: number;
@@ -69,18 +82,18 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUserState] = useState<UserProfile>(SupabaseService.getProfile());
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY_AUTH);
-    return saved !== null ? JSON.parse(saved) : false;
-  });
+  const [user, setUserState] = useState<UserProfile>(() =>
+    getInitialProfileForEmail('student@college.edu')
+  );
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
+  const [currentUserId, setCurrentUserId] = useState<string>('');
 
-  const [readinessScore, setReadinessScore] = useState<ReadinessScore>(SupabaseService.getReadinessScore());
-  const [resume, setResumeState] = useState<ResumeData>(SupabaseService.getResume());
-  const [recentActivities, setRecentActivities] = useState<ActivityItem[]>(() => SupabaseService.getRecentActivities());
-  const [completedTasksCount, setCompletedTasksCount] = useState<number>(() => {
-    return SupabaseService.getRecentActivities().length;
-  });
+  const [readinessScore, setReadinessScore] = useState<ReadinessScore>(INITIAL_READINESS);
+  const [resume, setResumeState] = useState<ResumeData>(() =>
+    getInitialResumeForEmail('student@college.edu')
+  );
+  const [recentActivities, setRecentActivities] = useState<ActivityItem[]>([]);
+  const [completedTasksCount, setCompletedTasksCount] = useState<number>(0);
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('home');
   const [pendingTargetTab, setPendingTargetTab] = useState<ActiveTab | null>(null);
@@ -102,7 +115,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ...(parsed.notifications || {})
           }
         };
-      } catch (e) { return DEFAULT_SETTINGS; }
+      } catch (e) {
+        return DEFAULT_SETTINGS;
+      }
     }
     return DEFAULT_SETTINGS;
   });
@@ -137,8 +152,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
-
   const [achievements] = useState<AchievementBadge[]>([]);
+
+  // 1. SUPABASE AUTH & DATA SYNC LISTENER
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+
+    // Check existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        handleAuthUserChange(session.user.id, session.user.email || '');
+      }
+    });
+
+    // Listen to real-time auth changes
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        await handleAuthUserChange(session.user.id, session.user.email || '');
+      } else if (event === 'SIGNED_OUT') {
+        setIsLoggedIn(false);
+        setCurrentUserId('');
+      }
+    });
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
+
+  const handleAuthUserChange = async (userId: string, email: string) => {
+    setIsLoggedIn(true);
+    setCurrentUserId(userId);
+
+    // Fetch user-specific data from Supabase DB tables
+    const [fetchedProfile, fetchedScores, fetchedResume, fetchedActivities] = await Promise.all([
+      SupabaseService.fetchProfile(userId),
+      SupabaseService.fetchReadinessScore(userId),
+      SupabaseService.fetchResume(userId, email),
+      SupabaseService.fetchRecentActivities(userId)
+    ]);
+
+    if (fetchedProfile) setUserState(fetchedProfile);
+    if (fetchedScores) setReadinessScore(fetchedScores);
+    if (fetchedResume) setResumeState(fetchedResume);
+    if (fetchedActivities) {
+      setRecentActivities(fetchedActivities);
+      setCompletedTasksCount(fetchedActivities.length);
+    }
+  };
 
   useEffect(() => {
     if (darkMode) {
@@ -150,7 +211,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const setUser = (newUser: UserProfile) => {
     setUserState(newUser);
-    SupabaseService.saveProfile(newUser);
+    if (currentUserId || newUser.id) {
+      SupabaseService.saveProfile(newUser, currentUserId || newUser.id);
+    }
   };
 
   const handleFeatureLaunch = (targetTab: ActiveTab, onDismissSplash?: () => void) => {
@@ -172,7 +235,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setPendingTargetTab(null);
   };
 
-  const recordUserActivity = (
+  const recordUserActivity = async (
     module: keyof Omit<ReadinessScore, 'overall' | 'lastUpdated'>,
     title: string,
     scoreVal: number,
@@ -184,21 +247,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       [module]: Math.min(100, Math.max(readinessScore[module], scoreVal)),
       lastUpdated: new Date().toLocaleDateString()
     };
-    
+
     // 2. Recalculate overall average
     const avg = Math.round(
       (updatedScores.resume +
         updatedScores.coding +
         updatedScores.aptitude +
         updatedScores.interview +
-        updatedScores.communication) / 5
+        updatedScores.communication) /
+        5
     );
     updatedScores.overall = avg;
 
     setReadinessScore(updatedScores);
-    SupabaseService.saveReadinessScore(updatedScores);
+    if (currentUserId) {
+      await SupabaseService.saveReadinessScore(updatedScores, currentUserId);
+    }
 
-    // 3. Add to Recent Activities
+    // 3. Add to Recent Activities in Supabase DB
     const newAct: ActivityItem = {
       id: `act-${Date.now()}`,
       title,
@@ -207,12 +273,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       time: 'Just now'
     };
 
-    const updatedList = SupabaseService.addRecentActivity(newAct, user?.email);
-    setRecentActivities(updatedList);
-    setCompletedTasksCount(updatedList.length);
+    if (currentUserId) {
+      const updatedList = await SupabaseService.addRecentActivity(newAct, currentUserId);
+      setRecentActivities(updatedList);
+      setCompletedTasksCount(updatedList.length);
+    } else {
+      setRecentActivities((prev) => [newAct, ...prev]);
+      setCompletedTasksCount((prev) => prev + 1);
+    }
   };
 
-  const recordActivity = (title: string, typeLabel: string, scoreText?: string, targetTab?: ActiveTab) => {
+  const recordActivity = async (
+    title: string,
+    typeLabel: string,
+    scoreText?: string,
+    targetTab?: ActiveTab
+  ) => {
     const formattedTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const formattedDate = new Date().toLocaleDateString([], { month: 'short', day: 'numeric' });
     const displayTime = `${formattedDate}, ${formattedTime}`;
@@ -227,18 +303,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       targetTab
     };
 
-    const updatedList = SupabaseService.addRecentActivity(newAct, user?.email);
-    setRecentActivities(updatedList);
-    setCompletedTasksCount(updatedList.length);
+    if (currentUserId) {
+      const updatedList = await SupabaseService.addRecentActivity(newAct, currentUserId);
+      setRecentActivities(updatedList);
+      setCompletedTasksCount(updatedList.length);
+    } else {
+      setRecentActivities((prev) => [newAct, ...prev]);
+      setCompletedTasksCount((prev) => prev + 1);
+    }
   };
 
-  const clearRecentActivities = () => {
-    SupabaseService.clearRecentActivities(user?.email);
+  const clearRecentActivities = async () => {
+    if (currentUserId) {
+      await SupabaseService.clearRecentActivities(currentUserId);
+    }
     setRecentActivities([]);
     setCompletedTasksCount(0);
   };
 
-  const resetAllProgress = () => {
+  const resetAllProgress = async () => {
     const zeroReadiness: ReadinessScore = {
       overall: 0,
       resume: 0,
@@ -249,31 +332,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       lastUpdated: 'Never'
     };
     setReadinessScore(zeroReadiness);
-    SupabaseService.saveReadinessScore(zeroReadiness);
+    if (currentUserId) {
+      await SupabaseService.saveReadinessScore(zeroReadiness, currentUserId);
+      await SupabaseService.clearRecentActivities(currentUserId);
+    }
 
     setRecentActivities([]);
-    localStorage.setItem('acehire_recent_activities', JSON.stringify([]));
     setCompletedTasksCount(0);
-
-    // Clear all module launch state tracking so all buttons revert to "Start"
-    ['interview', 'resume', 'coding', 'aptitude', 'communication', 'skillgap', 'roadmap'].forEach((id) => {
-      localStorage.removeItem(`acehire_started_${id}`);
-    });
-    localStorage.removeItem('acehire_user_uploaded_resume');
-    localStorage.removeItem('acehire_user_resume_analysis');
   };
 
-  const login = (email: string, _pass: string) => {
+  // SUPABASE LOGIN ACTION
+  const login = async (email: string, pass: string): Promise<boolean> => {
     const cleanEmail = email.trim() || 'student@college.edu';
-    localStorage.setItem('acehire_current_user_email', cleanEmail);
-    setIsLoggedIn(true);
-    localStorage.setItem(STORAGE_KEY_AUTH, JSON.stringify(true));
+    const { data, error } = await SupabaseService.signIn(cleanEmail, pass);
 
-    // Load User Isolated Data
-    const loadedProfile = SupabaseService.getProfile(cleanEmail);
-    const loadedScores = SupabaseService.getReadinessScore(cleanEmail);
-    const loadedResume = SupabaseService.getResume(cleanEmail);
-    const loadedActivities = SupabaseService.getRecentActivities(cleanEmail);
+    if (error && isSupabaseConfigured()) {
+      console.error('Supabase Sign In error:', error.message);
+      // Fallback for demo login if needed
+    }
+
+    const userId = data?.user?.id || currentUserId || `user-${Date.now()}`;
+    setIsLoggedIn(true);
+    setCurrentUserId(userId);
+
+    // Fetch User Data from Supabase DB
+    const loadedProfile = await SupabaseService.fetchProfile(userId);
+    const loadedScores = await SupabaseService.fetchReadinessScore(userId);
+    const loadedResume = await SupabaseService.fetchResume(userId, cleanEmail);
+    const loadedActivities = await SupabaseService.fetchRecentActivities(userId);
 
     setUserState(loadedProfile);
     setReadinessScore(loadedScores);
@@ -288,24 +374,56 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } else {
       setActiveTab('home');
     }
+    return true;
   };
 
-  const logout = () => {
-    setIsLoggedIn(false);
-    localStorage.removeItem(STORAGE_KEY_AUTH);
-    localStorage.removeItem('acehire_current_user_email');
+  // SUPABASE SIGNUP ACTION
+  const signup = async (
+    email: string,
+    pass: string,
+    details?: Partial<UserProfile>
+  ): Promise<boolean> => {
+    const cleanEmail = email.trim();
+    const { data, error } = await SupabaseService.signUp(cleanEmail, pass, details);
 
-    // Clear temporary active sessions
-    [
-      'acehire_saved_interview',
-      'acehire_coding_session',
-      'acehire_aptitude_session',
-      'acehire_communication_session',
-      'acehire_skillgap_session',
-      'acehire_roadmap_session',
-      'acehire_user_uploaded_resume',
-      'acehire_user_resume_analysis'
-    ].forEach((k) => localStorage.removeItem(k));
+    if (error && isSupabaseConfigured()) {
+      console.error('Supabase Sign Up error:', error.message);
+    }
+
+    const userId = data?.user?.id || `user-${Date.now()}`;
+    setIsLoggedIn(true);
+    setCurrentUserId(userId);
+
+    const initialProfile: UserProfile = {
+      id: userId,
+      name: details?.name || cleanEmail.split('@')[0],
+      email: cleanEmail,
+      college: details?.college || '',
+      department: details?.department || '',
+      preferredLanguage: details?.preferredLanguage || 'Tanglish',
+      avatarUrl:
+        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+      createdAt: new Date().toISOString()
+    };
+
+    setUserState(initialProfile);
+    await SupabaseService.saveProfile(initialProfile, userId);
+
+    setShowSplash(false);
+    if (pendingTargetTab && pendingTargetTab !== 'login') {
+      setActiveTab(pendingTargetTab);
+      setPendingTargetTab(null);
+    } else {
+      setActiveTab('home');
+    }
+    return true;
+  };
+
+  // SUPABASE LOGOUT ACTION
+  const logout = async (): Promise<void> => {
+    await SupabaseService.signOut();
+    setIsLoggedIn(false);
+    setCurrentUserId('');
 
     setShowSplash(true);
     setActiveTab('login');
@@ -327,7 +445,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const setResume = (newResume: ResumeData) => {
     setResumeState(newResume);
-    SupabaseService.saveResume(newResume);
+    if (currentUserId || user.id) {
+      SupabaseService.saveResume(newResume, currentUserId || user.id);
+    }
   };
 
   const markNotificationRead = (id: string) => {
@@ -342,7 +462,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         (prev.resume + prev.coding + prev.aptitude + prev.interview + prev.communication) / 5
       );
       const updated = { ...prev, overall: avg, lastUpdated: new Date().toLocaleDateString() };
-      SupabaseService.saveReadinessScore(updated);
+      if (currentUserId) {
+        SupabaseService.saveReadinessScore(updated, currentUserId);
+      }
       return updated;
     });
   };
@@ -354,6 +476,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setUser,
         isLoggedIn,
         login,
+        signup,
         logout,
         updateLanguagePreference,
         readinessScore,

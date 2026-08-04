@@ -65,23 +65,13 @@ import {
   InterviewFinalReport
 } from '../../types';
 import { SessionResumeModal } from '../Common/SessionResumeModal';
+import { SupabaseService } from '../../services/supabaseClient';
 
 export const MockInterviewView: React.FC = () => {
   const { user, recordUserActivity, setActiveTab } = useApp();
 
-  // Synchronous restoration helper from localStorage (Requirement STEPS 1-9)
+  // Synchronous initial state helper
   const getInitialSavedSession = (): SavedInterviewState | null => {
-    try {
-      const stored = localStorage.getItem('acehire_saved_interview');
-      if (stored) {
-        const parsed: SavedInterviewState = JSON.parse(stored);
-        if (parsed && parsed.activeQuestions && parsed.activeQuestions.length > 0 && parsed.sessionActive !== false) {
-          return parsed;
-        }
-      }
-    } catch (e) {
-      console.error(e);
-    }
     return null;
   };
 
@@ -307,7 +297,7 @@ export const MockInterviewView: React.FC = () => {
     };
   }, []);
 
-  // Auto-save interview progress to localStorage (Requirement STEP 2 & 8)
+  // Save interview session progress to state and Supabase DB
   const saveSessionToStorage = (
     history = answersHistory,
     qIndex = currentQuestionIndex,
@@ -335,14 +325,16 @@ export const MockInterviewView: React.FC = () => {
         savedAtTimestamp: Date.now(),
         timestamp: new Date().toISOString()
       };
-      localStorage.setItem('acehire_saved_interview', JSON.stringify(payload));
       setSavedSession(payload);
+      if (user?.id) {
+        SupabaseService.saveInterviewSession(user.id, payload);
+      }
     } catch (e) {
-      console.error('Auto save failed', e);
+      console.error('Session save failed', e);
     }
   };
 
-  // Continuous auto-save while session is active (guarded by isRestoredRef)
+  // Continuous auto-save while session is active
   useEffect(() => {
     if (isRestoredRef.current && sessionActive && !sessionCompleted && activeQuestions.length > 0) {
       saveSessionToStorage();
@@ -360,9 +352,8 @@ export const MockInterviewView: React.FC = () => {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [sessionActive, sessionCompleted, currentQuestionIndex, userAnswer, timerSeconds, answersHistory, selectedType, difficulty]);
 
-  // Clear saved session from localStorage
+  // Clear saved session from state
   const clearSessionStorage = () => {
-    localStorage.removeItem('acehire_saved_interview');
     setSavedSession(null);
   };
 

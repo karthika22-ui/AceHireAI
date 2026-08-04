@@ -36,11 +36,11 @@ export const DashboardView: React.FC = () => {
   const [showClearConfirmModal, setShowClearConfirmModal] = useState<boolean>(false);
   const [showViewAllModal, setShowViewAllModal] = useState<boolean>(false);
 
-  // Track module launch state locally and in localStorage so "Start" -> "Continue" updates on first launch
+  // Track module launch state locally in React state so "Start" -> "Continue" updates on launch
   const [startedModules, setStartedModules] = useState<Record<string, boolean>>(() => {
     const map: Record<string, boolean> = {};
     ['interview', 'resume', 'coding', 'aptitude', 'communication', 'skillgap'].forEach((id) => {
-      map[id] = localStorage.getItem(`acehire_started_${id}`) === 'true';
+      map[id] = false;
     });
     return map;
   });
@@ -48,34 +48,17 @@ export const DashboardView: React.FC = () => {
   const [unfinishedSession, setUnfinishedSession] = useState<any | null>(null);
   const [showUnfinishedModal, setShowUnfinishedModal] = useState<boolean>(false);
 
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem('acehire_saved_interview');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed && parsed.activeQuestions && parsed.activeQuestions.length > 0 && parsed.sessionActive !== false) {
-          setUnfinishedSession(parsed);
-          setShowUnfinishedModal(true);
-        }
-      }
-    } catch (e) {
-      console.error('Failed to parse saved interview state', e);
-    }
-  }, []);
-
   const handleContinueUnfinished = () => {
     setShowUnfinishedModal(false);
     setActiveTab('interview');
   };
 
   const handleDiscardUnfinished = () => {
-    localStorage.removeItem('acehire_saved_interview');
     setUnfinishedSession(null);
     setShowUnfinishedModal(false);
   };
 
   const handleLaunchModule = (id: ActiveTab) => {
-    localStorage.setItem(`acehire_started_${id}`, 'true');
     setStartedModules((prev) => ({ ...prev, [id]: true }));
     setActiveTab(id);
   };

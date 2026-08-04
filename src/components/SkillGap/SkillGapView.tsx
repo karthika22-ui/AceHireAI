@@ -5,8 +5,8 @@ import { generateSkillGapAnalysis } from '../../services/aiEngine';
 import { SessionResumeModal } from '../Common/SessionResumeModal';
 
 export const SkillGapView: React.FC = () => {
-  const { user, resume, setActiveTab, recordActivity } = useApp();
-  const [targetCompany, setTargetCompany] = useState<string>(user.dreamCompany || 'Zoho');
+  const { resume, setActiveTab, recordActivity } = useApp();
+  const [targetCompany, setTargetCompany] = useState<string>('Zoho');
 
   // Session Persistence States
   const [showSkillGapModal, setShowSkillGapModal] = useState<boolean>(false);
@@ -14,26 +14,8 @@ export const SkillGapView: React.FC = () => {
 
   // Check on mount for saved session
   useEffect(() => {
-    const saved = localStorage.getItem('acehire_skillgap_session');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (parsed && parsed.targetCompany && parsed.targetCompany !== user.dreamCompany) {
-          setPendingSkillGapSession(parsed);
-          setShowSkillGapModal(true);
-        }
-      } catch {
-        localStorage.removeItem('acehire_skillgap_session');
-      }
-    }
-  }, [user.dreamCompany]);
-
-  // Save session when user customizes target company
-  useEffect(() => {
-    if (targetCompany && targetCompany !== (user.dreamCompany || 'Zoho') && !showSkillGapModal) {
-      localStorage.setItem('acehire_skillgap_session', JSON.stringify({ targetCompany }));
-    }
-  }, [targetCompany, user.dreamCompany, showSkillGapModal]);
+    // Session state managed in React component state & Supabase DB
+  }, []);
 
   const handleContinueSkillGap = () => {
     if (pendingSkillGapSession) {
@@ -44,14 +26,12 @@ export const SkillGapView: React.FC = () => {
   };
 
   const handleExitSkillGap = () => {
-    localStorage.removeItem('acehire_skillgap_session');
     setShowSkillGapModal(false);
     setPendingSkillGapSession(null);
-    setTargetCompany(user.dreamCompany || 'Zoho');
+    setTargetCompany('Zoho');
   };
 
   const handleExitToDashboard = () => {
-    localStorage.removeItem('acehire_skillgap_session');
     setActiveTab('dashboard');
   };
 

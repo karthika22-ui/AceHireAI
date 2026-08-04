@@ -32,30 +32,8 @@ export const CommunicationView: React.FC = () => {
 
   // Check on mount for saved communication session
   useEffect(() => {
-    const saved = localStorage.getItem('acehire_communication_session');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (parsed && (parsed.inputSentence || parsed.feedback)) {
-          setPendingCommSession(parsed);
-          setShowCommModal(true);
-        }
-      } catch {
-        localStorage.removeItem('acehire_communication_session');
-      }
-    }
+    // Session state managed in React component state & Supabase DB
   }, []);
-
-  // Save session to localStorage
-  useEffect(() => {
-    if (inputSentence && inputSentence.trim() !== 'I am interested software and myself Karthik.' && !showCommModal) {
-      const sessionData = {
-        inputSentence,
-        feedback
-      };
-      localStorage.setItem('acehire_communication_session', JSON.stringify(sessionData));
-    }
-  }, [inputSentence, feedback, showCommModal]);
 
   const handleContinueComm = () => {
     if (pendingCommSession) {
@@ -67,7 +45,6 @@ export const CommunicationView: React.FC = () => {
   };
 
   const handleExitComm = () => {
-    localStorage.removeItem('acehire_communication_session');
     setShowCommModal(false);
     setPendingCommSession(null);
     setInputSentence('I am interested software and myself Karthik.');
@@ -123,7 +100,6 @@ export const CommunicationView: React.FC = () => {
 
         <button
           onClick={() => {
-            localStorage.removeItem('acehire_communication_session');
             setActiveTab('dashboard');
           }}
           className="px-3 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shrink-0"

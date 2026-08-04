@@ -6,8 +6,6 @@ export interface UserProfile {
   email: string;
   college: string;
   department: string;
-  year: string;
-  dreamCompany: string;
   preferredLanguage: LanguagePreference;
   avatarUrl?: string;
   createdAt: string;
@@ -155,10 +153,10 @@ export interface ResumeData {
   phone: string;
   location: string;
   summary: string;
+  atsScore?: number;
   education: Array<{
     institution: string;
     degree: string;
-    year: string;
     cgpa: string;
   }>;
   skills: string[];
@@ -198,6 +196,9 @@ export interface CodingChallenge {
   language: CodingLanguage;
   difficulty: DifficultyLevel;
   description: string;
+  inputFormat?: string;
+  outputFormat?: string;
+  explanation?: string;
   starterCode: string;
   sampleInput: string;
   sampleOutput: string;

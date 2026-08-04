@@ -32,34 +32,14 @@ import { SessionResumeModal } from '../Common/SessionResumeModal';
 export const ResumeView: React.FC = () => {
   const { resume, recordUserActivity, setActiveTab } = useApp();
 
-  const [uploadedFile, setUploadedFile] = useState<{ name: string; size: string; type: string } | null>(() => {
-    const saved = localStorage.getItem('acehire_user_uploaded_resume');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return null;
-      }
-    }
-    return null;
-  });
+  const [uploadedFile, setUploadedFile] = useState<{ name: string; size: string; type: string } | null>(null);
 
-  const [showResumeSessionModal, setShowResumeSessionModal] = useState<boolean>(() => !!uploadedFile);
+  const [showResumeSessionModal, setShowResumeSessionModal] = useState<boolean>(false);
 
   const [isDraggingOver, setIsDraggingOver] = useState<boolean>(false);
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [loadingStep, setLoadingStep] = useState<number>(1);
-  const [analysisResult, setAnalysisResult] = useState<ResumeAnalysis | null>(() => {
-    const saved = localStorage.getItem('acehire_user_resume_analysis');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return null;
-      }
-    }
-    return null;
-  });
+  const [analysisResult, setAnalysisResult] = useState<ResumeAnalysis | null>(null);
   const [openSuggestions, setOpenSuggestions] = useState<boolean>(true);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -107,16 +87,12 @@ export const ResumeView: React.FC = () => {
       lastModified: file.lastModified
     };
     setUploadedFile(fileObj);
-    localStorage.setItem('acehire_user_uploaded_resume', JSON.stringify(fileObj));
     setAnalysisResult(null);
-    localStorage.removeItem('acehire_user_resume_analysis');
   };
 
   const handleRemoveFile = () => {
     setUploadedFile(null);
     setAnalysisResult(null);
-    localStorage.removeItem('acehire_user_uploaded_resume');
-    localStorage.removeItem('acehire_user_resume_analysis');
   };
 
   const handleRunATSScan = async () => {
@@ -134,7 +110,6 @@ export const ResumeView: React.FC = () => {
       setLoadingStep(5);
       await new Promise((resolve) => setTimeout(resolve, 300));
       setAnalysisResult(result);
-      localStorage.setItem('acehire_user_resume_analysis', JSON.stringify(result));
       recordUserActivity('resume', 'AI ATS Resume Scan Completed', result.atsScore, 'Resume');
     } catch (err) {
       console.error(err);
@@ -192,8 +167,6 @@ export const ResumeView: React.FC = () => {
         }}
         onExit={() => {
           setShowResumeSessionModal(false);
-          localStorage.removeItem('acehire_user_uploaded_resume');
-          localStorage.removeItem('acehire_user_resume_analysis');
           setUploadedFile(null);
           setAnalysisResult(null);
         }}
@@ -235,8 +208,6 @@ export const ResumeView: React.FC = () => {
 
               <button
                 onClick={() => {
-                  localStorage.removeItem('acehire_user_uploaded_resume');
-                  localStorage.removeItem('acehire_user_resume_analysis');
                   setActiveTab('dashboard');
                 }}
                 className="px-4 py-3 rounded-2xl bg-white/10 hover:bg-red-500/20 text-white hover:text-red-300 border border-white/20 hover:border-red-400 text-xs font-extrabold flex items-center gap-1.5 backdrop-blur-xl transition-all cursor-pointer"

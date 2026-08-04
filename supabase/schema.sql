@@ -8,8 +8,6 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     email TEXT NOT NULL UNIQUE,
     college TEXT,
     department TEXT,
-    year TEXT,
-    dream_company TEXT DEFAULT 'Zoho',
     preferred_language TEXT DEFAULT 'Tanglish' CHECK (preferred_language IN ('English', 'Tanglish')),
     avatar_url TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL

@@ -15,11 +15,217 @@ import {
   RoadmapTask
 } from '../types';
 
+import { GoogleGenerativeAI } from '@google/generative-ai';
+
 /**
  * AceHire AI Agent Engine
  * Handles AI Mock Interviews, Resume ATS Analysis, Dual-Language Feedback (English & Tanglish),
  * Coding Review, and Personalized Placement Roadmaps.
  */
+
+const metaEnv = (import.meta as any).env || {};
+export const AI_API_KEY = metaEnv.VITE_GEMINI_API_KEY || metaEnv.VITE_API_KEY || '';
+
+export const genAI = AI_API_KEY ? new GoogleGenerativeAI(AI_API_KEY) : null;
+export const geminiModel = genAI ? genAI.getGenerativeModel({ model: 'gemini-2.0-flash' }) : null;
+
+export interface GenerateQuestionsOptions {
+  topic: string;
+  difficulty?: 'easy' | 'medium' | 'hard' | string;
+  questionType?: 'mcq' | 'coding' | 'interview' | string;
+  numberOfQuestions?: number;
+  avoidTitles?: string[];
+}
+
+function sanitizeField(value: any): string {
+  if (typeof value !== 'string') return value || '';
+  return value
+    .replace(/Previously generated titles to avoid:[^\n.]*/gi, '')
+    .replace(/You are an expert[^\n.]*/gi, '')
+    .replace(/Generate exactly[^\n.]*/gi, '')
+    .replace(/^Problem Statement:\s*/i, '')
+    .replace(/^Description:\s*/i, '')
+    .replace(/^Title:\s*/i, '')
+    .replace(/^Here is (a|the) (problem|challenge):?\s*/i, '')
+    .trim();
+}
+
+/**
+ * Reusable function to generate questions using Google Gemini API.
+ * Reads API key from VITE_GEMINI_API_KEY and returns generated questions in clean JSON format.
+ */
+export async function generateQuestions(
+  topicOrOptions: string | GenerateQuestionsOptions,
+  difficultyArg: 'easy' | 'medium' | 'hard' | string = 'medium',
+  questionTypeArg: 'mcq' | 'coding' | 'interview' | string = 'mcq',
+  numberOfQuestionsArg: number = 5
+): Promise<any[]> {
+  let topic = '';
+  let difficulty = 'medium';
+  let questionType = 'mcq';
+  let numberOfQuestions = 5;
+  let avoidTitles: string[] = [];
+
+  if (typeof topicOrOptions === 'object' && topicOrOptions !== null) {
+    topic = topicOrOptions.topic || '';
+    difficulty = topicOrOptions.difficulty || 'medium';
+    questionType = topicOrOptions.questionType || 'mcq';
+    numberOfQuestions = topicOrOptions.numberOfQuestions || 5;
+    avoidTitles = topicOrOptions.avoidTitles || [];
+  } else {
+    topic = topicOrOptions || '';
+    difficulty = difficultyArg || 'medium';
+    questionType = questionTypeArg || 'mcq';
+    numberOfQuestions = numberOfQuestionsArg || 5;
+  }
+
+  // Extract clean language/topic name
+  const cleanTopic = topic.replace(/Previously generated titles to avoid:.*/gi, '').trim() || 'Python';
+
+  const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || (import.meta as any).env?.VITE_API_KEY || AI_API_KEY || '';
+
+  if (!apiKey) {
+    if (questionType === 'coding') {
+      throw new Error('VITE_GEMINI_API_KEY is missing. Unable to generate dynamic coding challenge.');
+    }
+    console.warn('VITE_GEMINI_API_KEY is missing. Returning fallback structured questions.');
+    return getFallbackQuestions(cleanTopic, difficulty, questionType, numberOfQuestions);
+  }
+
+  const aiClient = new GoogleGenerativeAI(apiKey);
+  const candidateModels = ['gemini-2.0-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash-lite'];
+  let lastError: any = null;
+
+  for (const modelName of candidateModels) {
+    try {
+      const model = aiClient.getGenerativeModel({ model: modelName });
+
+      const diffLower = difficulty.toLowerCase();
+      const difficultyGuide =
+        diffLower === 'easy'
+          ? 'EASY LEVEL: Simple, beginner-friendly, straightforward logic (basic arrays, string manipulation, elementary math, easy to understand).'
+          : diffLower === 'hard'
+          ? 'HARD LEVEL: Interview-level, highly challenging, suitable for advanced candidates (dynamic programming, graph algorithms, hard optimizations).'
+          : 'MEDIUM LEVEL: Moderately challenging, suitable for intermediate learners (hash maps, binary search, sliding window, tree traversal).';
+
+      const avoidInstruction = avoidTitles.length > 0
+        ? `CRITICAL UNIENESS REQUIREMENT: Do NOT generate questions with any of these titles or concepts: ${avoidTitles.join(', ')}. Generate a completely NEW, ORIGINAL, and DIFFERENT problem.`
+        : 'Generate a completely unique and original programming challenge.';
+
+      const prompt = `You are a software engineering coding problem designer.
+Generate exactly ${numberOfQuestions} unique, original ${difficulty} level ${questionType} challenge for target language: "${cleanTopic}".
+
+Difficulty Specification:
+${difficultyGuide}
+
+${avoidInstruction}
+
+CRITICAL RULES:
+1. Output MUST contain ONLY the student-facing problem fields.
+2. Do NOT include internal prompt text, system rules, avoidance lists, AI notes, or metadata in any field.
+3. "title" must be concise and descriptive (e.g. "Find Peak Element").
+4. "description" must contain only the clear problem statement.
+5. "inputFormat" must describe the input parameters and types clearly.
+6. "outputFormat" must describe the expected return value or output.
+7. "explanation" must explain why the sample output matches the sample input.
+8. Each problem MUST be brand new and unique. Do not repeat standard demo examples.
+
+Return ONLY a valid raw JSON array of objects without markdown formatting (\`\`\`json wrappers) or conversational text.
+
+Structure:
+- coding: [{
+    "id": "code-ai-unique-id",
+    "title": "Problem Title",
+    "description": "Clear problem statement describing the challenge.",
+    "inputFormat": "Input structure explanation.",
+    "outputFormat": "Expected output format.",
+    "constraints": ["1 <= N <= 10^5"],
+    "sampleInput": "Example input value",
+    "sampleOutput": "Example output value",
+    "explanation": "Explanation of sample input and sample output.",
+    "starterCode": "Starter function template"
+  }]
+- mcq: [{"id": string, "question": string, "options": [string, string, string, string], "answer": string, "explanation": string}]
+- interview: [{"id": string, "category": string, "question": string, "contextHint": string, "expectedKeypoints": [string]}]`;
+
+      const result = await model.generateContent(prompt);
+      const responseText = result.response.text();
+
+      const cleanedText = responseText
+        .replace(/^```json\s*/i, '')
+        .replace(/^```\s*/i, '')
+        .replace(/\s*```$/i, '')
+        .trim();
+
+      const parsedJson = JSON.parse(cleanedText);
+      const rawList = Array.isArray(parsedJson) ? parsedJson : [parsedJson];
+
+      return rawList.map((item: any) => ({
+        ...item,
+        title: sanitizeField(item.title),
+        description: sanitizeField(item.description),
+        inputFormat: sanitizeField(item.inputFormat),
+        outputFormat: sanitizeField(item.outputFormat),
+        explanation: sanitizeField(item.explanation)
+      }));
+    } catch (error) {
+      console.warn(`Model ${modelName} failed or rate limited:`, error);
+      lastError = error;
+    }
+  }
+
+  console.error('All Gemini AI candidate models failed:', lastError);
+  if (questionType === 'coding') {
+    throw lastError || new Error('All Gemini AI models failed');
+  }
+  return getFallbackQuestions(cleanTopic, difficulty, questionType, numberOfQuestions);
+}
+
+function getFallbackQuestions(
+  topic: string,
+  difficulty: string,
+  questionType: string,
+  count: number
+): any[] {
+  const list: any[] = [];
+  const timestamp = Date.now();
+  const diffLower = difficulty.toLowerCase();
+
+  const easyTopics = ['Sum of Digits', 'Count Vowels', 'Find Minimum Element', 'Reverse Array', 'Check Even Odd Product'];
+  const mediumTopics = ['Longest Substring Without Repeating Characters', 'Two Sum in Sorted Array', 'Group Anagrams', 'Binary Tree Level Order Traversal', 'Subarray Sum Equals K'];
+  const hardTopics = ['Trapping Rain Water', 'Edit Distance Dynamic Programming', 'Word Ladder BFS Graph', 'Merge K Sorted Lists', 'Serialize and Deserialize Binary Tree'];
+
+  const topicsList = diffLower === 'easy' ? easyTopics : diffLower === 'hard' ? hardTopics : mediumTopics;
+
+  for (let i = 1; i <= count; i++) {
+    const topicTitle = topicsList[(i + Math.floor(Math.random() * 10)) % topicsList.length];
+    const uniqueId = `code-ai-${topic.toLowerCase().replace(/[^a-z0-9]/g, '')}-${timestamp}-${i}`;
+
+    if (questionType === 'interview') {
+      list.push({
+        id: uniqueId,
+        category: topic || 'Technical',
+        question: `Explain how you would approach ${topicTitle} in ${difficulty} scenarios in ${topic}.`,
+        contextHint: `Discuss performance trade-offs, time complexity, and edge case handling.`,
+        expectedKeypoints: [topic.toLowerCase(), 'performance', 'complexity', 'trade-offs']
+      });
+    } else {
+      list.push({
+        id: uniqueId,
+        question: `What is the optimal approach for ${topicTitle} in ${topic}?`,
+        options: [
+          `Optimal ${difficulty} algorithmic solution`,
+          `Brute force cubic scan`,
+          `Linear recursion without memoization`,
+          `Unrelated utility method`
+        ],
+        answer: `Optimal ${difficulty} algorithmic solution`,
+        explanation: `Using the optimal approach ensures the solution executes within constraints.`
+      });
+    }
+  }
+  return list;
+}
 
 // Mock Database of HR, Technical, and Company-specific Questions
 export const QUESTION_BANK: InterviewQuestion[] = [
@@ -138,221 +344,7 @@ export const STARTER_TEMPLATES: Record<CodingLanguage, string> = {
   SQL: `-- Write your SQL query here\n`
 };
 
-export const CODING_PROBLEMS: CodingChallenge[] = [
-  // --- PYTHON ---
-  {
-    id: 'PY-E101',
-    title: 'Two Sum Problem',
-    language: 'Python',
-    difficulty: 'Easy',
-    description: 'Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target. Each input has exactly one solution.',
-    starterCode: STARTER_TEMPLATES.Python,
-    sampleInput: 'nums = [2, 7, 11, 15], target = 9',
-    sampleOutput: '[0, 1]',
-    constraints: ['2 <= nums.length <= 10^4', '-10^9 <= target <= 10^9'],
-    testCases: [{ input: '[2, 7, 11, 15], 9', expectedOutput: '[0, 1]' }]
-  },
-  {
-    id: 'PY-E102',
-    title: 'Valid Palindrome',
-    language: 'Python',
-    difficulty: 'Easy',
-    description: 'A phrase is a palindrome if, after converting all uppercase letters into lowercase letters and removing non-alphanumeric characters, it reads the same forward and backward.',
-    starterCode: STARTER_TEMPLATES.Python,
-    sampleInput: 's = "radars"',
-    sampleOutput: 'true',
-    constraints: ['1 <= s.length <= 2 * 10^5'],
-    testCases: [{ input: '"radars"', expectedOutput: 'true' }]
-  },
-  {
-    id: 'PY-M201',
-    title: 'Group Anagrams',
-    language: 'Python',
-    difficulty: 'Medium',
-    description: 'Given an array of strings strs, group the anagrams together. Return the answer in any order.',
-    starterCode: STARTER_TEMPLATES.Python,
-    sampleInput: 'strs = ["eat","tea","tan","ate","nat","bat"]',
-    sampleOutput: '[["bat"],["nat","tan"],["ate","eat","tea"]]',
-    constraints: ['1 <= strs.length <= 10^4'],
-    testCases: [{ input: '["eat","tea"]', expectedOutput: '[["eat","tea"]]' }]
-  },
-  {
-    id: 'PY-H301',
-    title: 'Trapping Rain Water',
-    language: 'Python',
-    difficulty: 'Hard',
-    description: 'Given n non-negative integers representing an elevation map where the width of each bar is 1, compute how much water it can trap after raining.',
-    starterCode: STARTER_TEMPLATES.Python,
-    sampleInput: 'height = [0,1,0,2,1,0,1,3,2,1,2,1]',
-    sampleOutput: '6',
-    constraints: ['n == height.length', '1 <= n <= 2 * 10^4'],
-    testCases: [{ input: '[0,1,0,2,1,0,1,3,2,1,2,1]', expectedOutput: '6' }]
-  },
-
-  // --- JAVA ---
-  {
-    id: 'JV-E101',
-    title: 'Reverse String Array',
-    language: 'Java',
-    difficulty: 'Easy',
-    description: 'Write a Java method to reverse an array of characters in-place with O(1) extra memory.',
-    starterCode: STARTER_TEMPLATES.Java,
-    sampleInput: 's = [\'h\',\'e\',\'l\',\'l\',\'o\']',
-    sampleOutput: '[\'o\',\'l\',\'l\',\'e\',\'h\']',
-    constraints: ['1 <= s.length <= 10^5'],
-    testCases: [{ input: "['h','e','l','l','o']", expectedOutput: "['o','l','l','e','h']" }]
-  },
-  {
-    id: 'JV-E102',
-    title: 'Contains Duplicate',
-    language: 'Java',
-    difficulty: 'Easy',
-    description: 'Given an integer array nums, return true if any value appears at least twice in the array, and return false if every element is distinct.',
-    starterCode: STARTER_TEMPLATES.Java,
-    sampleInput: 'nums = [1,2,3,1]',
-    sampleOutput: 'true',
-    constraints: ['1 <= nums.length <= 10^5'],
-    testCases: [{ input: '[1,2,3,1]', expectedOutput: 'true' }]
-  },
-  {
-    id: 'JV-M201',
-    title: 'Reverse Words in String',
-    language: 'Java',
-    difficulty: 'Medium',
-    description: 'Given an input string s, reverse the order of the words. Return a string of words joined by a single space.',
-    starterCode: STARTER_TEMPLATES.Java,
-    sampleInput: 's = "the sky is blue"',
-    sampleOutput: '"blue is sky the"',
-    constraints: ['1 <= s.length <= 10^4'],
-    testCases: [{ input: '"the sky is blue"', expectedOutput: '"blue is sky the"' }]
-  },
-  {
-    id: 'JV-H301',
-    title: 'Merge K Sorted Lists',
-    language: 'Java',
-    difficulty: 'Hard',
-    description: 'You are given an array of k linked-lists, each linked-list is sorted in ascending order. Merge all the linked-lists into one sorted linked-list.',
-    starterCode: STARTER_TEMPLATES.Java,
-    sampleInput: 'lists = [[1,4,5],[1,3,4],[2,6]]',
-    sampleOutput: '[1,1,2,3,4,5,6]',
-    constraints: ['k == lists.length', '0 <= k <= 10^4'],
-    testCases: [{ input: '[[1,4,5],[1,3,4],[2,6]]', expectedOutput: '[1,1,2,3,4,5,6]' }]
-  },
-
-  // --- C ---
-  {
-    id: 'C-E101',
-    title: 'Find Maximum Element in Array',
-    language: 'C',
-    difficulty: 'Easy',
-    description: 'Write a C function to iterate over an array of n integers and return the maximum value.',
-    starterCode: STARTER_TEMPLATES.C,
-    sampleInput: 'arr = {12, 45, 67, 23, 89}, n = 5',
-    sampleOutput: '89',
-    constraints: ['1 <= n <= 1000'],
-    testCases: [{ input: '{12, 45, 67, 23, 89}', expectedOutput: '89' }]
-  },
-  {
-    id: 'C-M201',
-    title: 'Matrix Transposition',
-    language: 'C',
-    difficulty: 'Medium',
-    description: 'Write a C program to compute the transpose of a square 2D matrix of dimensions N x N in place.',
-    starterCode: STARTER_TEMPLATES.C,
-    sampleInput: 'matrix = [[1,2],[3,4]], N = 2',
-    sampleOutput: '[[1,3],[2,4]]',
-    constraints: ['1 <= N <= 500'],
-    testCases: [{ input: '[[1,2],[3,4]]', expectedOutput: '[[1,3],[2,4]]' }]
-  },
-  {
-    id: 'C-H301',
-    title: 'Custom Memory Pool Allocator',
-    language: 'C',
-    difficulty: 'Hard',
-    description: 'Implement a fixed-size block memory allocator in C managing raw heap buffer allocations without memory leaks.',
-    starterCode: STARTER_TEMPLATES.C,
-    sampleInput: 'bufferSize = 1024, blockSize = 64',
-    sampleOutput: 'Allocated 16 blocks successfully',
-    constraints: ['0 < blockSize <= bufferSize'],
-    testCases: [{ input: '1024, 64', expectedOutput: 'Success' }]
-  },
-
-  // --- C++ ---
-  {
-    id: 'CPP-E101',
-    title: 'Vector Sum and Average',
-    language: 'C++',
-    difficulty: 'Easy',
-    description: 'Write a C++ function taking std::vector<double> and returning both the sum and average.',
-    starterCode: STARTER_TEMPLATES['C++'],
-    sampleInput: 'v = {10.5, 20.0, 30.5}',
-    sampleOutput: 'Sum = 61.0, Average = 20.33',
-    constraints: ['1 <= v.size() <= 10^5'],
-    testCases: [{ input: '{10.5, 20.0, 30.5}', expectedOutput: 'Sum = 61.0' }]
-  },
-  {
-    id: 'CPP-M201',
-    title: 'Container With Most Water',
-    language: 'C++',
-    difficulty: 'Medium',
-    description: 'Given an integer array height of length n, find two lines that together with the x-axis form a container holding the most water.',
-    starterCode: STARTER_TEMPLATES['C++'],
-    sampleInput: 'height = [1,8,6,2,5,4,8,3,7]',
-    sampleOutput: '49',
-    constraints: ['2 <= n <= 10^5'],
-    testCases: [{ input: '[1,8,6,2,5,4,8,3,7]', expectedOutput: '49' }]
-  },
-  {
-    id: 'CPP-H301',
-    title: 'LRU Cache Design',
-    language: 'C++',
-    difficulty: 'Hard',
-    description: 'Design a Least Recently Used (LRU) cache class supporting O(1) time get and put operations using std::unordered_map and std::list.',
-    starterCode: STARTER_TEMPLATES['C++'],
-    sampleInput: 'capacity = 2, put(1,1), put(2,2), get(1)',
-    sampleOutput: '1',
-    constraints: ['1 <= capacity <= 3000'],
-    testCases: [{ input: 'capacity = 2', expectedOutput: '1' }]
-  },
-
-  // --- SQL ---
-  {
-    id: 'SQL-E101',
-    title: 'High Salary Employees Query',
-    language: 'SQL',
-    difficulty: 'Easy',
-    description: 'Write a SQL query to select all employee names and salaries where salary is strictly greater than 70000.',
-    starterCode: STARTER_TEMPLATES.SQL,
-    sampleInput: 'Employee (id, name, salary)',
-    sampleOutput: 'name | salary\nAlice | 85000\nBob | 92000',
-    constraints: ['Filter WHERE salary > 70000'],
-    testCases: [{ input: 'Employee table', expectedOutput: '2 rows returned' }]
-  },
-  {
-    id: 'SQL-M201',
-    title: 'Department Average Salary',
-    language: 'SQL',
-    difficulty: 'Medium',
-    description: 'Write a SQL query to calculate the average salary for each department that has more than 3 employees.',
-    starterCode: STARTER_TEMPLATES.SQL,
-    sampleInput: 'Employee (id, name, salary, dept_id), Department (id, dept_name)',
-    sampleOutput: 'dept_name | avg_salary\nEngineering | 95000',
-    constraints: ['Group by department name with HAVING COUNT(*) > 3'],
-    testCases: [{ input: 'Employee & Department tables', expectedOutput: 'Grouped result' }]
-  },
-  {
-    id: 'SQL-H301',
-    title: 'Highest Salary per Department',
-    language: 'SQL',
-    difficulty: 'Hard',
-    description: 'Write a SQL query using Window Functions (DENSE_RANK) to find employees who earn the highest salary in each department.',
-    starterCode: STARTER_TEMPLATES.SQL,
-    sampleInput: 'Employee (id, name, salary, departmentId), Department (id, name)',
-    sampleOutput: 'Department | Employee | Salary\nIT | Max | 90000\nSales | Henry | 80000',
-    constraints: ['Use DENSE_RANK() OVER (PARTITION BY departmentId ORDER BY salary DESC)'],
-    testCases: [{ input: 'Employee & Department tables', expectedOutput: 'Filtered window rank' }]
-  }
-];
+export const CODING_PROBLEMS: CodingChallenge[] = [];
 
 export const APTITUDE_BANK: AptitudeQuestion[] = [
   // ==================== QUANTITATIVE - EASY ====================
@@ -1545,9 +1537,9 @@ export async function analyzeResumeWithAI(fileOrResume: any): Promise<ResumeAnal
 }
 
 /**
- * Generate Dynamic Skill Gap Analysis based on Dream Company
+ * Generate Dynamic Skill Gap Analysis based on Target Company
  */
-export function generateSkillGapAnalysis(currentSkills: string[], dreamCompany: string): SkillGapItem[] {
+export function generateSkillGapAnalysis(currentSkills: string[], targetCompany: string = 'Zoho'): SkillGapItem[] {
   const companyTech: Record<string, string[]> = {
     Zoho: ['C++', 'Java', 'Data Structures & Algorithms', 'DBMS & SQL', 'Low-Level System Design'],
     TCS: ['Python', 'Java', 'Aptitude Reasoning', 'Verbal English', 'SQL Fundamentals'],
@@ -1555,13 +1547,13 @@ export function generateSkillGapAnalysis(currentSkills: string[], dreamCompany: 
     Amazon: ['Data Structures', 'AWS Cloud', 'OOP Principles', 'System Design', 'Behavioral Leadership']
   };
 
-  const targetList = companyTech[dreamCompany] || ['Data Structures', 'Web Development', 'SQL', 'Communication', 'Aptitude'];
+  const targetList = companyTech[targetCompany] || ['Data Structures', 'Web Development', 'SQL', 'Communication', 'Aptitude'];
 
   return targetList.map((skill) => {
     const isPresent = currentSkills.some((s) => s.toLowerCase().includes(skill.toLowerCase()));
     return {
       skill,
-      requiredForCompany: dreamCompany,
+      requiredForCompany: targetCompany,
       currentProficiency: isPresent ? 75 : 20,
       targetProficiency: 90,
       status: isPresent ? 'In Progress' : 'Missing',
@@ -1573,13 +1565,13 @@ export function generateSkillGapAnalysis(currentSkills: string[], dreamCompany: 
 /**
  * Generate AI Learning Roadmap
  */
-export function generateAIRoadmap(dreamCompany: string): RoadmapTask[] {
+export function generateAIRoadmap(): RoadmapTask[] {
   return [
     {
       id: 'task-1',
       period: 'Daily',
       title: 'Complete 1 HR & 1 Tech AI Mock Interview',
-      description: `Practice answer delivery and receive dual-language (English/Tanglish) feedback for ${dreamCompany} standards.`,
+      description: 'Practice answer delivery and receive dual-language (English/Tanglish) feedback for interview standards.',
       completed: false,
       category: 'Interview',
       dueDate: 'Today, 8:00 PM'
@@ -1606,7 +1598,7 @@ export function generateAIRoadmap(dreamCompany: string): RoadmapTask[] {
       id: 'task-4',
       period: 'Monthly',
       title: 'Full Company Mock Hiring Drive Simulation',
-      description: `Complete full round (Aptitude -> Coding -> Technical -> HR) simulated for ${dreamCompany}.`,
+      description: 'Complete full round (Aptitude -> Coding -> Technical -> HR) simulated practice.',
       completed: false,
       category: 'Interview',
       dueDate: 'End of Month'

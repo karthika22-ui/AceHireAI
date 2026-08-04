@@ -8,27 +8,8 @@ export const PersistentInterviewBanner: React.FC = () => {
   const [savedSession, setSavedSession] = useState<SavedInterviewState | null>(null);
 
   useEffect(() => {
-    const checkSession = () => {
-      try {
-        const stored = localStorage.getItem('acehire_saved_interview');
-        if (stored) {
-          const parsed: SavedInterviewState = JSON.parse(stored);
-          if (parsed && parsed.activeQuestions && parsed.activeQuestions.length > 0 && parsed.sessionActive !== false) {
-            setSavedSession(parsed);
-          } else {
-            setSavedSession(null);
-          }
-        } else {
-          setSavedSession(null);
-        }
-      } catch (e) {
-        setSavedSession(null);
-      }
-    };
-
-    checkSession();
-    const interval = setInterval(checkSession, 1000);
-    return () => clearInterval(interval);
+    // Session state managed in memory/context
+    setSavedSession(null);
   }, []);
 
   // Do not show on Welcome Page (showSplash), or when inside interview page, or if logged out, or if no saved interview exists
@@ -41,7 +22,6 @@ export const PersistentInterviewBanner: React.FC = () => {
   };
 
   const handleExit = () => {
-    localStorage.removeItem('acehire_saved_interview');
     setSavedSession(null);
   };
 

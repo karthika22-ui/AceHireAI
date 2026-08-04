@@ -1,42 +1,53 @@
 import React, { useState } from 'react';
-import { X, Sparkles, User, GraduationCap, Building2, Globe, Mail, Lock, ArrowRight } from 'lucide-react';
+import { X, Sparkles, User, GraduationCap, ArrowRight } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { LanguagePreference } from '../../types';
 
 export const AuthModal: React.FC = () => {
-  const { isAuthModalOpen, setIsAuthModalOpen, user, setUser } = useApp();
+  const { isAuthModalOpen, setIsAuthModalOpen, user, setUser, signup, login } = useApp();
   const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>('signup');
 
   // Form fields
   const [name, setName] = useState(user.name);
   const [email, setEmail] = useState(user.email);
+  const [password, setPassword] = useState('');
   const [college, setCollege] = useState(user.college);
   const [department, setDepartment] = useState(user.department);
-  const [year, setYear] = useState(user.year);
-  const [dreamCompany, setDreamCompany] = useState(user.dreamCompany);
-  const [customCompany, setCustomCompany] = useState('');
   const [preferredLanguage, setPreferredLanguage] = useState<LanguagePreference>(user.preferredLanguage);
-
-  const topCompanies = ['Zoho', 'TCS', 'Google', 'Microsoft', 'Amazon', 'Infosys', 'Accenture', 'Cognizant', 'Wipro', 'HCLTech', 'Custom'];
+  const [loading, setLoading] = useState(false);
 
   if (!isAuthModalOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const finalCompany = dreamCompany === 'Custom' ? (customCompany || 'Tech Giant') : dreamCompany;
-    
-    setUser({
-      ...user,
-      name,
-      email,
-      college,
-      department,
-      year,
-      dreamCompany: finalCompany,
-      preferredLanguage
-    });
+    setLoading(true);
 
-    setIsAuthModalOpen(false);
+    try {
+      if (mode === 'signup' && password) {
+        await signup(email, password, {
+          name,
+          college,
+          department,
+          preferredLanguage
+        });
+      } else if (mode === 'login' && password) {
+        await login(email, password);
+      } else {
+        setUser({
+          ...user,
+          name,
+          email,
+          college,
+          department,
+          preferredLanguage
+        });
+      }
+    } catch (err) {
+      console.warn('AuthModal operation error:', err);
+    } finally {
+      setLoading(false);
+      setIsAuthModalOpen(false);
+    }
   };
 
   return (
@@ -118,37 +129,7 @@ export const AuthModal: React.FC = () => {
                 </div>
               </div>
 
-              {/* Dream Company Selection */}
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
-                  Target Dream Company
-                </label>
-                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mb-2">
-                  {topCompanies.map((comp) => (
-                    <button
-                      type="button"
-                      key={comp}
-                      onClick={() => setDreamCompany(comp)}
-                      className={`px-3 py-2 rounded-xl text-xs font-bold transition-all border ${
-                        dreamCompany === comp
-                          ? 'bg-blue-600 text-white border-blue-600 shadow-md'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-blue-400'
-                      }`}
-                    >
-                      {comp}
-                    </button>
-                  ))}
-                </div>
-                {dreamCompany === 'Custom' && (
-                  <input
-                    type="text"
-                    value={customCompany}
-                    onChange={(e) => setCustomCompany(e.target.value)}
-                    placeholder="Enter custom company name..."
-                    className="w-full px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm mt-1"
-                  />
-                )}
-              </div>
+
 
               {/* Preferred Language Dual Option */}
               <div>
@@ -200,22 +181,33 @@ export const AuthModal: React.FC = () => {
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
               Email Address
             </label>
-            <div className="relative">
-              <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="student@college.edu"
-                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="student@college.edu"
+              className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+              Password
+            </label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••••••"
+              className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
           </div>
 
           <button
             type="submit"
-            className="w-full py-3.5 rounded-xl btn-primary text-white font-bold text-base flex items-center justify-center gap-2 mt-4"
+            disabled={loading}
+            className="w-full py-3.5 rounded-xl btn-primary text-white font-bold text-base flex items-center justify-center gap-2 mt-4 disabled:opacity-50"
           >
             <span>Save Profile & Start Preparing</span>
             <ArrowRight className="w-4 h-4" />

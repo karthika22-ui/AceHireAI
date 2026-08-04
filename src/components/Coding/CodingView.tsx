@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Code2,
   Play,
@@ -15,8 +15,8 @@ import {
   LogOut
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { CODING_PROBLEMS, STARTER_TEMPLATES } from '../../services/aiEngine';
-import { CodingLanguage, DifficultyLevel, CodingSubmissionResult } from '../../types';
+import { generateQuestions, STARTER_TEMPLATES } from '../../services/aiEngine';
+import { CodingLanguage, DifficultyLevel, CodingSubmissionResult, CodingChallenge } from '../../types';
 import { SessionResumeModal } from '../Common/SessionResumeModal';
 
 export const CodingView: React.FC = () => {
@@ -24,7 +24,11 @@ export const CodingView: React.FC = () => {
 
   const [selectedLang, setSelectedLang] = useState<CodingLanguage>('Python');
   const [difficulty, setDifficulty] = useState<DifficultyLevel>('Easy');
-  const [selectedProblemIndex, setSelectedProblemIndex] = useState<number>(0);
+
+  const [currentProblem, setCurrentProblem] = useState<CodingChallenge | null>(null);
+  const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [generationError, setGenerationError] = useState<string | null>(null);
+  const seenTitlesRef = useRef<Set<string>>(new Set());
 
   const [userCode, setUserCode] = useState<string>(STARTER_TEMPLATES['Python']);
   const [isRunning, setIsRunning] = useState<boolean>(false);
@@ -36,46 +40,100 @@ export const CodingView: React.FC = () => {
   const [pendingCodingSession, setPendingCodingSession] = useState<{
     selectedLang: CodingLanguage;
     difficulty: DifficultyLevel;
-    selectedProblemIndex: number;
     userCode: string;
     problemTitle: string;
   } | null>(null);
 
-  // Check on mount for saved coding session
-  useEffect(() => {
-    const saved = localStorage.getItem('acehire_coding_session');
-    if (saved) {
+  // Function to fetch a new unique AI coding question
+  const fetchNewQuestion = async (lang: CodingLanguage, diff: DifficultyLevel) => {
+    if (isGenerating) return;
+    setIsGenerating(true);
+    setGenerationError(null);
+    setExecutionResult(null);
+
+    let attempts = 0;
+    let generatedSuccess = false;
+
+    while (attempts < 3 && !generatedSuccess) {
+      attempts++;
       try {
-        const parsed = JSON.parse(saved);
-        if (parsed && parsed.selectedLang) {
-          setPendingCodingSession(parsed);
-          setShowCodingModal(true);
+        const rawQuestions = await generateQuestions({
+          topic: lang,
+          difficulty: diff.toLowerCase(),
+          questionType: 'coding',
+          numberOfQuestions: 1,
+          avoidTitles: Array.from(seenTitlesRef.current)
+        });
+
+        const generated = rawQuestions && rawQuestions.length > 0 ? rawQuestions[0] : null;
+
+        if (generated && generated.title && generated.description) {
+          const normalizedTitle = generated.title.toLowerCase().trim();
+          
+          // If Gemini generated a title already seen in this session, retry once to ensure session uniqueness
+          if (seenTitlesRef.current.has(normalizedTitle) && attempts < 3) {
+            console.warn(`Duplicate question title "${generated.title}" received. Retrying attempt ${attempts}...`);
+            continue;
+          }
+
+          seenTitlesRef.current.add(normalizedTitle);
+
+          const randomSuffix = Math.random().toString(36).substring(2, 7);
+          const uniqueId = `code-ai-${lang.toLowerCase()}-${Date.now()}-${randomSuffix}`;
+
+          const formatted: CodingChallenge = {
+            id: uniqueId,
+            title: generated.title,
+            difficulty: diff,
+            language: lang,
+            description: generated.description,
+            inputFormat: generated.inputFormat,
+            outputFormat: generated.outputFormat,
+            explanation: generated.explanation,
+            starterCode: generated.starterCode || STARTER_TEMPLATES[lang] || '',
+            sampleInput: generated.sampleInput || '',
+            sampleOutput: generated.sampleOutput || '',
+            constraints: Array.isArray(generated.constraints)
+              ? generated.constraints
+              : typeof generated.constraints === 'string'
+              ? [generated.constraints]
+              : ['1 <= N <= 10^5', 'Time Limit: 1.0s'],
+            testCases: [
+              {
+                input: generated.sampleInput || '',
+                expectedOutput: generated.sampleOutput || ''
+              }
+            ]
+          };
+
+          setCurrentProblem(formatted);
+          setUserCode(formatted.starterCode);
+          setGenerationError(null);
+          generatedSuccess = true;
+        } else {
+          throw new Error('Invalid question response format from Gemini API');
         }
-      } catch {
-        localStorage.removeItem('acehire_coding_session');
+      } catch (err) {
+        console.error('Error generating AI coding question:', err);
+        if (attempts >= 3) {
+          setCurrentProblem(null);
+          setGenerationError('Unable to generate a new question. Please try again.');
+        }
       }
     }
-  }, []);
 
-  // Save coding session when user edits code or changes parameters
+    setIsGenerating(false);
+  };
+
+  // Generate initial question on mount
   useEffect(() => {
-    if (userCode && userCode.trim() !== STARTER_TEMPLATES[selectedLang].trim() && !showCodingModal) {
-      const sessionData = {
-        selectedLang,
-        difficulty,
-        selectedProblemIndex,
-        userCode,
-        problemTitle: problem?.title || 'Coding Practice'
-      };
-      localStorage.setItem('acehire_coding_session', JSON.stringify(sessionData));
-    }
-  }, [selectedLang, difficulty, selectedProblemIndex, userCode, showCodingModal]);
+    fetchNewQuestion(selectedLang, difficulty);
+  }, []);
 
   const handleContinueCoding = () => {
     if (pendingCodingSession) {
       setSelectedLang(pendingCodingSession.selectedLang);
       setDifficulty(pendingCodingSession.difficulty);
-      setSelectedProblemIndex(pendingCodingSession.selectedProblemIndex);
       setUserCode(pendingCodingSession.userCode);
     }
     setShowCodingModal(false);
@@ -83,40 +141,37 @@ export const CodingView: React.FC = () => {
   };
 
   const handleExitCoding = () => {
-    localStorage.removeItem('acehire_coding_session');
     setShowCodingModal(false);
     setPendingCodingSession(null);
     setUserCode(STARTER_TEMPLATES[selectedLang]);
   };
 
-  // Strict Language & Difficulty Filtering (Zero Mismatch Enforced)
-  const languageMatchingProblems = CODING_PROBLEMS.filter((p) => p.language === selectedLang);
-  const difficultyMatchingProblems = languageMatchingProblems.filter((p) => p.difficulty === difficulty);
-  const currentProblemList = difficultyMatchingProblems.length > 0 ? difficultyMatchingProblems : languageMatchingProblems;
-  const problem = currentProblemList[selectedProblemIndex % currentProblemList.length] || languageMatchingProblems[0] || CODING_PROBLEMS[0];
-
   const handleSelectLanguage = (lang: CodingLanguage) => {
     setSelectedLang(lang);
-    setSelectedProblemIndex(0);
     setUserCode(STARTER_TEMPLATES[lang]);
     setExecutionResult(null);
+    fetchNewQuestion(lang, difficulty);
   };
 
   const handleSelectDifficulty = (diff: DifficultyLevel) => {
     setDifficulty(diff);
-    setSelectedProblemIndex(0);
     setUserCode(STARTER_TEMPLATES[selectedLang]);
     setExecutionResult(null);
+    fetchNewQuestion(selectedLang, diff);
   };
 
   const handleNextQuestion = () => {
-    setSelectedProblemIndex((prev) => (prev + 1) % currentProblemList.length);
     setUserCode(STARTER_TEMPLATES[selectedLang]);
     setExecutionResult(null);
+    fetchNewQuestion(selectedLang, difficulty);
   };
 
   const handleResetCode = () => {
-    setUserCode(STARTER_TEMPLATES[selectedLang]);
+    if (currentProblem && currentProblem.starterCode) {
+      setUserCode(currentProblem.starterCode);
+    } else {
+      setUserCode(STARTER_TEMPLATES[selectedLang]);
+    }
     setExecutionResult(null);
   };
 
@@ -130,6 +185,8 @@ export const CodingView: React.FC = () => {
     const currentTemplate = STARTER_TEMPLATES[selectedLang].trim();
 
     let result: CodingSubmissionResult;
+    const testCasesCount = currentProblem?.testCases?.length || 1;
+    const problemTitle = currentProblem?.title || 'Coding Challenge';
 
     // Check if code was unedited or empty
     if (!trimmedCode || trimmedCode === currentTemplate) {
@@ -139,7 +196,7 @@ export const CodingView: React.FC = () => {
         score: 0,
         executionTimeMs: 0,
         passedTestCasesCount: 0,
-        totalTestCasesCount: problem.testCases.length,
+        totalTestCasesCount: testCasesCount,
         errorMessage: 'Starter template unedited. Please implement your code logic before running evaluation.'
       };
     }
@@ -162,8 +219,8 @@ export const CodingView: React.FC = () => {
         passed: true,
         score: 100,
         executionTimeMs: 24,
-        passedTestCasesCount: problem.testCases.length,
-        totalTestCasesCount: problem.testCases.length,
+        passedTestCasesCount: testCasesCount,
+        totalTestCasesCount: testCasesCount,
         aiCodeReview: {
           timeComplexity: 'O(N) - Linear Time',
           spaceComplexity: 'O(1) - Constant Space',
@@ -175,7 +232,7 @@ export const CodingView: React.FC = () => {
           tanglishAdvice: 'Super bro! Code logic efficient-a write pannirukinga. Test cases elam pass aagi irukku.'
         }
       };
-      recordUserActivity('coding', problem.title, result.score, 'Coding');
+      recordUserActivity('coding', problemTitle, result.score, 'Coding');
     }
 
     setExecutionResult(result);
@@ -231,7 +288,6 @@ export const CodingView: React.FC = () => {
 
           <button
             onClick={() => {
-              localStorage.removeItem('acehire_coding_session');
               setActiveTab('dashboard');
             }}
             className="px-3 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
@@ -250,8 +306,8 @@ export const CodingView: React.FC = () => {
         <div className="lg:col-span-5 space-y-4">
           <div className="glass-card rounded-3xl p-6 border space-y-4">
             
-            {/* Header with Difficulty Controls & Next Question Button */}
-            <div className="flex items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
+            {/* Header with Difficulty Controls & Single "Next Question" Button */}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
               <div className="flex items-center gap-1.5">
                 {(['Easy', 'Medium', 'Hard'] as DifficultyLevel[]).map((diff) => (
                   <button
@@ -272,73 +328,155 @@ export const CodingView: React.FC = () => {
                 ))}
               </div>
 
+              {/* Single Button: Next Question */}
               <button
                 onClick={handleNextQuestion}
-                className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-slate-200 dark:border-slate-700 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
-                title="Load Next Question"
+                disabled={isGenerating}
+                className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow cursor-pointer disabled:opacity-50"
+                title="Generate Next AI Question"
               >
-                <span>Next Question</span>
-                <ArrowRight className="w-3.5 h-3.5" />
+                {isGenerating ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Generating...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Next Question</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </>
+                )}
               </button>
             </div>
 
-            {/* Problem Title & ID */}
-            <div>
-              <span className="text-[11px] font-mono text-slate-400 block mb-0.5">Problem ID: {problem.id}</span>
-              
-              <div className="flex items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400 font-medium my-1">
-                <span>⏱ Time Limit: 1 second</span>
-                <span>•</span>
-                <span>💾 Memory Limit: 256 MB</span>
+            {/* Error Banner when Gemini API fails */}
+            {generationError ? (
+              <div className="p-6 rounded-2xl bg-red-500/10 border border-red-500/30 text-center space-y-3 my-4">
+                <AlertCircle className="w-8 h-8 text-red-500 mx-auto" />
+                <p className="text-sm font-bold text-red-600 dark:text-red-400">
+                  {generationError}
+                </p>
+                <button
+                  onClick={handleNextQuestion}
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow cursor-pointer inline-flex items-center gap-1.5"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Try Again</span>
+                </button>
               </div>
+            ) : isGenerating && !currentProblem ? (
+              <div className="p-8 text-center space-y-3">
+                <RefreshCw className="w-8 h-8 text-emerald-500 animate-spin mx-auto" />
+                <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                  Generating a unique {difficulty} {selectedLang} challenge using Gemini AI...
+                </p>
+              </div>
+            ) : currentProblem ? (
+              <>
+                {/* 1. Problem ID */}
+                <div>
+                  <span className="text-[11px] font-mono text-slate-400 block mb-0.5">Problem ID: {currentProblem.id}</span>
+                  
+                  <div className="flex items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400 font-medium my-1">
+                    <span>⏱ Time Limit: 1 second</span>
+                    <span>•</span>
+                    <span>💾 Memory Limit: 256 MB</span>
+                  </div>
 
-              <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-                {problem.title}
-              </h2>
-            </div>
-
-            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-medium">
-              {problem.description}
-            </p>
-
-            {/* SEPARATED SECTIONS: Sample Input & Sample Output */}
-            <div className="space-y-3 pt-2">
-              <div className="space-y-1">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                  Sample Input
-                </h4>
-                <div className="p-3 rounded-xl bg-slate-900 text-slate-200 font-mono text-xs border border-slate-800">
-                  {problem.sampleInput}
+                  {/* 2. Problem Title */}
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    {currentProblem.title}
+                    {isGenerating && <RefreshCw className="w-4 h-4 text-emerald-500 animate-spin" />}
+                  </h2>
                 </div>
-              </div>
 
-              <div className="space-y-1">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                  Sample Output
-                </h4>
-                <div className="p-3 rounded-xl bg-slate-900 text-emerald-400 font-mono text-xs border border-slate-800">
-                  {problem.sampleOutput}
+                {/* 3. Problem Description */}
+                <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-medium">
+                  {currentProblem.description}
+                </p>
+
+                <div className="space-y-3 pt-2">
+                  {/* 4. Input Format */}
+                  {currentProblem.inputFormat && (
+                    <div className="space-y-1">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                        Input Format
+                      </h4>
+                      <div className="p-3 rounded-xl bg-slate-900/60 text-slate-300 text-xs border border-slate-800 leading-relaxed">
+                        {currentProblem.inputFormat}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 5. Output Format */}
+                  {currentProblem.outputFormat && (
+                    <div className="space-y-1">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                        Output Format
+                      </h4>
+                      <div className="p-3 rounded-xl bg-slate-900/60 text-slate-300 text-xs border border-slate-800 leading-relaxed">
+                        {currentProblem.outputFormat}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 6. Constraints */}
+                  {currentProblem.constraints && currentProblem.constraints.length > 0 && (
+                    <div className="space-y-1">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                        Constraints
+                      </h4>
+                      <ul className="p-3 rounded-xl bg-slate-900/60 text-slate-300 font-mono text-xs border border-slate-800/80 space-y-1 list-disc list-inside">
+                        {currentProblem.constraints.map((c, i) => (
+                          <li key={i}>{c}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* 7. Sample Input */}
+                  {currentProblem.sampleInput && (
+                    <div className="space-y-1">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                        Sample Input
+                      </h4>
+                      <div className="p-3 rounded-xl bg-slate-900 text-slate-200 font-mono text-xs border border-slate-800">
+                        {currentProblem.sampleInput}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 8. Sample Output */}
+                  {currentProblem.sampleOutput && (
+                    <div className="space-y-1">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                        Sample Output
+                      </h4>
+                      <div className="p-3 rounded-xl bg-slate-900 text-emerald-400 font-mono text-xs border border-slate-800">
+                        {currentProblem.sampleOutput}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 9. Explanation */}
+                  {currentProblem.explanation && (
+                    <div className="space-y-1">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                        Explanation
+                      </h4>
+                      <div className="p-3 rounded-xl bg-slate-900/60 text-slate-300 text-xs border border-slate-800 leading-relaxed">
+                        {currentProblem.explanation}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="pt-2 text-[11px] italic font-semibold text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                    <span>Hidden test cases will be checked after submission.</span>
+                  </div>
                 </div>
-              </div>
-
-              {/* SEPARATED SECTION: Constraints */}
-              <div className="space-y-1">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                  Constraints
-                </h4>
-                <ul className="p-3 rounded-xl bg-slate-900/60 text-slate-300 font-mono text-xs border border-slate-800/80 space-y-1 list-disc list-inside">
-                  {problem.constraints.map((c, i) => (
-                    <li key={i}>{c}</li>
-                  ))}
-                </ul>
-              </div>
-
-              {/* Step 8 Note */}
-              <div className="pt-2 text-[11px] italic font-semibold text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                <span>Hidden test cases will be checked after submission.</span>
-              </div>
-            </div>
+              </>
+            ) : null}
 
           </div>
         </div>
@@ -396,7 +534,6 @@ export const CodingView: React.FC = () => {
               className="w-full p-4 rounded-2xl bg-slate-950 font-mono text-emerald-400 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 leading-relaxed shadow-inner"
             />
 
-            {/* Step 9 Note: AI Review Availability */}
             <div className="p-3 rounded-2xl bg-slate-900/60 border border-slate-800 text-xs text-slate-400 text-center flex items-center justify-center gap-2">
               <Sparkles className="w-4 h-4 text-emerald-400" />
               <span>AI Review will be available after code execution.</span>

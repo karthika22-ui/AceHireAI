@@ -69,53 +69,8 @@ export const AptitudeView: React.FC = () => {
 
   // Check for saved ongoing session on mount
   useEffect(() => {
-    const saved = localStorage.getItem('acehire_aptitude_session');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (parsed && parsed.isQuizStarted && parsed.currentIdx < 5) {
-          setPendingSession(parsed);
-          setShowContinuePrompt(true);
-        } else {
-          localStorage.removeItem('acehire_aptitude_session');
-        }
-      } catch {
-        localStorage.removeItem('acehire_aptitude_session');
-      }
-    }
+    // Session state managed in React component state & Supabase DB
   }, []);
-
-  // Save session state to localStorage
-  useEffect(() => {
-    if (isQuizStarted && !isQuizCompleted && !showContinuePrompt) {
-      const sessionData = {
-        category,
-        difficulty,
-        currentIdx,
-        timer,
-        userAnswers,
-        isQuizStarted,
-        selectedIndex,
-        showExplanation,
-        quizStartTime
-      };
-      localStorage.setItem('acehire_aptitude_session', JSON.stringify(sessionData));
-    } else if (isQuizCompleted) {
-      localStorage.removeItem('acehire_aptitude_session');
-    }
-  }, [
-    category,
-    difficulty,
-    currentIdx,
-    timer,
-    userAnswers,
-    isQuizStarted,
-    isQuizCompleted,
-    selectedIndex,
-    showExplanation,
-    quizStartTime,
-    showContinuePrompt
-  ]);
 
   const handleContinueSession = () => {
     if (pendingSession) {
@@ -134,7 +89,6 @@ export const AptitudeView: React.FC = () => {
   };
 
   const handleExitSession = () => {
-    localStorage.removeItem('acehire_aptitude_session');
     setShowContinuePrompt(false);
     setPendingSession(null);
     setIsQuizStarted(false);
@@ -156,7 +110,6 @@ export const AptitudeView: React.FC = () => {
   }, [isQuizStarted, isQuizCompleted, timeUpMessage, timer, showExplanation, showContinuePrompt]);
 
   const handleStartQuiz = () => {
-    localStorage.removeItem('acehire_aptitude_session');
     setIsQuizStarted(true);
     setCurrentIdx(0);
     setSelectedIndex(null);
@@ -336,7 +289,6 @@ export const AptitudeView: React.FC = () => {
 
             <button
               onClick={() => {
-                localStorage.removeItem('acehire_aptitude_session');
                 setActiveTab('dashboard');
               }}
               className="px-3 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"

@@ -5,8 +5,8 @@ import { generateAIRoadmap } from '../../services/aiEngine';
 import { SessionResumeModal } from '../Common/SessionResumeModal';
 
 export const RoadmapView: React.FC = () => {
-  const { user, setActiveTab, recordActivity } = useApp();
-  const [tasks, setTasks] = useState(() => generateAIRoadmap(user.dreamCompany));
+  const { setActiveTab, recordActivity } = useApp();
+  const [tasks, setTasks] = useState(() => generateAIRoadmap());
   const [filter, setFilter] = useState<'All' | 'Daily' | 'Weekly' | 'Monthly'>('All');
 
   // Session Persistence States
@@ -18,35 +18,8 @@ export const RoadmapView: React.FC = () => {
 
   // Check on mount for saved roadmap session
   useEffect(() => {
-    const saved = localStorage.getItem('acehire_roadmap_session');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (parsed && parsed.completedTaskIds && parsed.completedTaskIds.length > 0) {
-          setPendingRoadmapSession(parsed);
-          setShowRoadmapModal(true);
-        } else {
-          localStorage.removeItem('acehire_roadmap_session');
-        }
-      } catch {
-        localStorage.removeItem('acehire_roadmap_session');
-      }
-    }
+    // Roadmap session managed in component state & Supabase DB
   }, []);
-
-  // Save session state when tasks are toggled
-  useEffect(() => {
-    const completedTaskIds = tasks.filter((t) => t.completed).map((t) => t.id);
-    if (completedTaskIds.length > 0 && !showRoadmapModal) {
-      const sessionData = {
-        filter,
-        completedTaskIds
-      };
-      localStorage.setItem('acehire_roadmap_session', JSON.stringify(sessionData));
-    } else if (completedTaskIds.length === 0) {
-      localStorage.removeItem('acehire_roadmap_session');
-    }
-  }, [filter, tasks, showRoadmapModal]);
 
   const handleContinueRoadmap = () => {
     if (pendingRoadmapSession) {
@@ -63,14 +36,12 @@ export const RoadmapView: React.FC = () => {
   };
 
   const handleExitRoadmap = () => {
-    localStorage.removeItem('acehire_roadmap_session');
     setShowRoadmapModal(false);
     setPendingRoadmapSession(null);
-    setTasks(generateAIRoadmap(user.dreamCompany));
+    setTasks(generateAIRoadmap());
   };
 
   const handleExitToDashboard = () => {
-    localStorage.removeItem('acehire_roadmap_session');
     setActiveTab('dashboard');
   };
 
@@ -92,7 +63,7 @@ export const RoadmapView: React.FC = () => {
         moduleName="AI Learning Roadmap"
         progressText={
           pendingRoadmapSession
-            ? `${pendingRoadmapSession.completedTaskIds.length} of ${tasks.length} tasks completed (${user.dreamCompany} Plan)`
+            ? `${pendingRoadmapSession.completedTaskIds.length} of ${tasks.length} tasks completed`
             : ''
         }
         onContinue={handleContinueRoadmap}
@@ -110,7 +81,7 @@ export const RoadmapView: React.FC = () => {
             Daily AI Learning Plan
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Personalized placement preparation timeline for {user.dreamCompany}.
+            Personalized placement preparation timeline.
           </p>
         </div>
 
