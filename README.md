@@ -1,10 +1,10 @@
-# HasHire AI
+# AceHire AI
 
 ## Project Overview
-HasHire AI is an advanced, AI-powered placement preparation platform designed to help candidates ace their tech interviews. The platform provides a comprehensive suite of tools, including AI-driven mock interviews, resume ATS analysis, dynamic coding challenges, aptitude testing, and personalized placement roadmaps.
+AceHire AI is an advanced, AI-powered placement preparation platform designed to help candidates ace their tech interviews. The platform provides a comprehensive suite of tools, including AI-driven mock interviews, resume ATS analysis, dynamic coding challenges, aptitude testing, and personalized placement roadmaps.
 
 ## Problem Statement
-Preparing for tech placements involves multiple hurdles: mastering coding tests, performing well in technical interviews, ensuring a resume passes ATS checks, and communicating effectively. Candidates often lack personalized, constructive feedback to identify and bridge their skill gaps. HasHire AI solves this by acting as a personal AI placement mentor, offering real-time, actionable feedback across all stages of preparation.
+Preparing for tech placements involves multiple hurdles: mastering coding tests, performing well in technical interviews, ensuring a resume passes ATS checks, and communicating effectively. Candidates often lack personalized, constructive feedback to identify and bridge their skill gaps. AceHire AI solves this by acting as a personal AI placement mentor, offering real-time, actionable feedback across all stages of preparation.
 
 ## Key Features
 - **AI Mock Interviews**: Conduct realistic mock interviews powered by Gemini AI.
@@ -31,7 +31,7 @@ The frontend is a Single Page Application (SPA) built with React and TypeScript,
 - **Component Structure**: Highly modular, with feature-based directories under `src/components/` (e.g., Auth, Dashboard, Interview, Resume, Coding).
 
 ## Backend and Database Details
-HasHire AI utilizes **Supabase** for its backend infrastructure.
+AceHire AI utilizes **Supabase** for its backend infrastructure.
 - **Authentication**: User sign-up, login, and session management.
 - **Database**: PostgreSQL database provided by Supabase to store user profiles, progress, and historical data.
 - **Client Integration**: Interacts with the backend via `@supabase/supabase-js` configured in `src/services/supabaseClient.ts`.
