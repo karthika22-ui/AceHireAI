@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, FileText, Bot, BarChart3, Settings, User } from 'lucide-react';
+import { Home, FileText, Bot, Settings, User } from 'lucide-react';
 import { useApp, ActiveTab } from '../../context/AppContext';
 
 export const BottomNav: React.FC = () => {
@@ -9,7 +9,7 @@ export const BottomNav: React.FC = () => {
     { id: 'home', label: 'Home', icon: <Home className="w-5 h-5" /> },
     { id: 'resume', label: 'Resume', icon: <FileText className="w-5 h-5" /> },
     { id: 'interview', label: 'Interview', icon: <Bot className="w-5 h-5" /> },
-    { id: 'dashboard', label: 'Analytics', icon: <BarChart3 className="w-5 h-5" /> },
+    { id: 'profile', label: 'Profile', icon: <User className="w-5 h-5" /> },
     { id: 'settings', label: 'Settings', icon: <Settings className="w-5 h-5" /> }
   ];
 
@@ -35,3 +35,5 @@ export const BottomNav: React.FC = () => {
     </nav>
   );
 };
+
+export default BottomNav;

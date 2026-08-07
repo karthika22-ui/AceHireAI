@@ -13,7 +13,6 @@ import { ResumeView } from './components/Resume/ResumeView';
 import { CodingView } from './components/Coding/CodingView';
 import { AptitudeView } from './components/Aptitude/AptitudeView';
 import { CommunicationView } from './components/Communication/CommunicationView';
-import { SkillGapView } from './components/SkillGap/SkillGapView';
 import { RoadmapView } from './components/Roadmap/RoadmapView';
 import { ProfileView } from './components/Profile/ProfileView';
 import { SettingsView } from './components/Settings/SettingsView';
@@ -34,7 +33,6 @@ const MainContent: React.FC = () => {
       {activeTab === 'coding' && <CodingView />}
       {activeTab === 'aptitude' && <AptitudeView />}
       {activeTab === 'communication' && <CommunicationView />}
-      {activeTab === 'skillgap' && <SkillGapView />}
       {activeTab === 'roadmap' && <RoadmapView />}
       {activeTab === 'dashboard' && <DashboardView />}
       {activeTab === 'profile' && <ProfileView />}

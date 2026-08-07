@@ -49,7 +49,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onDismiss }) => {
     {
       id: 'dashboard',
       title: 'Performance Dashboard',
-      desc: 'Track placement readiness scores, skill gaps, and learning roadmaps.',
+      desc: 'Track placement readiness scores and learning roadmaps.',
       icon: <BarChart3 className="w-5 h-5 text-amber-300" />,
       accent: 'hover:border-amber-400/50'
     }

@@ -55,15 +55,27 @@ CREATE TABLE IF NOT EXISTS public.interview_answers (
 -- 5. CODING PROGRESS TABLE
 CREATE TABLE IF NOT EXISTS public.coding_progress (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+    user_email TEXT,
     problem_id TEXT NOT NULL,
+    problem_title TEXT,
     language TEXT NOT NULL,
-    code TEXT NOT NULL,
+    difficulty TEXT,
+    code TEXT,
+    status TEXT DEFAULT 'started',
     score INT DEFAULT 0,
     time_complexity TEXT,
+    english_advice TEXT,
     tanglish_advice TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+-- Safe Migrations for coding_progress table
+ALTER TABLE public.coding_progress ADD COLUMN IF NOT EXISTS user_email TEXT;
+ALTER TABLE public.coding_progress ADD COLUMN IF NOT EXISTS difficulty TEXT;
+ALTER TABLE public.coding_progress ADD COLUMN IF NOT EXISTS problem_title TEXT;
+ALTER TABLE public.coding_progress ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'started';
+ALTER TABLE public.coding_progress ADD COLUMN IF NOT EXISTS english_advice TEXT;
 
 -- 6. APTITUDE PROGRESS TABLE
 CREATE TABLE IF NOT EXISTS public.aptitude_progress (
@@ -74,18 +86,7 @@ CREATE TABLE IF NOT EXISTS public.aptitude_progress (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 7. SKILL GAP TABLE
-CREATE TABLE IF NOT EXISTS public.skill_gap (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-    skill TEXT NOT NULL,
-    target_company TEXT NOT NULL,
-    current_proficiency INT DEFAULT 0,
-    status TEXT DEFAULT 'Missing' CHECK (status IN ('Missing', 'In Progress', 'Mastered')),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-
--- 8. LEARNING ROADMAP TABLE
+-- 7. LEARNING ROADMAP TABLE
 CREATE TABLE IF NOT EXISTS public.learning_roadmap (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
@@ -104,7 +105,6 @@ ALTER TABLE public.interview_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.interview_answers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.coding_progress ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.aptitude_progress ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.skill_gap ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.learning_roadmap ENABLE ROW LEVEL SECURITY;
 
 -- Allow users to manage their own data

@@ -147,30 +147,56 @@ export interface InterviewAnswerSubmission {
   feedback: DualLanguageFeedback;
 }
 
+export interface EducationEntry {
+  degree: string;
+  institution: string;
+  university?: string;
+  graduationYear?: string;
+  cgpa: string;
+}
+
+export interface ProjectEntry {
+  title: string;
+  description: string;
+  techStack: string[];
+  gitHubUrl?: string;
+  demoUrl?: string;
+}
+
+export interface InternshipEntry {
+  role: string;
+  company: string;
+  duration: string;
+  description: string;
+}
+
+export interface CertificationEntry {
+  title: string;
+  issuer?: string;
+  year?: string;
+}
+
 export interface ResumeData {
   fullName: string;
   email: string;
   phone: string;
   location: string;
+  linkedIn?: string;
+  gitHub?: string;
+  portfolio?: string;
   summary: string;
   atsScore?: number;
-  education: Array<{
-    institution: string;
-    degree: string;
-    cgpa: string;
-  }>;
+  education: EducationEntry[];
   skills: string[];
-  projects: Array<{
-    title: string;
-    description: string;
-    techStack: string[];
-  }>;
-  experience: Array<{
-    role: string;
-    company: string;
-    duration: string;
-    description: string;
-  }>;
+  programmingLanguages?: string[];
+  technicalSkills?: string[];
+  toolsAndTech?: string[];
+  projects: ProjectEntry[];
+  experience: InternshipEntry[];
+  certifications?: CertificationEntry[];
+  achievements?: string[];
+  workshops?: string[];
+  selectedTemplate?: 'classic' | 'modern' | 'minimal';
 }
 
 export interface ResumeAnalysis {
@@ -237,15 +263,6 @@ export interface AptitudeQuestion {
   correctIndex: number;
   explanationEnglish: string;
   explanationTanglish: string;
-}
-
-export interface SkillGapItem {
-  skill: string;
-  requiredForCompany: string;
-  currentProficiency: number; // 0-100
-  targetProficiency: number; // 0-100
-  status: 'Missing' | 'In Progress' | 'Mastered';
-  recommendedResource: string;
 }
 
 export interface RoadmapTask {

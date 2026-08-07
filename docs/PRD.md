@@ -14,4 +14,4 @@ AceHire AI ("Smart Interview Simulator AI") is an AI-powered placement preparati
 5. **Coding Sandbox**: Multi-language editor (Java, Python, C, C++, SQL) with test cases and AI code review.
 6. **Aptitude Practice**: Quant, Logical, Verbal reasoning with instant explanations in English and Tanglish.
 7. **Communication Coach**: Real-time grammar fixer and sentence enhancer.
-8. **Skill Gap Analysis & Roadmap**: Compare skills against hiring requirements and generate daily action plans.
+8. **AI Learning Roadmap**: Generate personalized daily action plans based on target preparation goals.

@@ -6,10 +6,8 @@ import {
   Code2,
   BrainCircuit,
   MessageCircle,
-  Compass,
   Map,
   User,
-  BarChart3,
   LogOut
 } from 'lucide-react';
 import { useApp, ActiveTab } from '../../context/AppContext';
@@ -29,9 +27,7 @@ export const Sidebar: React.FC = () => {
     { id: 'coding', label: 'Coding Practice', icon: <Code2 className="w-5 h-5" /> },
     { id: 'aptitude', label: 'Aptitude Practice', icon: <BrainCircuit className="w-5 h-5" /> },
     { id: 'communication', label: 'Communication Hub', icon: <MessageCircle className="w-5 h-5" /> },
-    { id: 'skillgap', label: 'Skill Gap Analysis', icon: <Compass className="w-5 h-5" /> },
     { id: 'roadmap', label: 'AI Learning Roadmap', icon: <Map className="w-5 h-5" /> },
-    { id: 'dashboard', label: 'Analytics', icon: <BarChart3 className="w-5 h-5" /> },
     { id: 'profile', label: 'Profile', icon: <User className="w-5 h-5" /> }
   ];
 
@@ -80,3 +76,5 @@ export const Sidebar: React.FC = () => {
     </aside>
   );
 };
+
+export default Sidebar;

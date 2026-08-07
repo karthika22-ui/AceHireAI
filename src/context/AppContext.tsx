@@ -26,7 +26,6 @@ export type ActiveTab =
   | 'coding'
   | 'aptitude'
   | 'communication'
-  | 'skillgap'
   | 'roadmap'
   | 'dashboard'
   | 'profile'

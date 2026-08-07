@@ -408,6 +408,264 @@ export class SupabaseService {
     }
   }
 
+  static async initCodingProgress(progress: {
+    userEmail: string;
+    userId?: string;
+    language: string;
+    difficulty: string;
+    problemId: string;
+    problemTitle: string;
+    status?: string;
+    score?: number;
+  }) {
+    console.log('🔍 [CODING_PROGRESS DEBUG] initCodingProgress invoked with:', progress);
+
+    const configured = isSupabaseConfigured();
+    console.log('🔌 [CODING_PROGRESS DEBUG] Supabase configured status:', configured);
+
+    if (!configured) {
+      console.error('❌ [CODING_PROGRESS DEBUG] Supabase client is NOT configured. Check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env file.');
+      return null;
+    }
+
+    try {
+      // 1. Resolve user email & user ID from Supabase auth session if active
+      let resolvedEmail = progress.userEmail || 'student@college.edu';
+      let resolvedUserId = progress.userId;
+
+      try {
+        const { data: authData, error: authErr } = await supabase.auth.getUser();
+        if (authErr) {
+          console.warn('⚠️ [CODING_PROGRESS DEBUG] Supabase auth.getUser() warning:', authErr.message);
+        }
+        if (authData?.user) {
+          if (authData.user.email) resolvedEmail = authData.user.email;
+          if (authData.user.id) resolvedUserId = authData.user.id;
+          console.log('👤 [CODING_PROGRESS DEBUG] Authenticated Supabase user resolved:', resolvedEmail, resolvedUserId);
+        } else {
+          console.log('👤 [CODING_PROGRESS DEBUG] No active Supabase Auth user session found. Using provided email:', resolvedEmail);
+        }
+      } catch (e) {
+        console.warn('⚠️ [CODING_PROGRESS DEBUG] Auth lookup exception:', e);
+      }
+
+      const isUuid = (str?: string) =>
+        typeof str === 'string' &&
+        /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(str);
+
+      // Primary payload according to requirements
+      const payload: Record<string, any> = {
+        user_email: resolvedEmail,
+        language: progress.language,
+        difficulty: progress.difficulty,
+        problem_id: progress.problemId,
+        problem_title: progress.problemTitle,
+        status: progress.status || 'started',
+        score: progress.score !== undefined ? progress.score : 0
+      };
+
+      if (isUuid(resolvedUserId)) {
+        payload.user_id = resolvedUserId;
+      }
+
+      console.log('🚀 [CODING_PROGRESS DEBUG] Sending INSERT payload to Supabase coding_progress table:', payload);
+
+      // Execute insert
+      const { data, error } = await supabase
+        .from('coding_progress')
+        .insert(payload)
+        .select();
+
+      if (error) {
+        console.error('❌ [CODING_PROGRESS SUPABASE ERROR] Insert failed!');
+        console.error('   - Code:', error.code);
+        console.error('   - Message:', error.message);
+        console.error('   - Details:', error.details);
+        console.error('   - Hint:', error.hint);
+
+        // Check if error is due to missing column (e.g. difficulty, user_email, problem_title, status)
+        if (error.code === '42703' || (error.message && error.message.toLowerCase().includes('column'))) {
+          console.warn('💡 [CODING_PROGRESS SCHEMA NOTICE] Missing column on remote Supabase coding_progress table.');
+          console.warn('   Run this SQL in your Supabase SQL Editor to permanently sync all columns:');
+          console.warn('   ALTER TABLE public.coding_progress ADD COLUMN IF NOT EXISTS difficulty TEXT;');
+          console.warn('   ALTER TABLE public.coding_progress ADD COLUMN IF NOT EXISTS user_email TEXT;');
+          console.warn('   ALTER TABLE public.coding_progress ADD COLUMN IF NOT EXISTS problem_title TEXT;');
+          console.warn('   ALTER TABLE public.coding_progress ADD COLUMN IF NOT EXISTS status TEXT DEFAULT \'started\';');
+
+          // Build safe payload by removing missing column(s) so insert succeeds immediately
+          const safePayload = { ...payload };
+          if (error.message.includes('difficulty')) delete safePayload.difficulty;
+          if (error.message.includes('user_email')) delete safePayload.user_email;
+          if (error.message.includes('problem_title')) delete safePayload.problem_title;
+          if (error.message.includes('status')) delete safePayload.status;
+
+          // Always remove difficulty on first retry if general column error occurred
+          delete safePayload.difficulty;
+
+          console.log('🔄 [CODING_PROGRESS RETRY] Retrying insert with schema-compatible payload:', safePayload);
+
+          const { data: retryData, error: retryError } = await supabase
+            .from('coding_progress')
+            .insert(safePayload)
+            .select();
+
+          if (!retryError) {
+            console.log('✅ [CODING_PROGRESS SUCCESS] Schema-compatible insert succeeded:', retryData);
+            return retryData && retryData.length > 0 ? retryData[0] : retryData;
+          }
+
+          console.warn('⚠️ [CODING_PROGRESS RETRY ERROR] Retry with select failed:', retryError.message);
+          const { error: rawRetryError } = await supabase
+            .from('coding_progress')
+            .insert(safePayload);
+
+          if (!rawRetryError) {
+            console.log('✅ [CODING_PROGRESS SUCCESS] Raw schema-compatible insert succeeded without .select()!');
+            return safePayload;
+          }
+        }
+
+        // Fallback Attempt: Try insert without .select() (in case RLS SELECT policy is missing)
+        console.log('🔄 [CODING_PROGRESS DEBUG] Attempting fallback insert without .select()...');
+        const { error: fallbackError } = await supabase
+          .from('coding_progress')
+          .insert(payload);
+
+        if (fallbackError) {
+          console.error('❌ [CODING_PROGRESS FALLBACK ERROR] Fallback insert also failed:', fallbackError.message, fallbackError);
+          return null;
+        } else {
+          console.log('✅ [CODING_PROGRESS SUCCESS] Fallback insert succeeded without .select()!');
+          return payload;
+        }
+      }
+
+      console.log('✅ [CODING_PROGRESS SUCCESS] Row successfully inserted into coding_progress table:', data);
+      return data && data.length > 0 ? data[0] : data;
+    } catch (err: any) {
+      console.error('💥 [CODING_PROGRESS EXCEPTION] Unhandled exception during insertion:', err?.message || err, err);
+      return null;
+    }
+  }
+
+  static async updateCodingProgress(updateData: {
+    problemId: string;
+    userEmail: string;
+    userId?: string;
+    code: string;
+    score: number;
+    status: string;
+    timeComplexity?: string;
+    englishAdvice?: string;
+    tanglishAdvice?: string;
+  }) {
+    console.log('🔄 [UPDATE started] Updating existing coding_progress record...');
+
+    if (!isSupabaseConfigured()) {
+      console.error('❌ [UPDATE error] Supabase client is not configured.');
+      return null;
+    }
+
+    try {
+      // 1. Resolve user email & user ID from Supabase auth session if active
+      let resolvedEmail = updateData.userEmail || 'student@college.edu';
+      let resolvedUserId = updateData.userId;
+
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        if (authData?.user) {
+          if (authData.user.email) resolvedEmail = authData.user.email;
+          if (authData.user.id) resolvedUserId = authData.user.id;
+        }
+      } catch (e) {}
+
+      // 2. Construct update payload
+      const payload: Record<string, any> = {
+        code: updateData.code,
+        score: updateData.score,
+        status: updateData.status,
+        time_complexity: updateData.timeComplexity || 'O(N)',
+        english_advice: updateData.englishAdvice || 'Code evaluated successfully',
+        tanglish_advice: updateData.tanglishAdvice || ''
+      };
+
+      console.log('📦 [UPDATE payload] Target Problem ID:', updateData.problemId, '| Email:', resolvedEmail);
+      console.log('📦 [UPDATE payload]', payload);
+
+      // Perform UPDATE on existing row matching problem_id (and user_email if available)
+      let query = supabase
+        .from('coding_progress')
+        .update(payload)
+        .eq('problem_id', updateData.problemId);
+
+      if (resolvedEmail) {
+        query = query.eq('user_email', resolvedEmail);
+      }
+
+      const { data, error } = await query.select();
+
+      if (error) {
+        console.error('❌ [UPDATE error] Failed to update coding_progress row!');
+        console.error('   - Code:', error.code);
+        console.error('   - Message:', error.message);
+        console.error('   - Details:', error.details);
+        console.error('   - Hint:', error.hint);
+
+        // Fallback Retry 1: If english_advice column is missing on remote DB table, fallback without english_advice
+        if (error.code === '42703' || (error.message && error.message.toLowerCase().includes('english_advice'))) {
+          console.warn('💡 [UPDATE NOTICE] english_advice column missing on remote DB. Retrying without english_advice...');
+          const fallbackPayload = { ...payload };
+          delete fallbackPayload.english_advice;
+
+          console.log('📦 [UPDATE payload] Retry payload:', fallbackPayload);
+          let retryQuery = supabase
+            .from('coding_progress')
+            .update(fallbackPayload)
+            .eq('problem_id', updateData.problemId);
+
+          if (resolvedEmail) {
+            retryQuery = retryQuery.eq('user_email', resolvedEmail);
+          }
+
+          const { data: retryData, error: retryErr } = await retryQuery.select();
+
+          if (retryErr) {
+            console.error('❌ [UPDATE error] Fallback update failed:', retryErr.message, retryErr);
+            return null;
+          }
+
+          console.log('✅ [UPDATE success] Fallback update completed successfully:', retryData);
+          return retryData && retryData.length > 0 ? retryData[0] : retryData;
+        }
+
+        // Fallback Retry 2: Try update without .select() if RLS SELECT policy is strict
+        let rawQuery = supabase
+          .from('coding_progress')
+          .update(payload)
+          .eq('problem_id', updateData.problemId);
+
+        if (resolvedEmail) {
+          rawQuery = rawQuery.eq('user_email', resolvedEmail);
+        }
+
+        const { error: rawUpdateErr } = await rawQuery;
+
+        if (!rawUpdateErr) {
+          console.log('✅ [UPDATE success] Update completed successfully without .select()');
+          return payload;
+        }
+
+        return null;
+      }
+
+      console.log('✅ [UPDATE success] Existing coding_progress row updated successfully:', data);
+      return data && data.length > 0 ? data[0] : data;
+    } catch (err: any) {
+      console.error('💥 [UPDATE error] Unhandled exception during update:', err?.message || err, err);
+      return null;
+    }
+  }
+
   static async saveCodingProgress(userId: string, progress: {
     problemId: string;
     language: string;
@@ -416,21 +674,16 @@ export class SupabaseService {
     timeComplexity?: string;
     tanglishAdvice?: string;
   }) {
-    if (!isSupabaseConfigured() || !userId) return null;
-    try {
-      const { data } = await supabase.from('coding_progress').insert({
-        user_id: userId,
-        problem_id: progress.problemId,
-        language: progress.language,
-        code: progress.code,
-        score: progress.score,
-        time_complexity: progress.timeComplexity,
-        tanglish_advice: progress.tanglishAdvice
-      }).select().single();
-      return data;
-    } catch (e) {
-      return null;
-    }
+    return this.updateCodingProgress({
+      problemId: progress.problemId,
+      userEmail: '',
+      userId,
+      code: progress.code,
+      score: progress.score,
+      status: 'completed',
+      timeComplexity: progress.timeComplexity,
+      tanglishAdvice: progress.tanglishAdvice
+    });
   }
 
   // 6. APTITUDE_PROGRESS TABLE OPERATIONS
@@ -537,48 +790,6 @@ export class SupabaseService {
         feedback: sessionData.feedback || JSON.stringify(sessionData),
         topic: sessionData.topic || 'General Practice'
       }).select().single();
-      return data;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  // 9. SKILL_GAP_ANALYSIS TABLE OPERATIONS
-  static async fetchSkillGap(userId: string) {
-    if (!isSupabaseConfigured() || !userId) return [];
-    try {
-      const { data } = await supabase
-        .from('skill_gap_analysis')
-        .select('*')
-        .eq('user_id', userId);
-      if (data && data.length > 0) return data;
-
-      const { data: alt } = await supabase
-        .from('skill_gap')
-        .select('*')
-        .eq('user_id', userId);
-      return alt || [];
-    } catch (e) {
-      return [];
-    }
-  }
-
-  static async saveSkillGap(userId: string, skillItem: any) {
-    if (!isSupabaseConfigured() || !userId) return null;
-    try {
-      const payload = {
-        user_id: userId,
-        skill: skillItem.skill || skillItem.name,
-        target_company: skillItem.targetCompany || skillItem.company || 'Zoho',
-        current_proficiency: skillItem.currentProficiency || skillItem.score || 0,
-        status: skillItem.status || 'Missing'
-      };
-
-      const { data, error } = await supabase.from('skill_gap_analysis').insert(payload).select().single();
-      if (error) {
-        const { data: altData } = await supabase.from('skill_gap').insert(payload).select().single();
-        return altData;
-      }
       return data;
     } catch (e) {
       return null;

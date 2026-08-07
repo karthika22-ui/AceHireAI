@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   Code2,
   BrainCircuit,
-  Compass,
   MessageCircle,
   ArrowRight,
   Target,
@@ -39,7 +38,7 @@ export const DashboardView: React.FC = () => {
   // Track module launch state locally in React state so "Start" -> "Continue" updates on launch
   const [startedModules, setStartedModules] = useState<Record<string, boolean>>(() => {
     const map: Record<string, boolean> = {};
-    ['interview', 'resume', 'coding', 'aptitude', 'communication', 'skillgap'].forEach((id) => {
+    ['interview', 'resume', 'coding', 'aptitude', 'communication'].forEach((id) => {
       map[id] = false;
     });
     return map;
@@ -123,14 +122,6 @@ export const DashboardView: React.FC = () => {
       ),
       color: 'from-purple-500/10 to-pink-500/10 border-purple-500/30'
     },
-    {
-      id: 'skillgap' as const,
-      title: 'Skill Gap Analysis',
-      description: 'AI comparison between your profile and top tech placement requirements.',
-      progress: readinessScore.overall,
-      icon: <Compass className="w-5 h-5 text-indigo-400" />,
-      color: 'from-indigo-500/10 to-blue-500/10 border-indigo-500/30'
-    }
   ];
 
   return (
@@ -435,7 +426,6 @@ export const DashboardView: React.FC = () => {
                       act.type === 'Coding' ? 'coding' : 
                       act.type === 'Aptitude' ? 'aptitude' : 
                       act.type === 'Communication' ? 'communication' :
-                      act.type === 'Skill Gap' ? 'skillgap' :
                       act.type === 'Roadmap' ? 'roadmap' : 'resume');
 
                     return (
@@ -454,8 +444,6 @@ export const DashboardView: React.FC = () => {
                               <BrainCircuit className="w-4 h-4 text-amber-300 brightness-110" />
                             ) : act.type === 'Communication' ? (
                               <MessageSquare className="w-4 h-4 text-pink-300 brightness-110" />
-                            ) : act.type === 'Skill Gap' ? (
-                              <Compass className="w-4 h-4 text-blue-300 brightness-110" />
                             ) : act.type === 'Roadmap' ? (
                               <Map className="w-4 h-4 text-emerald-300 brightness-110" />
                             ) : (
@@ -623,7 +611,6 @@ export const DashboardView: React.FC = () => {
                     act.type === 'Coding' ? 'coding' : 
                     act.type === 'Aptitude' ? 'aptitude' : 
                     act.type === 'Communication' ? 'communication' :
-                    act.type === 'Skill Gap' ? 'skillgap' :
                     act.type === 'Roadmap' ? 'roadmap' : 'resume');
 
                   return (
@@ -645,8 +632,6 @@ export const DashboardView: React.FC = () => {
                             <BrainCircuit className="w-5 h-5 text-amber-300" />
                           ) : act.type === 'Communication' ? (
                             <MessageSquare className="w-5 h-5 text-pink-300" />
-                          ) : act.type === 'Skill Gap' ? (
-                            <Compass className="w-5 h-5 text-blue-300" />
                           ) : act.type === 'Roadmap' ? (
                             <Map className="w-5 h-5 text-emerald-300" />
                           ) : (

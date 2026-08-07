@@ -315,7 +315,7 @@ export const SettingsView: React.FC = () => {
                   </span>
                 </div>
                 <p className="text-xs text-slate-600 dark:text-slate-300">
-                  Tables `profiles`, `resumes`, `interview_answers`, and `skill_gap` are synced.
+                  Tables `profiles`, `resumes`, and `interview_answers` are synced.
                 </p>
               </div>
 

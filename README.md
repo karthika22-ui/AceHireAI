@@ -12,7 +12,6 @@ Preparing for tech placements involves multiple hurdles: mastering coding tests,
 - **Dynamic Coding Challenges**: Practice AI-generated coding challenges with instant review and feedback.
 - **Aptitude Preparation**: Take aptitude tests with dynamically generated questions.
 - **Communication Assessment**: Get dual-language feedback (English & Tanglish) to improve communication skills.
-- **Skill Gap Analysis**: Identify missing skills based on current trends and get recommendations.
 - **Personalized Roadmaps**: Generate customized placement preparation roadmaps.
 - **Dashboard**: Track overall progress and performance metrics.
 - **Authentication**: Secure user authentication and profile management via Supabase.

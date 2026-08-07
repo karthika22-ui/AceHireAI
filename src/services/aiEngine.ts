@@ -11,7 +11,6 @@ import {
   CodingChallenge,
   CodingSubmissionResult,
   AptitudeQuestion,
-  SkillGapItem,
   RoadmapTask
 } from '../types';
 
@@ -25,9 +24,67 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const metaEnv = (import.meta as any).env || {};
 export const AI_API_KEY = metaEnv.VITE_GEMINI_API_KEY || metaEnv.VITE_API_KEY || '';
+export const OPENROUTER_API_KEY = metaEnv.VITE_OPENROUTER_API_KEY || '';
+
+export const OPENROUTER_LOWER_MODELS = [
+  'google/gemini-2.0-flash-lite-001',
+  'google/gemini-flash-1.5-8b',
+  'meta-llama/llama-3.2-3b-instruct:free',
+  'mistralai/mistral-7b-instruct:free',
+  'qwen/qwen-2.5-7b-instruct',
+  'deepseek/deepseek-r1-distill-llama-8b',
+  'openai/gpt-4o-mini'
+];
+
+export async function fetchFromOpenRouter(prompt: string, apiKey: string = OPENROUTER_API_KEY): Promise<string> {
+  let lastErr: any = null;
+  for (const modelName of OPENROUTER_LOWER_MODELS) {
+    try {
+      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey.trim()}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://acehire.ai',
+          'X-Title': 'AceHire AI'
+        },
+        body: JSON.stringify({
+          model: modelName,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an AI programming problem designer for technical interviews and coding challenges. Return ONLY raw JSON array or object without markdown syntax or prose.'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          temperature: 0.7
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const content = data.choices?.[0]?.message?.content;
+        if (content && typeof content === 'string' && content.trim()) {
+          return content;
+        }
+      } else {
+        const errText = await res.text();
+        console.warn(`OpenRouter model ${modelName} returned status ${res.status}: ${errText}`);
+        lastErr = new Error(`OpenRouter HTTP ${res.status}: ${errText}`);
+      }
+    } catch (e) {
+      console.warn(`OpenRouter call failed for model ${modelName}:`, e);
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error('All OpenRouter lower models failed.');
+}
 
 export const genAI = AI_API_KEY ? new GoogleGenerativeAI(AI_API_KEY) : null;
-export const geminiModel = genAI ? genAI.getGenerativeModel({ model: 'gemini-2.0-flash' }) : null;
+export const geminiModel = genAI ? genAI.getGenerativeModel({ model: 'gemini-3.6-flash' }) : null;
 
 export interface GenerateQuestionsOptions {
   topic: string;
@@ -51,8 +108,8 @@ function sanitizeField(value: any): string {
 }
 
 /**
- * Reusable function to generate questions using Google Gemini API.
- * Reads API key from VITE_GEMINI_API_KEY and returns generated questions in clean JSON format.
+ * Reusable function to generate questions using OpenRouter API / Google Gemini API.
+ * Reads API key from VITE_OPENROUTER_API_KEY / VITE_GEMINI_API_KEY and returns generated questions in clean JSON format.
  */
 export async function generateQuestions(
   topicOrOptions: string | GenerateQuestionsOptions,
@@ -82,37 +139,22 @@ export async function generateQuestions(
   // Extract clean language/topic name
   const cleanTopic = topic.replace(/Previously generated titles to avoid:.*/gi, '').trim() || 'Python';
 
+  const openRouterKey = (import.meta as any).env?.VITE_OPENROUTER_API_KEY || OPENROUTER_API_KEY || '';
   const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || (import.meta as any).env?.VITE_API_KEY || AI_API_KEY || '';
 
-  if (!apiKey) {
-    if (questionType === 'coding') {
-      throw new Error('VITE_GEMINI_API_KEY is missing. Unable to generate dynamic coding challenge.');
-    }
-    console.warn('VITE_GEMINI_API_KEY is missing. Returning fallback structured questions.');
-    return getFallbackQuestions(cleanTopic, difficulty, questionType, numberOfQuestions);
-  }
+  const diffLower = difficulty.toLowerCase();
+  const difficultyGuide =
+    diffLower === 'easy'
+      ? 'EASY LEVEL: Simple, beginner-friendly, straightforward logic (basic arrays, string manipulation, elementary math, easy to understand).'
+      : diffLower === 'hard'
+      ? 'HARD LEVEL: Interview-level, highly challenging, suitable for advanced candidates (dynamic programming, graph algorithms, hard optimizations).'
+      : 'MEDIUM LEVEL: Moderately challenging, suitable for intermediate learners (hash maps, binary search, sliding window, tree traversal).';
 
-  const aiClient = new GoogleGenerativeAI(apiKey);
-  const candidateModels = ['gemini-2.0-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash-lite'];
-  let lastError: any = null;
+  const avoidInstruction = avoidTitles.length > 0
+    ? `CRITICAL UNIENESS REQUIREMENT: Do NOT generate questions with any of these titles or concepts: ${avoidTitles.join(', ')}. Generate a completely NEW, ORIGINAL, and DIFFERENT problem.`
+    : 'Generate a completely unique and original programming challenge.';
 
-  for (const modelName of candidateModels) {
-    try {
-      const model = aiClient.getGenerativeModel({ model: modelName });
-
-      const diffLower = difficulty.toLowerCase();
-      const difficultyGuide =
-        diffLower === 'easy'
-          ? 'EASY LEVEL: Simple, beginner-friendly, straightforward logic (basic arrays, string manipulation, elementary math, easy to understand).'
-          : diffLower === 'hard'
-          ? 'HARD LEVEL: Interview-level, highly challenging, suitable for advanced candidates (dynamic programming, graph algorithms, hard optimizations).'
-          : 'MEDIUM LEVEL: Moderately challenging, suitable for intermediate learners (hash maps, binary search, sliding window, tree traversal).';
-
-      const avoidInstruction = avoidTitles.length > 0
-        ? `CRITICAL UNIENESS REQUIREMENT: Do NOT generate questions with any of these titles or concepts: ${avoidTitles.join(', ')}. Generate a completely NEW, ORIGINAL, and DIFFERENT problem.`
-        : 'Generate a completely unique and original programming challenge.';
-
-      const prompt = `You are a software engineering coding problem designer.
+  const prompt = `You are a software engineering coding problem designer.
 Generate exactly ${numberOfQuestions} unique, original ${difficulty} level ${questionType} challenge for target language: "${cleanTopic}".
 
 Difficulty Specification:
@@ -148,9 +190,10 @@ Structure:
 - mcq: [{"id": string, "question": string, "options": [string, string, string, string], "answer": string, "explanation": string}]
 - interview: [{"id": string, "category": string, "question": string, "contextHint": string, "expectedKeypoints": [string]}]`;
 
-      const result = await model.generateContent(prompt);
-      const responseText = result.response.text();
-
+  // 1. Try OpenRouter API with lower/affordable models first if key available
+  if (openRouterKey) {
+    try {
+      const responseText = await fetchFromOpenRouter(prompt, openRouterKey);
       const cleanedText = responseText
         .replace(/^```json\s*/i, '')
         .replace(/^```\s*/i, '')
@@ -168,15 +211,51 @@ Structure:
         outputFormat: sanitizeField(item.outputFormat),
         explanation: sanitizeField(item.explanation)
       }));
-    } catch (error) {
-      console.warn(`Model ${modelName} failed or rate limited:`, error);
-      lastError = error;
+    } catch (openRouterError) {
+      console.warn('OpenRouter API generation failed, trying Gemini API:', openRouterError);
     }
   }
 
-  console.error('All Gemini AI candidate models failed:', lastError);
-  if (questionType === 'coding') {
-    throw lastError || new Error('All Gemini AI models failed');
+  // 2. Try Gemini API if key available
+  if (apiKey) {
+    const aiClient = new GoogleGenerativeAI(apiKey);
+    const candidateModels = ['gemini-3.6-flash', 'gemini-2.0-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash-lite'];
+    let lastError: any = null;
+
+    for (const modelName of candidateModels) {
+      try {
+        const model = aiClient.getGenerativeModel({ model: modelName });
+        const result = await model.generateContent(prompt);
+        const responseText = result.response.text();
+
+        const cleanedText = responseText
+          .replace(/^```json\s*/i, '')
+          .replace(/^```\s*/i, '')
+          .replace(/\s*```$/i, '')
+          .trim();
+
+        const parsedJson = JSON.parse(cleanedText);
+        const rawList = Array.isArray(parsedJson) ? parsedJson : [parsedJson];
+
+        return rawList.map((item: any) => ({
+          ...item,
+          title: sanitizeField(item.title),
+          description: sanitizeField(item.description),
+          inputFormat: sanitizeField(item.inputFormat),
+          outputFormat: sanitizeField(item.outputFormat),
+          explanation: sanitizeField(item.explanation)
+        }));
+      } catch (error) {
+        console.warn(`Model ${modelName} failed or rate limited:`, error);
+        lastError = error;
+      }
+    }
+    console.error('All Gemini AI candidate models failed:', lastError);
+  }
+
+  // 3. Fallback
+  if (questionType === 'coding' && !apiKey && !openRouterKey) {
+    throw new Error('No valid API key (OpenRouter or Gemini) configured for dynamic coding challenges.');
   }
   return getFallbackQuestions(cleanTopic, difficulty, questionType, numberOfQuestions);
 }
@@ -1537,32 +1616,6 @@ export async function analyzeResumeWithAI(fileOrResume: any): Promise<ResumeAnal
 }
 
 /**
- * Generate Dynamic Skill Gap Analysis based on Target Company
- */
-export function generateSkillGapAnalysis(currentSkills: string[], targetCompany: string = 'Zoho'): SkillGapItem[] {
-  const companyTech: Record<string, string[]> = {
-    Zoho: ['C++', 'Java', 'Data Structures & Algorithms', 'DBMS & SQL', 'Low-Level System Design'],
-    TCS: ['Python', 'Java', 'Aptitude Reasoning', 'Verbal English', 'SQL Fundamentals'],
-    Google: ['Advanced Algorithms', 'System Architecture', 'Python/Go', 'Operating Systems', 'Networking'],
-    Amazon: ['Data Structures', 'AWS Cloud', 'OOP Principles', 'System Design', 'Behavioral Leadership']
-  };
-
-  const targetList = companyTech[targetCompany] || ['Data Structures', 'Web Development', 'SQL', 'Communication', 'Aptitude'];
-
-  return targetList.map((skill) => {
-    const isPresent = currentSkills.some((s) => s.toLowerCase().includes(skill.toLowerCase()));
-    return {
-      skill,
-      requiredForCompany: targetCompany,
-      currentProficiency: isPresent ? 75 : 20,
-      targetProficiency: 90,
-      status: isPresent ? 'In Progress' : 'Missing',
-      recommendedResource: `Master ${skill} via AceHire AI Interactive Practice Module`
-    };
-  });
-}
-
-/**
  * Generate AI Learning Roadmap
  */
 export function generateAIRoadmap(): RoadmapTask[] {
@@ -1605,3 +1658,82 @@ export function generateAIRoadmap(): RoadmapTask[] {
     }
   ];
 }
+
+export interface DynamicAICodeReview {
+  result: 'Correct' | 'Wrong' | 'Compilation Error';
+  strengths: string;
+  mistakes: string;
+  betterApproach: string;
+  timeComplexity: string;
+  spaceComplexity: string;
+  interviewTip: string;
+  englishAdvice: string;
+  tanglishAdvice: string;
+}
+
+export async function generateAICodeReview(params: {
+  problemTitle: string;
+  description: string;
+  code: string;
+  language: string;
+  validationStatus: 'Success' | 'Compilation Error' | 'Failed Test Cases';
+}): Promise<DynamicAICodeReview> {
+  const prompt = `
+You are an expert senior technical interviewer and AI code reviewer for placement interviews.
+Analyze this code submitted by a student for a programming challenge:
+
+Problem Title: ${params.problemTitle}
+Problem Description: ${params.description}
+Programming Language: ${params.language}
+Status: ${params.validationStatus}
+Submitted Code:
+\`\`\`${params.language.toLowerCase()}
+${params.code}
+\`\`\`
+
+Return a JSON object with these EXACT keys:
+{
+  "result": "${params.validationStatus === 'Success' ? 'Correct' : params.validationStatus === 'Compilation Error' ? 'Compilation Error' : 'Wrong'}",
+  "strengths": "<2-3 sentence analysis of strengths in candidate's code>",
+  "mistakes": "<2-3 sentence analysis of syntax errors, unhandled edge cases, or logic bugs>",
+  "betterApproach": "<Suggested algorithmic optimization or pattern>",
+  "timeComplexity": "<e.g. O(N) or O(N log N) or O(N^2)>",
+  "spaceComplexity": "<e.g. O(1) or O(N)>",
+  "interviewTip": "<Actionable placement interview tip>",
+  "englishAdvice": "<Full English advice summary>",
+  "tanglishAdvice": "<Natural Tanglish explanation e.g. Super! Logic correct-ah irukku. Time Complexity O(n). Variable names improve pannina innum clean-a irukkum.>"
+}
+`;
+
+  try {
+    const responseText = await fetchFromOpenRouter(prompt);
+    const cleaned = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+    const parsed = JSON.parse(cleaned);
+
+    return {
+      result: parsed.result || (params.validationStatus === 'Success' ? 'Correct' : 'Wrong'),
+      strengths: parsed.strengths || 'Clean structural attempt at solving the target problem.',
+      mistakes: parsed.mistakes || 'Ensure edge cases like zero, empty inputs, or memory limits are handled.',
+      betterApproach: parsed.betterApproach || 'Using hash tables or two-pointer logic can optimize search overhead.',
+      timeComplexity: parsed.timeComplexity || 'O(N)',
+      spaceComplexity: parsed.spaceComplexity || 'O(1)',
+      interviewTip: parsed.interviewTip || 'Always state your time complexity aloud before writing your code.',
+      englishAdvice: parsed.englishAdvice || 'Good solution attempt. Verify edge constraints.',
+      tanglishAdvice: parsed.tanglishAdvice || 'Super bro! Code logic try pannirukinga. Test cases elam verify pannunga.'
+    };
+  } catch (err) {
+    console.warn('Fallback dynamic AI code review generation:', err);
+    return {
+      result: params.validationStatus === 'Success' ? 'Correct' : 'Wrong',
+      strengths: 'Valid logical structure adhering to language syntax.',
+      mistakes: 'Consider validating zero/null boundary constraints.',
+      betterApproach: 'Using an in-place pointer logic reduces space overhead.',
+      timeComplexity: 'O(N)',
+      spaceComplexity: 'O(1)',
+      interviewTip: 'Explain your algorithmic trade-offs clearly to the interviewer.',
+      englishAdvice: 'Solution submitted and evaluated cleanly.',
+      tanglishAdvice: 'Super! Logic write pannirukinga. Optimization and edge cases check pannunga.'
+    };
+  }
+}
+
