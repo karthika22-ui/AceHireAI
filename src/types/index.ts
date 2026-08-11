@@ -151,6 +151,10 @@ export interface EducationEntry {
   degree: string;
   institution: string;
   university?: string;
+  department?: string;
+  location?: string;
+  startYear?: string;
+  endYear?: string;
   graduationYear?: string;
   cgpa: string;
 }
@@ -159,6 +163,7 @@ export interface ProjectEntry {
   title: string;
   description: string;
   techStack: string[];
+  keyContributions?: string;
   gitHubUrl?: string;
   demoUrl?: string;
 }
@@ -166,6 +171,9 @@ export interface ProjectEntry {
 export interface InternshipEntry {
   role: string;
   company: string;
+  location?: string;
+  startDate?: string;
+  endDate?: string;
   duration: string;
   description: string;
 }
@@ -174,10 +182,23 @@ export interface CertificationEntry {
   title: string;
   issuer?: string;
   year?: string;
+  date?: string;
+  credentialUrl?: string;
+}
+
+export interface LanguageProficiency {
+  language: string;
+  proficiency: string;
+}
+
+export interface AdditionalLink {
+  platform: string;
+  url: string;
 }
 
 export interface ResumeData {
   fullName: string;
+  professionalTitle?: string;
   email: string;
   phone: string;
   location: string;
@@ -189,14 +210,23 @@ export interface ResumeData {
   education: EducationEntry[];
   skills: string[];
   programmingLanguages?: string[];
-  technicalSkills?: string[];
+  webTechnologies?: string[];
+  frameworksLibraries?: string[];
+  databases?: string[];
   toolsAndTech?: string[];
+  otherSkills?: string[];
+  technicalSkills?: string[];
   projects: ProjectEntry[];
   experience: InternshipEntry[];
   certifications?: CertificationEntry[];
   achievements?: string[];
+  leadership?: string[];
+  clubsVolunteering?: string[];
+  extracurriculars?: string[];
   workshops?: string[];
-  selectedTemplate?: 'classic' | 'modern' | 'minimal';
+  languages?: LanguageProficiency[];
+  additionalLinks?: AdditionalLink[];
+  selectedTemplate?: 'classic' | 'modern' | 'minimal' | 'ats-friendly';
 }
 
 export interface ResumeAnalysis {

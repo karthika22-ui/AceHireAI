@@ -27,7 +27,7 @@ The platform provides a comprehensive suite of tools to bridge skill gaps across
 | **Styling & CSS** | Tailwind CSS, PostCSS, Autoprefixer | Tailwind `^3.4.3`, PostCSS `^8.4.38` |
 | **UI Utilities** | Lucide React, Canvas Confetti, clsx, tailwind-merge | `lucide-react`, `canvas-confetti`, `clsx`, `tailwind-merge` |
 | **Backend as a Service (BaaS)** | Supabase | `@supabase/supabase-js` (`^2.112.0`) - Auth & PostgreSQL DB |
-| **AI Engine** | OpenAI API | Current AI API provider configured in `src/services/aiEngine.ts` (Gemini API was used previously, but its quota was exhausted) |
+| **AI Engine** | OpenRouter API | Primary AI provider, configured in `src/services/aiEngine.ts`. |
 | **Linting** | ESLint | ESLint with React / TypeScript rules |
 
 ---
@@ -88,9 +88,11 @@ The database schema is defined in `supabase/schema.sql`:
 
 The core intelligence layer is located in `src/services/aiEngine.ts`.
 
-### Primary Engine (OpenAI API)
-- Primary AI integration relies on the **OpenAI API** (configured in `src/services/aiEngine.ts`). Gemini API was utilized previously, but its quota was exhausted and it is no longer the current provider.
-- **Offline / Predefined Fallback**: When API keys are missing, quota is reached, or the server is offline, the app falls back to a curated set of predefined questions and offline mock responses.
+### Primary Engine (OpenRouter API)
+- **Primary AI Provider**: AceHire AI currently sends all AI requests through the **OpenRouter API** endpoint (`https://openrouter.ai/api/v1/chat/completions`). It is configured in `src/services/aiEngine.ts` via `fetchFromOpenRouter` and reads the API key from `VITE_OPENROUTER_API_KEY` (or fallback `VITE_API_KEY`).
+- **Direct Gemini API History**: The direct Gemini API was used previously, but after its quota was exhausted, the application migrated to OpenRouter API as its primary provider.
+- **Model Routing via OpenRouter**: Model identifiers specified in `OPENROUTER_LOWER_MODELS`—including Gemini (`google/gemini-2.0-flash-lite-001`, `google/gemini-flash-1.5-8b`), Llama (`meta-llama/llama-3.2-3b-instruct:free`), Mistral (`mistralai/mistral-7b-instruct:free`), Qwen (`qwen/qwen-2.5-7b-instruct`), DeepSeek (`deepseek/deepseek-r1-distill-llama-8b`), and OpenAI (`openai/gpt-4o-mini`)—are model names accessed **THROUGH** OpenRouter. Their presence in the model list does NOT mean the application is directly calling the Google Gemini API or OpenAI API.
+- **Offline / Predefined Fallback**: When API keys are missing, quota is reached, or the server is offline, the app seamlessly falls back to a curated set of predefined questions and offline mock responses.
 
 ### Core AI Capabilities
 - **Dual-Language Feedback Generation**: Simultaneous English and Tanglish explanations for candidate responses.
@@ -209,7 +211,7 @@ AceHireAI/
 
 - **Build Verification**: Run `npm run build` (`tsc && vite build`) to confirm zero TypeScript compilation or bundling errors before submitting changes.
 - **Lint Verification**: Run `npm run lint` (`eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0`) to enforce code formatting and catch static issues.
-- **Local Fallback Testing**: Ensure that components render and operate cleanly using predefined questions when Supabase or OpenAI API keys are omitted.
+- **Local Fallback Testing**: Ensure that components render and operate cleanly using predefined questions when Supabase or OpenRouter API keys are omitted.
 
 ---
 
