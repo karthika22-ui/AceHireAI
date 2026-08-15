@@ -6,6 +6,7 @@ import {
   Clock,
   Calendar,
   ArrowRight,
+  ArrowLeft,
   Flame,
   LogOut,
   Target,
@@ -23,7 +24,10 @@ import {
   X,
   RefreshCw,
   AlertCircle,
-  Rocket
+  Rocket,
+  Bell,
+  BellOff,
+  ShieldAlert
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { SessionResumeModal } from '../Common/SessionResumeModal';
@@ -337,17 +341,42 @@ function generateDynamicRoadmapStages(
       progress = level === 'Beginner' ? 0 : 25;
     }
 
+    // Workload tailoring based on selected daily time:
+    let taskLimit = 3;
+    let durationLabel = '30 min';
+    let hoursMult = 1.0;
+
+    if (dailyTime === '30 min') {
+      taskLimit = 2; // 2 focused micro-tasks (15 min each = 30 min daily workload)
+      durationLabel = '15 min';
+      hoursMult = 0.5;
+    } else if (dailyTime === '1 hour') {
+      taskLimit = 3; // 3 tasks (20-30 min each = 1 hour daily workload)
+      durationLabel = '30 min';
+      hoursMult = 1.0;
+    } else if (dailyTime === '2 hours') {
+      taskLimit = 4; // 4 tasks (30-45 min each = 2 hours daily workload)
+      durationLabel = '45 min';
+      hoursMult = 1.6;
+    } else if (dailyTime === '3+ hours') {
+      taskLimit = 5; // 5 tasks (45-60 min each = 3+ hours daily workload)
+      durationLabel = '60 min';
+      hoursMult = 2.2;
+    }
+
+    const selectedTaskTitles = stg.taskTitles.slice(0, taskLimit);
+
     return {
       id: `stg-${sIdx + 1}`,
       topic: stg.topic,
       description: stg.description,
       status: status,
       progress: progress,
-      estimatedHours: stg.hours,
-      tasks: stg.taskTitles.map((title, tIdx) => ({
+      estimatedHours: Math.max(10, Math.round(stg.hours * hoursMult)),
+      tasks: selectedTaskTitles.map((title, tIdx) => ({
         id: `task-${sIdx + 1}-${tIdx + 1}`,
         title: title,
-        duration: dailyTime === '30 min' ? '30 min' : dailyTime === '1 hour' ? '45 min' : '60 min',
+        duration: durationLabel,
         completed: status === 'Completed',
         period: (tIdx % 2 === 0 ? 'Daily' : 'Weekly') as TimeFilter
       }))
@@ -356,10 +385,10 @@ function generateDynamicRoadmapStages(
 }
 
 export const RoadmapView: React.FC = () => {
-  const { setActiveTab, recordActivity } = useApp();
+  const { setActiveTab, recordActivity, settings, addNotification } = useApp();
 
   // Screen modes: 'empty' | 'form' | 'loading' | 'generated'
-  const [screenMode, setScreenMode] = useState<'empty' | 'form' | 'loading' | 'generated'>('empty');
+  const [screenMode, setScreenMode] = useState<'empty' | 'form' | 'loading' | 'generated'>('form');
 
   // Input states (NO prefilled career goal)
   const [customGoalInput, setCustomGoalInput] = useState<string>('');
@@ -376,6 +405,68 @@ export const RoadmapView: React.FC = () => {
   // Session Resume Modal State
   const [showRoadmapModal, setShowRoadmapModal] = useState<boolean>(false);
 
+  // Browser Notification API Permission State & Local Preference
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission | 'unsupported'>('default');
+  const [reminderEnabled, setReminderEnabled] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('acehire_ai_roadmap_reminders_enabled');
+      return saved !== null ? JSON.parse(saved) : true;
+    } catch {
+      return true;
+    }
+  });
+
+  // Check browser Notification permission status on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setNotifPermission(Notification.permission);
+    } else {
+      setNotifPermission('unsupported');
+    }
+  }, []);
+
+  const handleRequestNotificationPermission = async () => {
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      setNotifPermission('unsupported');
+      return;
+    }
+
+    try {
+      const permission = await Notification.requestPermission();
+      setNotifPermission(permission);
+      if (permission === 'granted') {
+        setReminderEnabled(true);
+        localStorage.setItem('acehire_ai_roadmap_reminders_enabled', 'true');
+      } else if (permission === 'denied') {
+        setReminderEnabled(false);
+        localStorage.setItem('acehire_ai_roadmap_reminders_enabled', 'false');
+      }
+    } catch (e) {
+      console.warn('Error requesting notification permission:', e);
+    }
+  };
+
+  const handleToggleReminders = async () => {
+    if (!reminderEnabled) {
+      if (typeof window !== 'undefined' && 'Notification' in window) {
+        if (Notification.permission === 'granted') {
+          setNotifPermission('granted');
+          setReminderEnabled(true);
+          localStorage.setItem('acehire_ai_roadmap_reminders_enabled', 'true');
+        } else if (Notification.permission === 'denied') {
+          setNotifPermission('denied');
+          setReminderEnabled(false);
+          localStorage.setItem('acehire_ai_roadmap_reminders_enabled', 'false');
+        } else {
+          await handleRequestNotificationPermission();
+        }
+      }
+    } else {
+      setReminderEnabled(false);
+      localStorage.setItem('acehire_ai_roadmap_reminders_enabled', 'false');
+    }
+  };
+
   // Load persisted state on mount
   useEffect(() => {
     try {
@@ -391,10 +482,10 @@ export const RoadmapView: React.FC = () => {
           return;
         }
       }
-      setScreenMode('empty');
+      setScreenMode('form');
     } catch (e) {
       console.warn('Could not load saved roadmap state:', e);
-      setScreenMode('empty');
+      setScreenMode('form');
     }
   }, []);
 
@@ -418,6 +509,28 @@ export const RoadmapView: React.FC = () => {
 
   const activeGoalName = customGoalInput.trim();
 
+  // Confirmation Modal State for Back to Goal Selection
+  const [showBackConfirmModal, setShowBackConfirmModal] = useState<boolean>(false);
+
+  const handleBackToGoalSelectionClick = () => {
+    setShowBackConfirmModal(true);
+  };
+
+  const handleConfirmBackYes = () => {
+    setShowBackConfirmModal(false);
+    try {
+      localStorage.removeItem(LOCAL_STORAGE_KEY);
+    } catch (e) {
+      console.warn('Could not clear roadmap state:', e);
+    }
+    setValidationError(null);
+    setScreenMode('form');
+  };
+
+  const handleConfirmBackNo = () => {
+    setShowBackConfirmModal(false);
+  };
+
   const handleExitToDashboard = () => {
     setActiveTab('home');
   };
@@ -437,19 +550,37 @@ export const RoadmapView: React.FC = () => {
       const generatedStages = generateDynamicRoadmapStages(goalToUse, userLevel, dailyTime);
       setStages(generatedStages);
       setScreenMode('generated');
-      recordActivity(`Generated AI Roadmap for ${goalToUse}`, 'Roadmap', 'In Progress', 'roadmap');
+      recordActivity(`Generated ${dailyTime} AI Roadmap for ${goalToUse}`, 'Roadmap', 'In Progress', 'roadmap');
+
+      // Send reminder notification for scheduled daily practice if enabled in settings
+      const isReminderEnabled = settings?.notifications?.dailyPracticeReminder ?? true;
+      const firstUncompletedTask = generatedStages[0]?.tasks.find((t) => !t.completed)?.title;
+      if (isReminderEnabled && firstUncompletedTask && addNotification) {
+        addNotification(
+          `AI Roadmap Practice Scheduled (${dailyTime})`,
+          `Your daily ${dailyTime} study path for "${goalToUse}" is active! Scheduled daily practice task: "${firstUncompletedTask}".`,
+          'coding'
+        );
+      }
     }, 1800);
   };
 
-  // Toggle task completion
+  // Toggle task completion & advance progress
   const handleToggleTask = (stageId: string, taskId: string) => {
+    let completedTitle = '';
+    let nextUncompletedTitle = '';
+
     setStages((prevStages) => {
       const updated = prevStages.map((stage) => {
         if (stage.id !== stageId) return stage;
 
-        const updatedTasks = stage.tasks.map((t) =>
-          t.id === taskId ? { ...t, completed: !t.completed } : t
-        );
+        const updatedTasks = stage.tasks.map((t) => {
+          if (t.id === taskId) {
+            completedTitle = t.title;
+            return { ...t, completed: !t.completed };
+          }
+          return t;
+        });
 
         const completedCount = updatedTasks.filter((t) => t.completed).length;
         const calcProgress = Math.round((completedCount / updatedTasks.length) * 100);
@@ -473,8 +604,29 @@ export const RoadmapView: React.FC = () => {
         }
       }
 
+      // Find next uncompleted planned task across current/active stage
+      const activeStageObj = updated.find((s) => s.status === 'Current') || updated.find((s) => s.progress < 100);
+      if (activeStageObj) {
+        const nextTask = activeStageObj.tasks.find((t) => !t.completed);
+        if (nextTask) nextUncompletedTitle = nextTask.title;
+      }
+
       return updated;
     });
+
+    if (completedTitle) {
+      recordActivity(`Completed ${dailyTime} task: "${completedTitle}"`, 'Roadmap', 'In Progress', 'roadmap');
+
+      // Check User Settings for Daily Practice Reminder
+      const isReminderEnabled = settings?.notifications?.dailyPracticeReminder ?? true;
+      if (isReminderEnabled && nextUncompletedTitle && addNotification) {
+        addNotification(
+          `Daily Practice Scheduled (${dailyTime})`,
+          `Great progress! Completed task. Next scheduled practice task: "${nextUncompletedTitle}". Keep up your ${dailyTime} daily commitment!`,
+          'coding'
+        );
+      }
+    }
   };
 
   // Statistics & Calculations
@@ -522,6 +674,43 @@ export const RoadmapView: React.FC = () => {
         onContinue={() => setShowRoadmapModal(false)}
         onExit={() => setShowRoadmapModal(false)}
       />
+
+      {/* Back to Goal Selection Confirmation Modal */}
+      {showBackConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md p-6 bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl space-y-5 text-center">
+            <div className="w-12 h-12 mx-auto rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+              <AlertCircle className="w-6 h-6" />
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-lg font-extrabold text-white font-['Space_Grotesk']">
+                Confirm Goal Selection
+              </h3>
+              <p className="text-xs sm:text-sm font-medium text-slate-300 leading-relaxed">
+                Are you sure you want to skip this roadmap and select a different goal?
+              </p>
+            </div>
+
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={handleConfirmBackYes}
+                className="px-6 py-2.5 rounded-2xl bg-red-600 hover:bg-red-500 text-white font-extrabold text-xs shadow-md cursor-pointer transition-all"
+              >
+                Yes
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmBackNo}
+                className="px-6 py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-extrabold text-xs border border-slate-700 shadow-md cursor-pointer transition-all"
+              >
+                No
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Ambient Lighting Background Glows */}
       <div className="absolute -top-24 -left-20 w-96 h-96 bg-blue-600/15 rounded-full blur-3xl pointer-events-none dark:opacity-100 opacity-25" />
@@ -838,27 +1027,69 @@ export const RoadmapView: React.FC = () => {
               </p>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
-              {/* Regenerate Option (Requirement 8) */}
-              <button
-                type="button"
-                onClick={() => setScreenMode('form')}
-                className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-extrabold flex items-center gap-2 shadow-md transition-all cursor-pointer"
-              >
-                <RefreshCw className="w-4 h-4" />
-                <span>Regenerate Roadmap</span>
-              </button>
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {/* Notification Permission Flow Button */}
+              {notifPermission === 'denied' ? (
+                <button
+                  type="button"
+                  onClick={handleRequestNotificationPermission}
+                  title="Notifications blocked in browser. Click to re-check."
+                  className="px-3 py-2.5 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20 text-xs font-extrabold flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <BellOff className="w-4 h-4 text-red-400" />
+                  <span>Notifications Blocked</span>
+                </button>
+              ) : reminderEnabled && notifPermission === 'granted' ? (
+                <button
+                  type="button"
+                  onClick={handleToggleReminders}
+                  title="Study reminders enabled. Click to disable."
+                  className="px-3 py-2.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 text-xs font-extrabold flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <Bell className="w-4 h-4 text-emerald-400" />
+                  <span>Reminders Active</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleToggleReminders}
+                  title="Enable study reminders via browser Notification API"
+                  className="px-3 py-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 hover:bg-amber-500/20 text-xs font-extrabold flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <Bell className="w-4 h-4 text-amber-400 animate-pulse" />
+                  <span>Enable Reminders</span>
+                </button>
+              )}
 
               <button
                 type="button"
-                onClick={handleExitToDashboard}
+                onClick={handleBackToGoalSelectionClick}
                 className="px-3.5 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 text-xs font-extrabold flex items-center gap-1.5 transition-all cursor-pointer"
               >
-                <LogOut className="w-3.5 h-3.5" />
-                <span>Dashboard</span>
+                <ArrowLeft className="w-4 h-4 text-cyan-400" />
+                <span>Back to Goal Selection</span>
               </button>
             </div>
           </div>
+
+          {/* Notification Permission Denied Banner */}
+          {notifPermission === 'denied' && (
+            <div className="p-3.5 rounded-2xl bg-red-500/10 border border-red-500/25 flex flex-wrap items-center justify-between gap-3 text-xs font-medium text-red-200 animate-in fade-in duration-200">
+              <div className="flex items-center gap-2">
+                <ShieldAlert className="w-4 h-4 text-red-400 shrink-0" />
+                <span>
+                  <strong>Browser Notifications Disabled:</strong> Permission is currently denied in your browser settings. Enable notifications in browser site settings to receive reminders.
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleRequestNotificationPermission}
+                className="px-3 py-1 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-300 font-extrabold text-[11px] border border-red-500/40 transition-all cursor-pointer ml-auto"
+              >
+                Re-check Permission
+              </button>
+            </div>
+          )}
 
           {/* ROADMAP OVERVIEW STATS & TIMELINE */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">

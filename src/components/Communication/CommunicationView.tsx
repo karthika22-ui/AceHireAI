@@ -659,7 +659,7 @@ export const CommunicationView: React.FC = () => {
                       : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  🇬BST English
+                  English
                 </button>
                 <button
                   type="button"
@@ -670,7 +670,7 @@ export const CommunicationView: React.FC = () => {
                       : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  🇮🇳 Tanglish
+                  Tanglish
                 </button>
               </div>
             </div>

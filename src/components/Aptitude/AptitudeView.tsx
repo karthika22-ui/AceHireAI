@@ -6,6 +6,7 @@ import {
   Timer,
   Globe,
   ArrowRight,
+  ArrowLeft,
   RotateCcw,
   Sparkles,
   Award,
@@ -23,18 +24,51 @@ export const AptitudeView: React.FC = () => {
   const [category, setCategory] = useState<AptitudeCategory>('Quantitative');
   const [difficulty, setDifficulty] = useState<DifficultyLevel>('Easy');
   
+  // Difficulty Config Helper:
+  // Easy: 10 minutes (600s), 20 questions
+  // Medium: 15 minutes (900s), 25 questions
+  // Hard: 20 minutes (1200s), 30 questions
+  const getSessionConfig = (diff: DifficultyLevel) => {
+    switch (diff) {
+      case 'Easy':
+        return { totalQuestions: 20, timeSeconds: 600, label: '10 Minutes • 20 Questions' };
+      case 'Medium':
+        return { totalQuestions: 25, timeSeconds: 900, label: '15 Minutes • 25 Questions' };
+      case 'Hard':
+        return { totalQuestions: 30, timeSeconds: 1200, label: '20 Minutes • 30 Questions' };
+      default:
+        return { totalQuestions: 20, timeSeconds: 600, label: '10 Minutes • 20 Questions' };
+    }
+  };
+
+  // Helper to generate dynamic questions list matching targetCount
+  const getQuizQuestions = (cat: AptitudeCategory, diff: DifficultyLevel, count: number): AptitudeQuestion[] => {
+    const base = APTITUDE_BANK.filter((q) => q.category === cat && q.difficulty === diff);
+    const pool = base.length > 0 ? base : APTITUDE_BANK.filter((q) => q.category === cat);
+    const source = pool.length > 0 ? pool : APTITUDE_BANK;
+
+    return Array.from({ length: count }, (_, i) => {
+      const item = source[i % source.length];
+      return {
+        ...item,
+        id: `${item.id}-dyn-${i + 1}`
+      };
+    });
+  };
+
   // Quiz Flow States
+  const [quizQuestions, setQuizQuestions] = useState<AptitudeQuestion[]>([]);
   const [isQuizStarted, setIsQuizStarted] = useState<boolean>(false);
   const [currentIdx, setCurrentIdx] = useState<number>(0);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [showExplanation, setShowExplanation] = useState<boolean>(false);
   const [langView, setLangView] = useState<'Tanglish' | 'English'>(user.preferredLanguage);
   
-  // Timer State (Unchanged 60s countdown logic)
-  const [timer, setTimer] = useState<number>(60);
+  // Overall Timer State for entire test
+  const [timer, setTimer] = useState<number>(() => getSessionConfig('Easy').timeSeconds);
   const [timeUpMessage, setTimeUpMessage] = useState<string | null>(null);
 
-  // Track Answers & Quiz Results for 5-question round
+  // Track Answers & Quiz Results
   const [userAnswers, setUserAnswers] = useState<Array<{ isCorrect: boolean; selectedIdx: number | null }>>([]);
   const [isQuizCompleted, setIsQuizCompleted] = useState<boolean>(false);
   const [quizStartTime, setQuizStartTime] = useState<number>(() => Date.now());
@@ -56,26 +90,21 @@ export const AptitudeView: React.FC = () => {
   // Prevent multiple timer interval execution
   const timeUpLockRef = useRef<boolean>(false);
 
-  // Filter 5 questions for selected Category & Difficulty
-  const filteredQuestions = APTITUDE_BANK.filter(
-    (q) => q.category === category && q.difficulty === difficulty
-  );
-  const quizQuestions = filteredQuestions.slice(0, 5);
+  const currentConfig = getSessionConfig(difficulty);
+  const totalQuestionCount = quizQuestions.length > 0 ? quizQuestions.length : currentConfig.totalQuestions;
   const q: AptitudeQuestion = quizQuestions[currentIdx] || APTITUDE_BANK[0];
 
   useEffect(() => {
     setLangView(user.preferredLanguage);
   }, [user.preferredLanguage]);
 
-  // Check for saved ongoing session on mount
-  useEffect(() => {
-    // Session state managed in React component state & Supabase DB
-  }, []);
-
   const handleContinueSession = () => {
     if (pendingSession) {
       setCategory(pendingSession.category);
       setDifficulty(pendingSession.difficulty);
+      const conf = getSessionConfig(pendingSession.difficulty);
+      const generated = getQuizQuestions(pendingSession.category, pendingSession.difficulty, conf.totalQuestions);
+      setQuizQuestions(generated);
       setCurrentIdx(pendingSession.currentIdx);
       setTimer(pendingSession.timer);
       setUserAnswers(pendingSession.userAnswers);
@@ -95,26 +124,46 @@ export const AptitudeView: React.FC = () => {
     resetQuizState();
   };
 
-  // Timer Countdown Effect
+  // Overall Timer Countdown Effect (Runs for the entire test duration)
   useEffect(() => {
     let interval: any;
-    if (isQuizStarted && !isQuizCompleted && !timeUpMessage && !showContinuePrompt && timer > 0 && !showExplanation) {
+    if (isQuizStarted && !isQuizCompleted && !timeUpMessage && !showContinuePrompt && timer > 0) {
       interval = setInterval(() => {
-        setTimer((prev) => prev - 1);
+        setTimer((prev) => {
+          if (prev <= 1) {
+            clearInterval(interval);
+            handleOverallTimerExpiry();
+            return 0;
+          }
+          return prev - 1;
+        });
       }, 1000);
-    } else if (isQuizStarted && !isQuizCompleted && !showContinuePrompt && timer === 0 && !timeUpLockRef.current) {
-      timeUpLockRef.current = true;
-      handleTimerExpiry();
     }
     return () => clearInterval(interval);
-  }, [isQuizStarted, isQuizCompleted, timeUpMessage, timer, showExplanation, showContinuePrompt]);
+  }, [isQuizStarted, isQuizCompleted, timeUpMessage, showContinuePrompt, timer]);
+
+  const handleOverallTimerExpiry = () => {
+    if (timeUpLockRef.current) return;
+    timeUpLockRef.current = true;
+
+    setTimeUpMessage("Overall Time Up! Submitting aptitude test...");
+
+    setTimeout(() => {
+      setTimeUpMessage(null);
+      timeUpLockRef.current = false;
+      setIsQuizCompleted(true);
+    }, 1200);
+  };
 
   const handleStartQuiz = () => {
+    const conf = getSessionConfig(difficulty);
+    const generated = getQuizQuestions(category, difficulty, conf.totalQuestions);
+    setQuizQuestions(generated);
     setIsQuizStarted(true);
     setCurrentIdx(0);
     setSelectedIndex(null);
     setShowExplanation(false);
-    setTimer(60);
+    setTimer(conf.timeSeconds);
     setUserAnswers([]);
     setIsQuizCompleted(false);
     setTimeUpMessage(null);
@@ -138,7 +187,8 @@ export const AptitudeView: React.FC = () => {
     setCurrentIdx(0);
     setSelectedIndex(null);
     setShowExplanation(false);
-    setTimer(60);
+    const conf = getSessionConfig(difficulty);
+    setTimer(conf.timeSeconds);
     setUserAnswers([]);
     setIsQuizCompleted(false);
     setTimeUpMessage(null);
@@ -147,71 +197,56 @@ export const AptitudeView: React.FC = () => {
   };
 
   const handleSelectOption = (index: number) => {
-    if (selectedIndex !== null || isQuizCompleted) return;
+    if (isQuizCompleted) return;
     setSelectedIndex(index);
     setShowExplanation(true);
 
     const isCorrect = index === q.correctIndex;
-    setUserAnswers((prev) => [...prev, { isCorrect, selectedIdx: index }]);
+    setUserAnswers((prev) => {
+      const updated = [...prev];
+      updated[currentIdx] = { isCorrect, selectedIdx: index };
+      return updated;
+    });
 
     const scoreVal = isCorrect ? 90 : 40;
     recordUserActivity('aptitude', `${category} (${difficulty}) Question ${currentIdx + 1}`, scoreVal, 'Aptitude');
   };
 
-  const handleTimerExpiry = () => {
-    // 1. Lock answer if not selected
-    if (selectedIndex === null) {
-      setUserAnswers((prev) => [...prev, { isCorrect: false, selectedIdx: null }]);
-      setShowExplanation(true);
-    }
-
-    // 2. Set Time Up Message
-    const isFinalQuestion = currentIdx === 4;
-    const msg = isFinalQuestion
-      ? "Time Up! Submitting quiz..."
-      : "Time Up! Moving to next question...";
-
-    setTimeUpMessage(msg);
-
-    // 3. Delay exactly 1 second & Auto-Advance / Auto-Submit
-    setTimeout(() => {
-      setTimeUpMessage(null);
-      timeUpLockRef.current = false;
-
-      if (isFinalQuestion) {
-        setIsQuizCompleted(true);
-      } else {
-        setCurrentIdx((prev) => prev + 1);
-        setSelectedIndex(null);
-        setShowExplanation(false);
-        setTimer(60);
-      }
-    }, 1000);
-  };
-
-  const advanceToNextQuestion = () => {
-    if (currentIdx < 4) {
-      setCurrentIdx((prev) => prev + 1);
-      setSelectedIndex(null);
-      setShowExplanation(false);
-      setTimer(60);
-      timeUpLockRef.current = false;
-    } else {
-      setIsQuizCompleted(true);
+  const handlePrev = () => {
+    if (currentIdx > 0) {
+      const prevIdx = currentIdx - 1;
+      setCurrentIdx(prevIdx);
+      const existingAnswer = userAnswers[prevIdx];
+      setSelectedIndex(existingAnswer ? existingAnswer.selectedIdx : null);
+      setShowExplanation(existingAnswer !== undefined && existingAnswer !== null);
     }
   };
 
   const handleNext = () => {
-    advanceToNextQuestion();
+    if (currentIdx + 1 < totalQuestionCount) {
+      const nextIdx = currentIdx + 1;
+      setCurrentIdx(nextIdx);
+      const existingAnswer = userAnswers[nextIdx];
+      setSelectedIndex(existingAnswer ? existingAnswer.selectedIdx : null);
+      setShowExplanation(existingAnswer !== undefined && existingAnswer !== null);
+    }
   };
 
   const handleSubmitQuiz = () => {
     setIsQuizCompleted(true);
   };
 
+  // Helper to format remaining timer in MM:SS
+  const formatTimer = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
   // Calculate Result Summary Metrics
-  const totalQuestions = 5;
-  const correctCount = userAnswers.filter((a) => a.isCorrect).length;
+  const totalQuestions = totalQuestionCount;
+  const answeredCount = userAnswers.filter((a) => a !== undefined && a !== null && a.selectedIdx !== null).length;
+  const correctCount = userAnswers.filter((a) => a && a.isCorrect).length;
   const wrongCount = totalQuestions - correctCount;
   const scorePercent = Math.round((correctCount / totalQuestions) * 100);
   const totalTimeTakenSeconds = Math.round((Date.now() - quizStartTime) / 1000);
@@ -246,7 +281,7 @@ export const AptitudeView: React.FC = () => {
         moduleName="Aptitude Practice"
         progressText={
           pendingSession
-            ? `You are currently on Question ${pendingSession.currentIdx + 1} of 5 (${pendingSession.category} - ${pendingSession.difficulty})`
+            ? `You are currently on Question ${pendingSession.currentIdx + 1} of ${totalQuestionCount} (${pendingSession.category} - ${pendingSession.difficulty})`
             : ''
         }
         onContinue={handleContinueSession}
@@ -340,7 +375,7 @@ export const AptitudeView: React.FC = () => {
               Ready to Start {category} Aptitude?
             </h2>
             <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
-              Selected Level: <span className="font-bold text-amber-500">{difficulty}</span> • 5 Questions • 60s per question
+              Selected Level: <span className="font-bold text-amber-500">{difficulty}</span> • {currentConfig.label}
             </p>
           </div>
 
@@ -356,7 +391,7 @@ export const AptitudeView: React.FC = () => {
         </div>
       )}
 
-      {/* RESULT SUMMARY CARD (Displayed after 5 questions completed) */}
+      {/* RESULT SUMMARY CARD (Displayed after test completed) */}
       {isQuizCompleted && (
         <div className="glass-card rounded-3xl p-6 sm:p-8 border space-y-6 animate-in zoom-in-95 duration-300">
           <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
@@ -393,7 +428,7 @@ export const AptitudeView: React.FC = () => {
 
             <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/30 space-y-1">
               <span className="text-2xl font-black text-red-600 dark:text-red-400 block">{wrongCount}</span>
-              <span className="text-[11px] font-bold text-red-600 dark:text-red-400 uppercase">Wrong Answers</span>
+              <span className="text-[11px] font-bold text-red-600 dark:text-red-400 uppercase">Wrong / Unanswered</span>
             </div>
 
             <div className="p-4 rounded-2xl bg-blue-500/10 border border-blue-500/30 space-y-1">
@@ -432,27 +467,27 @@ export const AptitudeView: React.FC = () => {
                 {category} - {difficulty}
               </span>
               <span className="text-xs text-slate-500 font-medium">
-                Question {currentIdx + 1} of 5
+                Question {currentIdx + 1} of {totalQuestionCount}
               </span>
             </div>
 
-            {/* Timer */}
-            <div className="flex items-center gap-1.5 text-xs font-mono font-bold text-amber-600 bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/30">
-              <Timer className="w-4 h-4" />
-              <span>00:{timer.toString().padStart(2, '0')}s</span>
+            {/* Overall Countdown Timer */}
+            <div className="flex items-center gap-1.5 text-xs font-mono font-bold text-amber-600 bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/30 shadow-sm animate-pulse">
+              <Timer className="w-4 h-4 text-amber-500" />
+              <span>{formatTimer(timer)} remaining</span>
             </div>
           </div>
 
           {/* Progress Indicator Bar */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 dark:text-slate-400">
-              <span>Progress</span>
-              <span>Question {currentIdx + 1} / 5</span>
+              <span>Overall Progress</span>
+              <span>Question {currentIdx + 1} / {totalQuestionCount} • ({answeredCount} Answered)</span>
             </div>
             <div className="w-full bg-slate-200 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
               <div
                 className="bg-amber-500 h-full rounded-full transition-all duration-300 shadow-[0_0_10px_rgba(245,158,11,0.5)]"
-                style={{ width: `${((currentIdx + 1) / 5) * 100}%` }}
+                style={{ width: `${((currentIdx + 1) / totalQuestionCount) * 100}%` }}
               />
             </div>
           </div>
@@ -480,7 +515,7 @@ export const AptitudeView: React.FC = () => {
                 <button
                   key={idx}
                   onClick={() => handleSelectOption(idx)}
-                  disabled={showExplanation}
+                  disabled={isQuizCompleted}
                   className={`w-full p-4 rounded-2xl border text-left text-sm font-medium transition-all flex items-center justify-between cursor-pointer ${btnStyle}`}
                 >
                   <span>{opt}</span>
@@ -535,29 +570,43 @@ export const AptitudeView: React.FC = () => {
                   <span>AI Explanation will be available after backend integration.</span>
                 </div>
               </div>
-
-              {/* Step 2: Question Navigation Buttons */}
-              <div className="flex justify-end pt-2">
-                {currentIdx < 4 ? (
-                  <button
-                    onClick={handleNext}
-                    className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md cursor-pointer"
-                  >
-                    <span>Next Question</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleSubmitQuiz}
-                    className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs flex items-center gap-1.5 shadow-md cursor-pointer"
-                  >
-                    <span>Submit</span>
-                    <CheckCircle2 className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
             </div>
           )}
+
+          {/* Persistent Question Navigation & Early Submission Toolbar */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
+            <div>
+              {currentIdx > 0 && (
+                <button
+                  onClick={handlePrev}
+                  className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-1.5 shadow-md cursor-pointer transition-all"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span>Previous Question</span>
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2.5 ml-auto">
+              {currentIdx + 1 < totalQuestionCount ? (
+                <button
+                  onClick={handleNext}
+                  className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md cursor-pointer transition-all"
+                >
+                  <span>Next Question</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              ) : (
+                <button
+                  onClick={handleSubmitQuiz}
+                  className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs flex items-center gap-1.5 shadow-lg hover:shadow-emerald-600/30 cursor-pointer transition-all"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Submit Quiz ({answeredCount}/{totalQuestionCount})</span>
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

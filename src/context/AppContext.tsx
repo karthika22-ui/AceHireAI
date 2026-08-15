@@ -68,6 +68,7 @@ interface AppContextType {
   streakDays: number;
   notifications: AppNotification[];
   markNotificationRead: (id: string) => void;
+  addNotification: (title: string, message: string, type?: 'interview' | 'coding' | 'resume' | 'general') => void;
   achievements: AchievementBadge[];
   darkMode: boolean;
   setDarkMode: (val: boolean) => void;
@@ -522,6 +523,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
+  const addNotification = (
+    title: string,
+    message: string,
+    type: 'interview' | 'coding' | 'resume' | 'general' = 'coding'
+  ) => {
+    const newNotif: AppNotification = {
+      id: `notif-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      title,
+      message,
+      time: 'Just now',
+      read: false,
+      type
+    };
+    setNotifications((prev) => [newNotif, ...prev]);
+  };
+
   const recalculatePlacementScore = () => {
     setReadinessScore((prev) => {
       const avg = Math.round(
@@ -577,6 +594,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         streakDays,
         notifications,
         markNotificationRead,
+        addNotification,
         achievements,
         darkMode,
         setDarkMode,
