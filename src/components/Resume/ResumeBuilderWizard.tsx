@@ -29,12 +29,235 @@ import {
   Languages,
   ExternalLink,
   Smartphone,
-  Monitor
+  Monitor,
+  X
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { ResumeData, EducationEntry, ProjectEntry, CertificationEntry, InternshipEntry, LanguageProficiency, AdditionalLink, ResumeAnalysis } from '../../types';
 import { ResumePreviewTemplates } from './ResumePreviewTemplates';
 import { fetchFromOpenRouter, analyzeResumeWithAI } from '../../services/aiEngine';
+
+export interface TemplateInfo {
+  id: string;
+  name: string;
+  category: string;
+  badge: string;
+  desc: string;
+  previewHeader: string;
+}
+
+export const RESUME_TEMPLATES_LIST: TemplateInfo[] = [
+  {
+    id: 'modern',
+    name: 'Modern Professional',
+    category: 'Modern',
+    badge: 'Popular',
+    desc: 'Indigo accent header bar, clean modern typography, structured section dividers.',
+    previewHeader: 'bg-indigo-600 text-white p-3 rounded-t-lg'
+  },
+  {
+    id: 'ats-friendly',
+    name: 'ATS Maximum Parser',
+    category: 'ATS Standard',
+    badge: 'Recommended for ATS',
+    desc: 'Clean single-column structure, standard text headings, maximum parser compatibility.',
+    previewHeader: 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white p-3 rounded-t-lg border-b-2 border-slate-900 dark:border-slate-400'
+  },
+  {
+    id: 'minimal',
+    name: 'Minimal Clean',
+    category: 'Minimal',
+    badge: 'Fresher Choice',
+    desc: 'Ultra-clean layout, left border accent, compact line spacing.',
+    previewHeader: 'bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white p-3 rounded-t-lg border-l-4 border-slate-700'
+  },
+  {
+    id: 'executive',
+    name: 'Executive Leadership',
+    category: 'Executive',
+    badge: 'Senior Level',
+    desc: 'Dark navy top banner, centered executive header, serif section titles.',
+    previewHeader: 'bg-slate-950 text-white p-3 rounded-t-lg border-b-2 border-amber-500'
+  },
+  {
+    id: 'elegant',
+    name: 'Elegant Serif',
+    category: 'Elegant',
+    badge: 'Warm Style',
+    desc: 'Warm gold top accent rule, serif typography, elegant two-column layout.',
+    previewHeader: 'bg-amber-500/10 text-amber-900 dark:text-amber-300 p-3 rounded-t-lg border-t-4 border-amber-500'
+  },
+  {
+    id: 'technical',
+    name: 'Technical Engineer',
+    category: 'Engineering',
+    badge: 'Developer Choice',
+    desc: 'Monospace code-style accents, dark slate sidebar for skills & details.',
+    previewHeader: 'bg-slate-900 text-emerald-400 p-3 rounded-t-lg border-b border-emerald-500/40 font-mono'
+  },
+  {
+    id: 'creative',
+    name: 'Creative Dual-Tone',
+    category: 'Creative',
+    badge: 'Design & Product',
+    desc: 'Vibrant dual-tone sidebar layout, bold typography hierarchy.',
+    previewHeader: 'bg-gradient-to-r from-purple-700 to-indigo-600 text-white p-3 rounded-t-lg'
+  },
+  {
+    id: 'classic',
+    name: 'Classic Corporate',
+    category: 'Classic',
+    badge: 'Traditional',
+    desc: 'Traditional corporate layout, serif headings, elegant top rule divider.',
+    previewHeader: 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white p-3 rounded-t-lg border-b-2 border-indigo-900 dark:border-indigo-400 text-center'
+  },
+  {
+    id: 'corporate',
+    name: 'Corporate Steel',
+    category: 'Corporate',
+    badge: 'Corporate Standard',
+    desc: 'Steel blue header rule, bold section badges, corporate structured grid.',
+    previewHeader: 'bg-blue-900 text-white p-3 rounded-t-lg border-b-4 border-cyan-400'
+  },
+  {
+    id: 'compact',
+    name: 'Compact Density',
+    category: 'Compact',
+    badge: '1-Page Optimized',
+    desc: 'Dense multi-column layout, compact line heights for experienced engineers.',
+    previewHeader: 'bg-slate-800 text-slate-100 p-2.5 rounded-t-lg border-b border-slate-600'
+  },
+  {
+    id: 'developer',
+    name: 'Developer Tech',
+    category: 'Tech & Dev',
+    badge: 'Software Dev',
+    desc: 'Dark header with terminal prompt `$ resume.init()`, pill tags for tech stack.',
+    previewHeader: 'bg-slate-950 text-cyan-400 p-3 rounded-t-lg font-mono border-b border-cyan-500/30'
+  },
+  {
+    id: 'startup',
+    name: 'Startup Modern',
+    category: 'Startup',
+    badge: 'High Growth',
+    desc: 'Gradient accent line, rounded section cards, dynamic grid layout.',
+    previewHeader: 'bg-gradient-to-r from-teal-500 to-cyan-600 text-white p-3 rounded-t-lg'
+  },
+  {
+    id: 'clean',
+    name: 'Professional Clean',
+    category: 'Modern',
+    badge: 'Clean & Simple',
+    desc: 'Subtle grey background sections, bold blue left border headings.',
+    previewHeader: 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white p-3 rounded-t-lg border-l-4 border-blue-600'
+  },
+  {
+    id: 'ivy',
+    name: 'Ivy League Standard',
+    category: 'Academic',
+    badge: 'Academic',
+    desc: 'Harvard/Yale traditional style, small caps headings, centered contact info.',
+    previewHeader: 'bg-stone-100 dark:bg-slate-900 text-stone-900 dark:text-white p-3 rounded-t-lg border-b border-stone-400 text-center font-serif'
+  },
+  {
+    id: 'split',
+    name: 'Modern Split Sidebar',
+    category: 'Two-Column',
+    badge: 'Sidebar Layout',
+    desc: '30% Left sidebar for Contact/Skills/Languages, 70% Right main column for Experience.',
+    previewHeader: 'bg-slate-900 text-white p-3 rounded-t-lg border-r-4 border-indigo-500'
+  },
+  {
+    id: 'engineering',
+    name: 'Engineering Matrix',
+    category: 'Engineering',
+    badge: 'Technical Core',
+    desc: 'Boxed technical skills matrix, bulleted project metrics, technical focus.',
+    previewHeader: 'bg-slate-900 text-cyan-300 p-3 rounded-t-lg border-b-2 border-cyan-500 font-mono'
+  },
+  {
+    id: 'bold-header',
+    name: 'Bold Header Banner',
+    category: 'Bold',
+    badge: 'High Contrast',
+    desc: 'Solid dark background header banner spanning full width, vibrant white text.',
+    previewHeader: 'bg-indigo-950 text-white p-4 rounded-t-lg border-b-4 border-indigo-500 text-center'
+  },
+  {
+    id: 'geometric',
+    name: 'Geometric Modern',
+    category: 'Modern',
+    badge: 'Visual Style',
+    desc: 'Sharp geometric section dividers, badge tags, clean modern structure.',
+    previewHeader: 'bg-slate-900 text-purple-400 p-3 rounded-t-lg border-b-2 border-purple-500'
+  },
+  {
+    id: 'timeline',
+    name: 'Vertical Timeline',
+    category: 'Creative',
+    badge: 'Timeline View',
+    desc: 'Vertical timeline axis with dot indicators for education & experience.',
+    previewHeader: 'bg-gradient-to-r from-blue-700 to-teal-600 text-white p-3 rounded-t-lg'
+  },
+  {
+    id: 'concise',
+    name: 'Concise Single-Page',
+    category: 'Compact',
+    badge: 'Fit 1 Page',
+    desc: 'Ultra-efficient layout, 2-column skills grid, compact padding.',
+    previewHeader: 'bg-slate-800 text-white p-2.5 rounded-t-lg border-b-2 border-emerald-500'
+  }
+];
+
+export const MOCK_PREVIEW_DATA: ResumeData = {
+  fullName: 'ALEX R. MORGAN',
+  professionalTitle: 'Senior Full-Stack Engineer',
+  email: 'alex.morgan@tech.io',
+  phone: '+1 (555) 234-5678',
+  location: 'San Francisco, CA',
+  linkedIn: 'linkedin.com/in/alexmorgan',
+  gitHub: 'github.com/alexmorgan-dev',
+  portfolio: 'alexmorgan.dev',
+  summary: 'Results-driven Full-Stack Engineer with 5+ years of experience building high-scale React web apps, cloud microservices, and distributed backend APIs.',
+  education: [
+    {
+      degree: 'B.S. Computer Science & Engineering',
+      institution: 'Stanford University',
+      university: 'Stanford, CA',
+      graduationYear: '2022',
+      cgpa: '3.92/4.0'
+    }
+  ],
+  skills: ['React', 'TypeScript', 'Node.js', 'Python', 'PostgreSQL', 'Docker', 'AWS'],
+  programmingLanguages: ['Python', 'TypeScript', 'JavaScript'],
+  webTechnologies: ['React.js', 'Next.js', 'TailwindCSS'],
+  frameworksLibraries: ['Node.js', 'Express', 'Redux Toolkit'],
+  databases: ['PostgreSQL', 'MongoDB', 'Redis'],
+  toolsAndTech: ['Git', 'Docker', 'AWS Lambda', 'Kubernetes'],
+  projects: [
+    {
+      title: 'CloudOps Monitoring Platform',
+      description: 'Engineered a real-time observability platform processing 50K events/sec.',
+      techStack: ['React', 'TypeScript', 'Node.js', 'Redis'],
+      keyContributions: 'Reduced system latency by 35% through optimal caching.',
+      gitHubUrl: 'github.com/alex/cloud-dash'
+    }
+  ],
+  experience: [
+    {
+      role: 'Senior Software Engineer',
+      company: 'Apex Tech Systems',
+      location: 'San Francisco, CA',
+      duration: '2022 - Present',
+      description: 'Led a cross-functional team of 6 engineers building cloud placement platforms.'
+    }
+  ],
+  certifications: [
+    { title: 'AWS Certified Solutions Architect', issuer: 'Amazon Web Services', year: '2023' }
+  ],
+  achievements: ['1st Place National Hackathon Winner (2023)'],
+  languages: [{ language: 'English', proficiency: 'Native / Fluent' }]
+};
 
 interface ResumeBuilderWizardProps {
   onBackToSelection: () => void;
@@ -49,6 +272,7 @@ export const ResumeBuilderWizard: React.FC<ResumeBuilderWizardProps> = ({ onBack
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string>('');
   const [isAiLoading, setIsAiLoading] = useState<boolean>(false);
   const [aiError, setAiError] = useState<string>('');
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState<boolean>(false);
   
   // ATS Check State
   const [atsAnalysis, setAtsAnalysis] = useState<ResumeAnalysis | null>(null);
@@ -360,7 +584,7 @@ Return ONLY the improved bullet points without introductory text or markdown pro
         }
       `}</style>
 
-      {/* TOP NAVBAR / HEADER */}
+      {/* TOP NAVBAR / HEADER (Clean Viewport Fit) */}
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4 print:hidden">
         <div className="flex items-center gap-3">
           <button
@@ -371,14 +595,11 @@ Return ONLY the improved bullet points without introductory text or markdown pro
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white font-['Space_Grotesk'] flex items-center gap-2">
-              <span>Resume Builder & ATS</span>
-              <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 px-2.5 py-0.5 rounded-full border border-indigo-500/20">
-                Step {currentStep} of 12
-              </span>
+            <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white font-['Space_Grotesk']">
+              Resume Builder & ATS
             </h1>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Create a professional placement-ready resume step by step
+              Create a placement-ready resume step by step
             </p>
           </div>
         </div>
@@ -409,14 +630,14 @@ Return ONLY the improved bullet points without introductory text or markdown pro
 
           <button
             onClick={handleSaveResume}
-            className="px-3.5 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 font-bold text-xs flex items-center gap-1.5 hover:bg-indigo-100 transition-colors"
+            className="px-3.5 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 font-bold text-xs flex items-center gap-1.5 hover:bg-indigo-100 transition-colors cursor-pointer"
           >
             <Save className="w-4 h-4" />
             <span className="hidden sm:inline">Save Progress</span>
           </button>
           <button
             onClick={handlePrintPDF}
-            className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-xs flex items-center gap-1.5 shadow-md hover:shadow-lg transition-all"
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-xs flex items-center gap-1.5 shadow-md hover:shadow-lg transition-all cursor-pointer"
           >
             <Download className="w-4 h-4" />
             <span>Download PDF</span>
@@ -432,227 +653,122 @@ Return ONLY the improved bullet points without introductory text or markdown pro
         </div>
       )}
 
-      {/* REDESIGNED FOCUSED STEP-BY-STEP PROGRESS BAR & NAVIGATION */}
-      {(() => {
-        const currentStepObj = steps.find((s) => s.num === currentStep) || steps[0];
-        const isCompleted = isSectionCompleted(currentStep);
-        const progressPercent = Math.round((currentStep / steps.length) * 100);
-
-        return (
-          <div className="glass-card rounded-2xl p-4 sm:p-5 border border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/90 shadow-md space-y-3.5 print:hidden">
-            {/* Step Header & Navigation */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white flex items-center justify-center font-extrabold shadow-md shrink-0">
-                  {currentStepObj.icon}
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
-                      Step {currentStep} of {steps.length}
-                    </span>
-                    {isCompleted && (
-                      <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> Completed
-                      </span>
-                    )}
-                  </div>
-                  <h2 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white font-['Space_Grotesk']">
-                    {currentStepObj.label}
-                  </h2>
-                </div>
-              </div>
-
-              {/* Step Previous & Next Quick Navigation */}
-              <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
-                <button
-                  type="button"
-                  onClick={handlePrevStep}
-                  disabled={currentStep === 1}
-                  className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs flex items-center gap-1 transition-all disabled:opacity-40 cursor-pointer"
-                >
-                  <ArrowLeft className="w-3.5 h-3.5" />
-                  <span>Previous</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleNextStep}
-                  disabled={currentStep === 12}
-                  className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center gap-1 shadow transition-all disabled:opacity-40 cursor-pointer"
-                >
-                  <span>Next Step</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
+      {/* ACTIVE SECTION HEADER CARD (Shows ONLY the current active section) */}
+      {currentStep > 1 && (
+        <div className="glass-card rounded-2xl p-4 sm:p-5 border border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/90 shadow-md flex items-center justify-between gap-4 print:hidden">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white flex items-center justify-center font-extrabold shadow-md shrink-0">
+              {steps.find((s) => s.num === currentStep)?.icon || <Layout className="w-5 h-5" />}
             </div>
-
-            {/* Overall Wizard Progress Indicator */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                <span>Wizard Progress</span>
-                <span className="text-indigo-600 dark:text-indigo-400 font-extrabold">{progressPercent}%</span>
-              </div>
-              <div className="w-full h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden p-0.5 border border-slate-200 dark:border-slate-700">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-blue-600 via-indigo-600 to-emerald-500 transition-all duration-500 ease-out"
-                  style={{ width: `${progressPercent}%` }}
-                />
-              </div>
-            </div>
-
-            {/* Quick Step Navigation Pills */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700">
-              {steps.map((s) => {
-                const isActive = currentStep === s.num;
-                const isDone = isSectionCompleted(s.num);
-                return (
-                  <button
-                    key={s.num}
-                    type="button"
-                    onClick={() => setCurrentStep(s.num)}
-                    title={`Step ${s.num}: ${s.label}`}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 flex items-center gap-1.5 transition-all cursor-pointer ${
-                      isActive
-                        ? 'bg-indigo-600 text-white shadow-md ring-2 ring-indigo-500/30 font-extrabold'
-                        : isDone
-                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
-                    }`}
-                  >
-                    <span className="text-[10px] opacity-75">{s.num}.</span>
-                    <span className="whitespace-nowrap">{s.label}</span>
-                    {isDone && <Check className="w-3 h-3 text-emerald-500 shrink-0 font-extrabold" />}
-                  </button>
-                );
-              })}
+            <div>
+              <span className="text-[11px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                Section {currentStep} of {steps.length}
+              </span>
+              <h2 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white font-['Space_Grotesk']">
+                {steps.find((s) => s.num === currentStep)?.label}
+              </h2>
             </div>
           </div>
-        );
-      })()}
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handlePrevStep}
+              className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs flex items-center gap-1 transition-all cursor-pointer"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Back</span>
+            </button>
+            {currentStep < 11 ? (
+              <button
+                type="button"
+                onClick={handleNextStep}
+                className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-xs flex items-center gap-1 shadow transition-all cursor-pointer"
+              >
+                <span>Next</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            ) : currentStep === 11 ? (
+              <button
+                type="button"
+                onClick={() => setCurrentStep(12)}
+                className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-extrabold text-xs flex items-center gap-1 shadow transition-all cursor-pointer"
+              >
+                <span>Create Resume</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            ) : null}
+          </div>
+        </div>
+      )}
 
       {/* MAIN TWO-COLUMN 12-COLUMN GRID LAYOUT */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start relative">
         {/* LEFT COLUMN: WIZARD FORM INPUTS (7 COLS) */}
         <div className={`lg:col-span-7 space-y-6 w-full min-w-0 ${mobileViewMode === 'preview' ? 'hidden lg:block' : 'block'} print:hidden`}>
-          {/* STEP 1: CHOOSE TEMPLATE GALLERY */}
+          {/* STEP 1: SELECT YOUR TEMPLATE (PROMINENT HERO & MODAL TRIGGER) */}
           {currentStep === 1 && (
-            <div className="glass-card rounded-3xl p-6 border border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-900/80 space-y-6">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <h2 className="text-xl font-extrabold text-slate-900 dark:text-white font-['Space_Grotesk'] flex items-center gap-2">
-                    <Layout className="w-5 h-5 text-indigo-500" />
-                    <span>Resume Template Gallery</span>
+            <div className="glass-card rounded-3xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-900/80 space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-5">
+                <div className="space-y-1">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-xs font-bold border border-indigo-500/20">
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Step 1: Template Selection</span>
+                  </div>
+                  <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white font-['Space_Grotesk']">
+                    Select Your Resume Template
                   </h2>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    Select a high-impact layout optimized for automated ATS parsers and technical recruiter reviews. Selecting a template instantly updates the Live Resume Preview.
+                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                    Choose from 20 genuinely different professional template designs. Selecting a template updates the Live Resume Preview instantly while preserving all your entered resume data.
                   </p>
                 </div>
-                <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 px-3 py-1 rounded-full border border-indigo-500/20 shrink-0">
-                  Active: {formData.selectedTemplate?.toUpperCase() || 'MODERN'}
-                </span>
+
+                <button
+                  type="button"
+                  onClick={() => setIsTemplateModalOpen(true)}
+                  className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2.5 shadow-xl shadow-indigo-500/20 hover:scale-[1.02] active:scale-98 transition-all cursor-pointer shrink-0"
+                >
+                  <Sparkles className="w-4 h-4 text-cyan-300 animate-spin [animation-duration:4s]" />
+                  <span>Select Your Template (20 Designs)</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-1">
-                {[
-                  {
-                    id: 'modern',
-                    name: 'Modern Professional',
-                    badge: 'Popular',
-                    desc: 'Indigo accent header bar, clean modern typography, structured section dividers.',
-                    previewHeader: 'bg-indigo-600 text-white p-3 rounded-t-lg',
-                    previewLines: ['w-1/2 h-2.5 bg-white/80 rounded', 'w-1/3 h-2 bg-indigo-200/80 rounded mt-1']
-                  },
-                  {
-                    id: 'ats-friendly',
-                    name: 'ATS Maximum Parser',
-                    badge: 'Recommended for ATS',
-                    desc: 'Clean single-column structure, standard text headings, maximum parser compatibility.',
-                    previewHeader: 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white p-3 rounded-t-lg border-b-2 border-slate-900 dark:border-slate-400',
-                    previewLines: ['w-2/3 h-2.5 bg-slate-800 dark:bg-slate-200 rounded', 'w-1/2 h-2 bg-slate-500 dark:bg-slate-400 rounded mt-1']
-                  },
-                  {
-                    id: 'classic',
-                    name: 'Classic Corporate',
-                    badge: 'Standard Serif',
-                    desc: 'Traditional corporate layout, serif headings, elegant top rule divider.',
-                    previewHeader: 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white p-3 rounded-t-lg border-b-2 border-indigo-900 dark:border-indigo-400 text-center',
-                    previewLines: ['w-1/2 h-2.5 bg-slate-900 dark:bg-slate-100 rounded mx-auto', 'w-1/3 h-2 bg-slate-600 dark:bg-slate-400 rounded mx-auto mt-1']
-                  },
-                  {
-                    id: 'minimal',
-                    name: 'Minimal Clean',
-                    badge: 'Fresher Choice',
-                    desc: 'Ultra-clean layout, border dividers, compact line spacing.',
-                    previewHeader: 'bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white p-3 rounded-t-lg border-l-4 border-slate-600',
-                    previewLines: ['w-1/2 h-2.5 bg-slate-800 dark:bg-slate-200 rounded', 'w-1/3 h-2 bg-slate-400 rounded mt-1']
-                  }
-                ].map((t) => {
-                  const isSelected = formData.selectedTemplate === t.id;
-                  return (
-                    <div
-                      key={t.id}
-                      onClick={() => setFormData({ ...formData, selectedTemplate: t.id as any })}
-                      className={`group p-4 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between space-y-4 ${
-                        isSelected
-                          ? 'border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/40 ring-2 ring-indigo-500/30 shadow-xl scale-[1.01]'
-                          : 'border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-700 bg-slate-50/50 dark:bg-slate-950/40 hover:shadow-md'
-                      }`}
-                    >
-                      {/* Mini Mockup Visual Preview */}
-                      <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 overflow-hidden shadow-sm group-hover:border-indigo-400/60 transition-colors">
-                        <div className={t.previewHeader}>
-                          <div className={t.previewLines[0]}></div>
-                          <div className={t.previewLines[1]}></div>
-                        </div>
-                        <div className="p-3 space-y-2">
-                          <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded"></div>
-                          <div className="w-5/6 h-1.5 bg-slate-200 dark:bg-slate-800 rounded"></div>
-                          <div className="flex gap-1 pt-1">
-                            <div className="w-1/3 h-1 bg-indigo-500/40 rounded"></div>
-                            <div className="w-1/3 h-1 bg-indigo-500/40 rounded"></div>
-                            <div className="w-1/3 h-1 bg-indigo-500/40 rounded"></div>
-                          </div>
-                        </div>
+              {/* Active Selected Template Summary Card */}
+              {(() => {
+                const activeTemp = RESUME_TEMPLATES_LIST.find((t) => t.id === (formData.selectedTemplate || 'modern')) || RESUME_TEMPLATES_LIST[0];
+                return (
+                  <div className="p-5 rounded-2xl bg-gradient-to-br from-indigo-900/20 via-slate-900/60 to-purple-900/20 border border-indigo-500/30 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-3 h-3 rounded-full bg-emerald-400 animate-pulse" />
+                        <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Currently Active Template</span>
+                      </div>
+                      <span className="px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-black">
+                        {activeTemp.badge}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                      <div>
+                        <h3 className="text-lg font-extrabold text-white font-['Space_Grotesk']">
+                          {activeTemp.name}
+                        </h3>
+                        <p className="text-xs text-slate-400 mt-0.5">{activeTemp.desc}</p>
                       </div>
 
-                      {/* Info & Badges */}
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-extrabold text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 px-2.5 py-0.5 rounded-full border border-indigo-500/20">
-                            {t.badge}
-                          </span>
-                          {isSelected && <CheckCircle2 className="w-5 h-5 text-indigo-600" />}
-                        </div>
-                        <h3 className="text-sm font-extrabold text-slate-900 dark:text-white">{t.name}</h3>
-                        <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">{t.desc}</p>
-                      </div>
-
-                      {/* Select Action Button */}
                       <button
                         type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setFormData({ ...formData, selectedTemplate: t.id as any });
-                        }}
-                        className={`w-full py-2 px-3 rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                          isSelected
-                            ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md'
-                            : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-indigo-600 hover:text-white'
-                        }`}
+                        onClick={() => setIsTemplateModalOpen(true)}
+                        className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs border border-slate-700 flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
                       >
-                        {isSelected ? (
-                          <>
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            <span>Currently Active</span>
-                          </>
-                        ) : (
-                          <span>Use This Template →</span>
-                        )}
+                        <Edit3 className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>Change Template</span>
                       </button>
                     </div>
-                  );
-                })}
-              </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
 
@@ -1646,54 +1762,159 @@ Return ONLY the improved bullet points without introductory text or markdown pro
           {/* STEP 11: REVIEW RESUME */}
           {currentStep === 11 && (
             <div className="glass-card rounded-3xl p-6 border border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-900/80 space-y-5">
-              <div>
-                <h2 className="text-xl font-extrabold text-slate-900 dark:text-white font-['Space_Grotesk']">
-                  Review Your Resume
-                </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  Audit all resume sections before finalizing or running ATS checks
-                </p>
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
+                <div>
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-xs font-bold border border-indigo-500/20 mb-1">
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>Final Verification</span>
+                  </div>
+                  <h2 className="text-xl font-extrabold text-slate-900 dark:text-white font-['Space_Grotesk']">
+                    Complete Resume Review
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Review all candidate information sections before proceeding to ATS Analysis and final PDF download.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCurrentStep(12)}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-extrabold text-xs flex items-center gap-1.5 shadow"
+                >
+                  <span>Proceed to ATS Audit</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
               </div>
 
-              <div className="space-y-4 text-xs">
-                {/* Personal */}
+              <div className="grid grid-cols-1 gap-3.5 text-xs">
+                {/* 1. Template */}
                 <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 flex justify-between items-center">
                   <div>
+                    <span className="text-[10px] font-extrabold uppercase text-indigo-600 dark:text-indigo-400">Step 1: Active Template</span>
+                    <h3 className="font-extrabold text-slate-900 dark:text-white text-sm">{formData.selectedTemplate?.toUpperCase() || 'MODERN'}</h3>
+                  </div>
+                  <button onClick={() => setCurrentStep(1)} className="px-3 py-1 rounded-xl bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 font-bold hover:bg-indigo-600/20">Edit</button>
+                </div>
+
+                {/* 2. Personal Details */}
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 flex justify-between items-start gap-4">
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] font-extrabold uppercase text-indigo-600 dark:text-indigo-400">Step 2: Personal Information</span>
                     <h3 className="font-extrabold text-slate-900 dark:text-white text-sm">{formData.fullName || 'No Name Provided'}</h3>
-                    <p className="text-slate-500">{formData.professionalTitle} | {formData.email} | {formData.phone}</p>
+                    <p className="text-slate-500">{formData.professionalTitle} • {formData.email} • {formData.phone} • {formData.location}</p>
                   </div>
-                  <button onClick={() => setCurrentStep(2)} className="text-indigo-600 font-bold underline">Edit</button>
+                  <button onClick={() => setCurrentStep(2)} className="px-3 py-1 rounded-xl bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 font-bold hover:bg-indigo-600/20 shrink-0">Edit</button>
                 </div>
 
-                {/* Summary */}
+                {/* 3. Summary */}
                 <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 flex justify-between items-start gap-4">
-                  <div className="space-y-1">
-                    <h3 className="font-bold text-slate-900 dark:text-white">Summary</h3>
-                    <p className="text-slate-600 dark:text-slate-400 italic leading-relaxed">{formData.summary || 'No summary provided.'}</p>
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] font-extrabold uppercase text-indigo-600 dark:text-indigo-400">Step 3: Professional Summary</span>
+                    <p className="text-slate-700 dark:text-slate-300 italic leading-relaxed">{formData.summary || 'No summary provided.'}</p>
                   </div>
-                  <button onClick={() => setCurrentStep(3)} className="text-indigo-600 font-bold underline shrink-0">Edit</button>
+                  <button onClick={() => setCurrentStep(3)} className="px-3 py-1 rounded-xl bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 font-bold hover:bg-indigo-600/20 shrink-0">Edit</button>
                 </div>
 
-                {/* Education */}
+                {/* 4. Education */}
                 <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 flex justify-between items-start gap-4">
                   <div className="space-y-1">
-                    <h3 className="font-bold text-slate-900 dark:text-white">Education ({formData.education.length})</h3>
-                    {formData.education.map((e, idx) => (
-                      <div key={idx} className="text-slate-600 dark:text-slate-400">• {e.degree} — {e.institution} ({e.cgpa})</div>
-                    ))}
+                    <span className="text-[10px] font-extrabold uppercase text-indigo-600 dark:text-indigo-400">Step 4: Education ({formData.education.length} Entries)</span>
+                    {formData.education.length > 0 ? (
+                      formData.education.map((e, idx) => (
+                        <div key={idx} className="text-slate-700 dark:text-slate-300 font-medium">• {e.degree} — {e.institution} (CGPA: {e.cgpa})</div>
+                      ))
+                    ) : (
+                      <div className="text-slate-400 italic">No education entries added yet.</div>
+                    )}
                   </div>
-                  <button onClick={() => setCurrentStep(4)} className="text-indigo-600 font-bold underline shrink-0">Edit</button>
+                  <button onClick={() => setCurrentStep(4)} className="px-3 py-1 rounded-xl bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 font-bold hover:bg-indigo-600/20 shrink-0">Edit</button>
                 </div>
 
-                {/* Projects */}
+                {/* 5. Skills */}
                 <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 flex justify-between items-start gap-4">
                   <div className="space-y-1">
-                    <h3 className="font-bold text-slate-900 dark:text-white">Projects ({formData.projects.length})</h3>
-                    {formData.projects.map((p, idx) => (
-                      <div key={idx} className="text-slate-600 dark:text-slate-400">• {p.title}</div>
-                    ))}
+                    <span className="text-[10px] font-extrabold uppercase text-indigo-600 dark:text-indigo-400">Step 5: Technical Skills</span>
+                    <div className="flex flex-wrap gap-1">
+                      {((formData.programmingLanguages || []).concat(formData.skills || [])).length > 0 ? (
+                        (formData.programmingLanguages || []).concat(formData.skills || []).map((sk, idx) => (
+                          <span key={idx} className="px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 text-[10px] font-bold border border-indigo-500/20">
+                            {sk}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-slate-400 italic">No skills added yet.</span>
+                      )}
+                    </div>
                   </div>
-                  <button onClick={() => setCurrentStep(6)} className="text-indigo-600 font-bold underline shrink-0">Edit</button>
+                  <button onClick={() => setCurrentStep(5)} className="px-3 py-1 rounded-xl bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 font-bold hover:bg-indigo-600/20 shrink-0">Edit</button>
+                </div>
+
+                {/* 6. Projects */}
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 flex justify-between items-start gap-4">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-extrabold uppercase text-indigo-600 dark:text-indigo-400">Step 6: Projects ({formData.projects.length} Entries)</span>
+                    {formData.projects.length > 0 ? (
+                      formData.projects.map((p, idx) => (
+                        <div key={idx} className="text-slate-700 dark:text-slate-300 font-medium">• {p.title}</div>
+                      ))
+                    ) : (
+                      <div className="text-slate-400 italic">No projects added yet.</div>
+                    )}
+                  </div>
+                  <button onClick={() => setCurrentStep(6)} className="px-3 py-1 rounded-xl bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 font-bold hover:bg-indigo-600/20 shrink-0">Edit</button>
+                </div>
+
+                {/* 7. Experience */}
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 flex justify-between items-start gap-4">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-extrabold uppercase text-indigo-600 dark:text-indigo-400">Step 7: Experience & Internships ({formData.experience.length} Entries)</span>
+                    {formData.experience.length > 0 ? (
+                      formData.experience.map((exp, idx) => (
+                        <div key={idx} className="text-slate-700 dark:text-slate-300 font-medium">• {exp.role} — {exp.company}</div>
+                      ))
+                    ) : (
+                      <div className="text-slate-400 italic">No experience added yet.</div>
+                    )}
+                  </div>
+                  <button onClick={() => setCurrentStep(7)} className="px-3 py-1 rounded-xl bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 font-bold hover:bg-indigo-600/20 shrink-0">Edit</button>
+                </div>
+
+                {/* 8. Certifications */}
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 flex justify-between items-start gap-4">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-extrabold uppercase text-indigo-600 dark:text-indigo-400">Step 8: Certifications ({(formData.certifications || []).length} Entries)</span>
+                    {(formData.certifications || []).length > 0 ? (
+                      (formData.certifications || []).map((c, idx) => (
+                        <div key={idx} className="text-slate-700 dark:text-slate-300 font-medium">• {c.title} ({c.issuer})</div>
+                      ))
+                    ) : (
+                      <div className="text-slate-400 italic">No certifications added yet.</div>
+                    )}
+                  </div>
+                  <button onClick={() => setCurrentStep(8)} className="px-3 py-1 rounded-xl bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 font-bold hover:bg-indigo-600/20 shrink-0">Edit</button>
+                </div>
+
+                {/* 9. Activities */}
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 flex justify-between items-start gap-4">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-extrabold uppercase text-indigo-600 dark:text-indigo-400">Step 9: Activities & Achievements ({(formData.achievements || []).length} Items)</span>
+                    {(formData.achievements || []).length > 0 ? (
+                      <div className="text-slate-700 dark:text-slate-300 font-medium">• {(formData.achievements || []).join(' • ')}</div>
+                    ) : (
+                      <div className="text-slate-400 italic">No achievements added yet.</div>
+                    )}
+                  </div>
+                  <button onClick={() => setCurrentStep(9)} className="px-3 py-1 rounded-xl bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 font-bold hover:bg-indigo-600/20 shrink-0">Edit</button>
+                </div>
+
+                {/* 10. Links & Languages */}
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 flex justify-between items-start gap-4">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-extrabold uppercase text-indigo-600 dark:text-indigo-400">Step 10: Languages & Links</span>
+                    <div className="text-slate-700 dark:text-slate-300 font-medium">
+                      Languages: {(formData.languages || []).map((l) => `${l.language} (${l.proficiency})`).join(', ') || 'None specified'}
+                    </div>
+                  </div>
+                  <button onClick={() => setCurrentStep(10)} className="px-3 py-1 rounded-xl bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 font-bold hover:bg-indigo-600/20 shrink-0">Edit</button>
                 </div>
               </div>
             </div>
@@ -1899,9 +2120,19 @@ Return ONLY the improved bullet points without introductory text or markdown pro
                 <Eye className="w-4 h-4 text-cyan-400 animate-pulse" />
                 <span className="text-xs font-bold font-['Space_Grotesk'] text-white">Live Resume Preview</span>
               </div>
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-400 bg-indigo-500/10 px-2.5 py-0.5 rounded-full border border-indigo-500/20">
-                {formData.selectedTemplate?.toUpperCase() || 'MODERN'}
-              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsTemplateModalOpen(true)}
+                  className="px-2.5 py-1 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-[11px] font-extrabold flex items-center gap-1 transition-all cursor-pointer"
+                >
+                  <Layout className="w-3.5 h-3.5" />
+                  <span>Change Template</span>
+                </button>
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-400 bg-indigo-500/10 px-2.5 py-0.5 rounded-full border border-indigo-500/20">
+                  {formData.selectedTemplate?.toUpperCase() || 'MODERN'}
+                </span>
+              </div>
             </div>
 
             {/* LIVE RENDERER: Authentic A4 Paper Canvas */}
@@ -1913,6 +2144,121 @@ Return ONLY the improved bullet points without introductory text or markdown pro
           </div>
         </div>
       </div>
+
+      {/* DEDICATED 20-TEMPLATE SELECTION GALLERY MODAL */}
+      {isTemplateModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200 print:hidden">
+          <div className="relative w-full max-w-5xl max-h-[90vh] bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl flex flex-col overflow-hidden">
+            
+            {/* Modal Header */}
+            <div className="p-6 border-b border-slate-800 flex items-center justify-between gap-4 shrink-0 bg-slate-900/90">
+              <div className="space-y-1">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 text-indigo-400 text-xs font-bold border border-indigo-500/20">
+                  <Layout className="w-3.5 h-3.5" />
+                  <span>Resume Template Gallery (20 Designs)</span>
+                </div>
+                <h2 className="text-xl sm:text-2xl font-extrabold text-white font-['Space_Grotesk']">
+                  Choose Your Professional Template
+                </h2>
+                <p className="text-xs text-slate-400 font-medium">
+                  Select any design below. Your entered data binds automatically to your selected template preview.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsTemplateModalOpen(false)}
+                className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center transition-all cursor-pointer shrink-0"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Template Gallery Grid (20 Templates) */}
+            <div className="p-6 overflow-y-auto space-y-4 scrollbar-thin scrollbar-thumb-slate-700">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                {RESUME_TEMPLATES_LIST.map((t) => {
+                  const isSelected = (formData.selectedTemplate || 'modern') === t.id;
+                  return (
+                    <div
+                      key={t.id}
+                      onClick={() => {
+                        setFormData((prev) => ({ ...prev, selectedTemplate: t.id }));
+                        setIsTemplateModalOpen(false);
+                      }}
+                      className={`group relative rounded-2xl p-4 transition-all duration-300 cursor-pointer flex flex-col justify-between space-y-3 ${
+                        isSelected
+                          ? 'bg-gradient-to-b from-indigo-950/80 to-slate-900 border-2 border-indigo-500 shadow-xl ring-2 ring-indigo-500/30'
+                          : 'bg-slate-950/60 border border-slate-800 hover:border-indigo-500/50 hover:bg-slate-900/90'
+                      }`}
+                    >
+                      {/* Real Visual Resume Preview Thumbnail */}
+                      <div className="space-y-2">
+                        <div className="w-full h-44 rounded-xl bg-white text-slate-900 border border-slate-300 shadow-sm overflow-hidden relative pointer-events-none select-none">
+                          <div className="w-[360%] h-[360%] transform scale-[0.28] origin-top-left">
+                            <ResumePreviewTemplates data={MOCK_PREVIEW_DATA} template={t.id} />
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-1">
+                          <span className="text-xs font-black text-white font-['Space_Grotesk']">
+                            {t.name}
+                          </span>
+                          <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                            {t.category}
+                          </span>
+                        </div>
+
+                        <p className="text-[11px] text-slate-400 leading-normal line-clamp-2">
+                          {t.desc}
+                        </p>
+                      </div>
+
+                      {/* Action Button */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFormData((prev) => ({ ...prev, selectedTemplate: t.id }));
+                          setIsTemplateModalOpen(false);
+                        }}
+                        className={`w-full py-2 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-emerald-600 text-white shadow-md'
+                            : 'bg-slate-800 group-hover:bg-indigo-600 text-slate-200 group-hover:text-white'
+                        }`}
+                      >
+                        {isSelected ? (
+                          <>
+                            <Check className="w-4 h-4 font-black" />
+                            <span>ACTIVE TEMPLATE</span>
+                          </>
+                        ) : (
+                          <span>Use This Template</span>
+                        )}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-slate-800 bg-slate-950/80 flex items-center justify-between shrink-0">
+              <span className="text-xs font-bold text-slate-400">
+                20 Professional Resume Designs Available
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsTemplateModalOpen(false)}
+                className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-extrabold cursor-pointer"
+              >
+                Close Gallery
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

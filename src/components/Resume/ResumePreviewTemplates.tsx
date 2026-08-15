@@ -1,10 +1,9 @@
 import React from 'react';
 import { ResumeData } from '../../types';
-import { Mail, Phone, MapPin, Linkedin, Github, Globe, ExternalLink } from 'lucide-react';
 
 interface ResumePreviewTemplatesProps {
   data: ResumeData;
-  template?: 'classic' | 'modern' | 'minimal' | 'ats-friendly';
+  template?: string;
 }
 
 export const ResumePreviewTemplates: React.FC<ResumePreviewTemplatesProps> = ({ data, template = 'modern' }) => {
@@ -39,7 +38,7 @@ export const ResumePreviewTemplates: React.FC<ResumePreviewTemplatesProps> = ({ 
     additionalLinks = []
   } = data;
 
-  // Combine all skills for traditional view if categorized lists are empty
+  // Combine all skills for structured views
   const allSkillsList = Array.from(
     new Set([
       ...programmingLanguages,
@@ -53,646 +52,631 @@ export const ResumePreviewTemplates: React.FC<ResumePreviewTemplatesProps> = ({ 
     ])
   ).filter(Boolean);
 
-  // --- TEMPLATE 1: ATS FRIENDLY (Pure text, standard headers, high parseability) ---
-  if (template === 'ats-friendly') {
-    return (
-      <div className="w-full max-w-full box-border bg-white text-slate-900 font-sans p-6 sm:p-8 overflow-hidden break-words text-left print:shadow-none print:border-none print:max-w-none print:w-full print:p-0">
-        {/* Header */}
-        <div className="border-b border-slate-400 pb-3 text-left space-y-1">
-          <h1 className="text-2xl sm:text-3xl font-bold uppercase tracking-wide text-slate-900">
-            {fullName || 'YOUR FULL NAME'}
-          </h1>
-          {professionalTitle && (
-            <p className="text-sm font-semibold text-slate-700">{professionalTitle}</p>
-          )}
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-700 font-medium">
-            {location && <span>{location}</span>}
-            {phone && <span>| Phone: {phone}</span>}
-            {email && <span>| Email: {email}</span>}
-            {linkedIn && <span>| LinkedIn: {linkedIn}</span>}
-            {gitHub && <span>| GitHub: {gitHub}</span>}
-            {portfolio && <span>| Portfolio: {portfolio}</span>}
-          </div>
-        </div>
+  const keySkillsCategorized = [
+    { label: 'Languages', items: programmingLanguages },
+    { label: 'Web Tech', items: webTechnologies },
+    { label: 'Frameworks', items: frameworksLibraries },
+    { label: 'Databases', items: databases },
+    { label: 'Tools', items: toolsAndTech },
+    { label: 'Technical', items: technicalSkills },
+    { label: 'Other', items: otherSkills }
+  ].filter((cat) => cat.items && cat.items.length > 0);
 
-        {/* Summary */}
-        {summary && (
-          <div className="mt-4 space-y-1">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-900 border-b border-slate-300 pb-0.5">
-              Professional Summary
-            </h2>
-            <p className="text-xs leading-relaxed text-slate-800">{summary}</p>
-          </div>
-        )}
+  const tId = (template || 'modern').toLowerCase();
 
-        {/* Education */}
-        {education.length > 0 && (
-          <div className="mt-4 space-y-2">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-900 border-b border-slate-300 pb-0.5">
-              Education
-            </h2>
-            <div className="space-y-2">
-              {education.map((edu, idx) => (
-                <div key={idx} className="text-xs">
-                  <div className="flex justify-between font-bold text-slate-900">
-                    <span>{edu.degree}{edu.department ? ` (${edu.department})` : ''}</span>
-                    <span>
-                      {edu.startYear && edu.endYear ? `${edu.startYear} - ${edu.endYear}` : edu.graduationYear || ''}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-slate-700">
-                    <span>{edu.institution}{edu.university ? `, ${edu.university}` : ''}{edu.location ? ` | ${edu.location}` : ''}</span>
-                    {edu.cgpa && <span className="font-semibold">CGPA: {edu.cgpa}</span>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+  // Helper for contact details line
+  const renderContactBar = (separator = '•') => (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600 font-medium">
+      {email && <span>{email}</span>}
+      {phone && <span>{separator} {phone}</span>}
+      {location && <span>{separator} {location}</span>}
+      {linkedIn && <span>{separator} LinkedIn: {linkedIn}</span>}
+      {gitHub && <span>{separator} GitHub: {gitHub}</span>}
+      {portfolio && <span>{separator} Portfolio: {portfolio}</span>}
+    </div>
+  );
 
-        {/* Skills */}
-        {allSkillsList.length > 0 && (
-          <div className="mt-4 space-y-1">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-900 border-b border-slate-300 pb-0.5">
-              Technical Skills
-            </h2>
-            <div className="text-xs space-y-1">
-              {programmingLanguages.length > 0 && (
-                <div><span className="font-bold">Languages:</span> {programmingLanguages.join(', ')}</div>
-              )}
-              {webTechnologies.length > 0 && (
-                <div><span className="font-bold">Web Technologies:</span> {webTechnologies.join(', ')}</div>
-              )}
-              {frameworksLibraries.length > 0 && (
-                <div><span className="font-bold">Frameworks & Libraries:</span> {frameworksLibraries.join(', ')}</div>
-              )}
-              {databases.length > 0 && (
-                <div><span className="font-bold">Databases:</span> {databases.join(', ')}</div>
-              )}
-              {toolsAndTech.length > 0 && (
-                <div><span className="font-bold">Tools & Technologies:</span> {toolsAndTech.join(', ')}</div>
-              )}
-              {otherSkills.length > 0 && (
-                <div><span className="font-bold">Other Competencies:</span> {otherSkills.join(', ')}</div>
-              )}
-              {programmingLanguages.length === 0 && webTechnologies.length === 0 && frameworksLibraries.length === 0 && databases.length === 0 && toolsAndTech.length === 0 && (
-                <div>{allSkillsList.join(', ')}</div>
-              )}
-            </div>
+  // Helper for skills list rendering
+  const renderCategorizedSkills = () => (
+    <div className="text-xs space-y-1 text-slate-800">
+      {keySkillsCategorized.length > 0 ? (
+        keySkillsCategorized.map((cat, idx) => (
+          <div key={idx}>
+            <span className="font-bold text-slate-900">{cat.label}:</span> {cat.items.join(', ')}
           </div>
-        )}
-
-        {/* Projects */}
-        {projects.length > 0 && (
-          <div className="mt-4 space-y-2.5">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-900 border-b border-slate-300 pb-0.5">
-              Projects
-            </h2>
-            {projects.map((proj, idx) => (
-              <div key={idx} className="space-y-1 text-xs">
-                <div className="flex justify-between font-bold text-slate-900">
-                  <span>{proj.title}</span>
-                  <span className="font-normal text-slate-600">
-                    {proj.gitHubUrl && `GitHub: ${proj.gitHubUrl}`}
-                  </span>
-                </div>
-                <p className="text-slate-800 leading-relaxed">{proj.description}</p>
-                {proj.keyContributions && (
-                  <p className="text-slate-800 font-medium">• {proj.keyContributions}</p>
-                )}
-                {proj.techStack && proj.techStack.length > 0 && (
-                  <p className="text-[11px] text-slate-700">
-                    <span className="font-bold">Technologies Used:</span> {Array.isArray(proj.techStack) ? proj.techStack.join(', ') : proj.techStack}
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Experience */}
-        {experience.length > 0 && (
-          <div className="mt-4 space-y-2.5">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-900 border-b border-slate-300 pb-0.5">
-              Work & Internship Experience
-            </h2>
-            {experience.map((exp, idx) => (
-              <div key={idx} className="space-y-1 text-xs">
-                <div className="flex justify-between font-bold text-slate-900">
-                  <span>{exp.role} — {exp.company}{exp.location ? `, ${exp.location}` : ''}</span>
-                  <span className="font-normal text-slate-600">
-                    {exp.startDate && exp.endDate ? `${exp.startDate} - ${exp.endDate}` : exp.duration}
-                  </span>
-                </div>
-                <p className="text-slate-800 leading-relaxed">{exp.description}</p>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Certifications */}
-        {certifications.length > 0 && (
-          <div className="mt-4 space-y-1 text-xs">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-900 border-b border-slate-300 pb-0.5">
-              Certifications
-            </h2>
-            <ul className="list-disc list-inside space-y-0.5 text-slate-800">
-              {certifications.map((c, idx) => (
-                <li key={idx}>
-                  <span className="font-bold">{c.title}</span>{c.issuer ? ` - ${c.issuer}` : ''}{c.year || c.date ? ` (${c.year || c.date})` : ''}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {/* Achievements & Activities */}
-        {(achievements.length > 0 || leadership.length > 0 || clubsVolunteering.length > 0 || extracurriculars.length > 0) && (
-          <div className="mt-4 space-y-1 text-xs">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-900 border-b border-slate-300 pb-0.5">
-              Achievements & Co-Curricular Activities
-            </h2>
-            <ul className="list-disc list-inside space-y-0.5 text-slate-800">
-              {achievements.map((item, idx) => <li key={`ach-${idx}`}>{item}</li>)}
-              {leadership.map((item, idx) => <li key={`lead-${idx}`}><span className="font-semibold">Leadership:</span> {item}</li>)}
-              {clubsVolunteering.map((item, idx) => <li key={`club-${idx}`}><span className="font-semibold">Volunteering:</span> {item}</li>)}
-              {extracurriculars.map((item, idx) => <li key={`extra-${idx}`}>{item}</li>)}
-            </ul>
-          </div>
-        )}
-
-        {/* Languages & Additional Links */}
-        {(languages.length > 0 || additionalLinks.length > 0) && (
-          <div className="mt-4 space-y-1 text-xs">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-900 border-b border-slate-300 pb-0.5">
-              Additional Information
-            </h2>
-            {languages.length > 0 && (
-              <div>
-                <span className="font-bold">Languages Spoken:</span> {languages.map(l => `${l.language}${l.proficiency ? ` (${l.proficiency})` : ''}`).join(', ')}
-              </div>
-            )}
-            {additionalLinks.length > 0 && (
-              <div>
-                <span className="font-bold">Profiles & Links:</span> {additionalLinks.map(al => `${al.platform}: ${al.url}`).join(' | ')}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // --- TEMPLATE 2: CLASSIC PROFESSIONAL ---
-  if (template === 'classic') {
-    return (
-      <div className="w-full max-w-full box-border bg-white text-slate-900 font-serif p-6 sm:p-8 overflow-hidden break-words text-left print:shadow-none print:border-none print:max-w-none print:w-full print:p-0">
-        {/* Header */}
-        <div className="border-b-2 border-slate-900 pb-4 text-center space-y-1">
-          <h1 className="text-2xl sm:text-3xl font-bold uppercase tracking-wider text-slate-900">
-            {fullName || 'YOUR FULL NAME'}
-          </h1>
-          {professionalTitle && (
-            <p className="text-sm font-sans font-semibold text-slate-700 uppercase tracking-widest">{professionalTitle}</p>
-          )}
-          <div className="flex flex-wrap justify-center items-center gap-x-3 gap-y-1 text-xs text-slate-700 font-sans">
-            {location && <span>{location}</span>}
-            {phone && <span>• {phone}</span>}
-            {email && <span>• {email}</span>}
-            {linkedIn && <span>• {linkedIn}</span>}
-            {gitHub && <span>• {gitHub}</span>}
-            {portfolio && <span>• {portfolio}</span>}
-          </div>
-        </div>
-
-        {/* Summary */}
-        {summary && (
-          <div className="mt-5 space-y-1">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-900 border-b border-slate-300 pb-0.5">
-              Professional Summary
-            </h2>
-            <p className="text-xs leading-relaxed text-slate-800 font-sans">{summary}</p>
-          </div>
-        )}
-
-        {/* Education */}
-        {education.length > 0 && (
-          <div className="mt-5 space-y-2">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-900 border-b border-slate-300 pb-0.5">
-              Education
-            </h2>
-            <div className="space-y-2 font-sans">
-              {education.map((edu, idx) => (
-                <div key={idx} className="flex justify-between items-start text-xs">
-                  <div>
-                    <span className="font-bold text-slate-900">{edu.degree}</span>
-                    {edu.department && <span className="text-slate-700"> in {edu.department}</span>}
-                    <span className="text-slate-700"> — {edu.institution}</span>
-                    {edu.university && <span className="text-slate-600"> ({edu.university})</span>}
-                  </div>
-                  <div className="text-right shrink-0 font-medium text-slate-700">
-                    {edu.startYear && edu.endYear ? `${edu.startYear} - ${edu.endYear}` : edu.graduationYear || ''}
-                    {edu.cgpa && <span className="ml-2 font-semibold">| CGPA: {edu.cgpa}</span>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Skills */}
-        {allSkillsList.length > 0 && (
-          <div className="mt-5 space-y-1.5 font-sans">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-900 border-b border-slate-300 pb-0.5">
-              Skills & Competencies
-            </h2>
-            <div className="text-xs space-y-1">
-              {programmingLanguages.length > 0 && (
-                <div><span className="font-bold text-slate-900">Languages: </span><span className="text-slate-800">{programmingLanguages.join(', ')}</span></div>
-              )}
-              {webTechnologies.length > 0 && (
-                <div><span className="font-bold text-slate-900">Web Technologies: </span><span className="text-slate-800">{webTechnologies.join(', ')}</span></div>
-              )}
-              {frameworksLibraries.length > 0 && (
-                <div><span className="font-bold text-slate-900">Frameworks: </span><span className="text-slate-800">{frameworksLibraries.join(', ')}</span></div>
-              )}
-              {databases.length > 0 && (
-                <div><span className="font-bold text-slate-900">Databases: </span><span className="text-slate-800">{databases.join(', ')}</span></div>
-              )}
-              {toolsAndTech.length > 0 && (
-                <div><span className="font-bold text-slate-900">Tools: </span><span className="text-slate-800">{toolsAndTech.join(', ')}</span></div>
-              )}
-              {programmingLanguages.length === 0 && webTechnologies.length === 0 && frameworksLibraries.length === 0 && databases.length === 0 && (
-                <div><span className="text-slate-800">{allSkillsList.join(', ')}</span></div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Projects */}
-        {projects.length > 0 && (
-          <div className="mt-5 space-y-3 font-sans">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-900 border-b border-slate-300 pb-0.5">
-              Key Projects
-            </h2>
-            {projects.map((proj, idx) => (
-              <div key={idx} className="space-y-1 text-xs">
-                <div className="flex justify-between items-baseline font-bold text-slate-900">
-                  <span>{proj.title}</span>
-                  <div className="text-[11px] font-normal text-slate-600 flex gap-2">
-                    {proj.gitHubUrl && <span>GitHub: {proj.gitHubUrl}</span>}
-                    {proj.demoUrl && <span>Demo: {proj.demoUrl}</span>}
-                  </div>
-                </div>
-                <p className="text-slate-800 leading-normal">{proj.description}</p>
-                {proj.keyContributions && <p className="text-slate-700 italic">• {proj.keyContributions}</p>}
-                {proj.techStack && proj.techStack.length > 0 && (
-                  <p className="text-[11px] text-slate-600">
-                    <span className="font-semibold text-slate-700">Technologies: </span>
-                    {Array.isArray(proj.techStack) ? proj.techStack.join(', ') : proj.techStack}
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Experience */}
-        {experience.length > 0 && (
-          <div className="mt-5 space-y-2.5 font-sans">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-900 border-b border-slate-300 pb-0.5">
-              Internships & Experience
-            </h2>
-            {experience.map((exp, idx) => (
-              <div key={idx} className="space-y-1 text-xs">
-                <div className="flex justify-between items-baseline font-bold text-slate-900">
-                  <span>{exp.role} — {exp.company}{exp.location ? `, ${exp.location}` : ''}</span>
-                  <span className="font-normal text-slate-600">{exp.startDate && exp.endDate ? `${exp.startDate} - ${exp.endDate}` : exp.duration}</span>
-                </div>
-                <p className="text-slate-800 leading-normal">{exp.description}</p>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Certifications & Achievements */}
-        {(certifications.length > 0 || achievements.length > 0 || leadership.length > 0 || workshops.length > 0) && (
-          <div className="mt-5 space-y-2 font-sans">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-900 border-b border-slate-300 pb-0.5">
-              Certifications & Achievements
-            </h2>
-            <ul className="list-disc list-inside text-xs text-slate-800 space-y-1">
-              {certifications.map((c, idx) => (
-                <li key={`cert-${idx}`}>
-                  <span className="font-semibold">{c.title}</span>
-                  {c.issuer && <span> — {c.issuer}</span>}
-                  {c.year || c.date ? ` (${c.year || c.date})` : ''}
-                </li>
-              ))}
-              {achievements.map((ach, idx) => <li key={`ach-${idx}`}>{ach}</li>)}
-              {leadership.map((lead, idx) => <li key={`lead-${idx}`}><span className="font-semibold">Leadership: </span>{lead}</li>)}
-              {workshops.map((w, idx) => <li key={`wk-${idx}`}><span className="font-semibold">Workshop: </span>{w}</li>)}
-            </ul>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // --- TEMPLATE 3: MODERN PROFESSIONAL ---
-  if (template === 'modern') {
-    return (
-      <div className="w-full max-w-full box-border bg-white text-slate-900 font-sans p-6 sm:p-8 border-t-8 border-indigo-600 overflow-hidden break-words text-left print:shadow-none print:border-t-8 print:max-w-none print:w-full print:p-0">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start gap-4 pb-5 border-b border-slate-200">
-          <div className="space-y-1">
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
-              {fullName || 'Your Full Name'}
-            </h1>
-            <p className="text-sm font-semibold text-indigo-600">
-              {professionalTitle || 'Software Engineering Candidate'}
-            </p>
-          </div>
-          <div className="text-left sm:text-right text-xs space-y-1 text-slate-600 font-medium shrink-0">
-            <div className="flex items-center sm:justify-end gap-1.5"><Mail className="w-3.5 h-3.5 text-indigo-500" />{email || 'email@example.com'}</div>
-            <div className="flex items-center sm:justify-end gap-1.5"><Phone className="w-3.5 h-3.5 text-indigo-500" />{phone || '+91 98765 43210'}</div>
-            <div className="flex items-center sm:justify-end gap-1.5"><MapPin className="w-3.5 h-3.5 text-indigo-500" />{location || 'Chennai, India'}</div>
-          </div>
-        </div>
-
-        {/* Links bar */}
-        {(linkedIn || gitHub || portfolio || additionalLinks.length > 0) && (
-          <div className="py-2.5 px-4 bg-indigo-50/60 border-b border-indigo-100 flex flex-wrap gap-4 text-xs font-semibold text-indigo-700">
-            {linkedIn && <span className="flex items-center gap-1"><Linkedin className="w-3.5 h-3.5 text-indigo-600" />{linkedIn}</span>}
-            {gitHub && <span className="flex items-center gap-1"><Github className="w-3.5 h-3.5 text-indigo-600" />{gitHub}</span>}
-            {portfolio && <span className="flex items-center gap-1"><Globe className="w-3.5 h-3.5 text-indigo-600" />{portfolio}</span>}
-            {additionalLinks.map((al, idx) => (
-              <span key={idx} className="flex items-center gap-1"><ExternalLink className="w-3.5 h-3.5 text-indigo-600" />{al.platform}: {al.url}</span>
-            ))}
-          </div>
-        )}
-
-        {/* Summary */}
-        {summary && (
-          <div className="mt-6 space-y-1.5">
-            <h2 className="text-xs font-black uppercase tracking-widest text-indigo-600 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-indigo-600"></span> Summary
-            </h2>
-            <p className="text-xs leading-relaxed text-slate-700 font-normal pl-4 border-l-2 border-indigo-100">{summary}</p>
-          </div>
-        )}
-
-        {/* Education */}
-        {education.length > 0 && (
-          <div className="mt-6 space-y-3">
-            <h2 className="text-xs font-black uppercase tracking-widest text-indigo-600 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-indigo-600"></span> Education
-            </h2>
-            <div className="space-y-2 pl-4">
-              {education.map((edu, idx) => (
-                <div key={idx} className="flex justify-between items-start text-xs border-b border-slate-100 pb-2">
-                  <div>
-                    <h3 className="font-extrabold text-slate-900">{edu.degree}{edu.department ? ` - ${edu.department}` : ''}</h3>
-                    <p className="text-slate-600">{edu.institution} {edu.university ? `(${edu.university})` : ''}</p>
-                  </div>
-                  <div className="text-right shrink-0 font-bold text-indigo-600">
-                    {edu.startYear && edu.endYear ? `${edu.startYear} - ${edu.endYear}` : edu.graduationYear} {edu.cgpa && <span className="text-slate-700 font-medium">| {edu.cgpa}</span>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Skills */}
-        {allSkillsList.length > 0 && (
-          <div className="mt-6 space-y-2">
-            <h2 className="text-xs font-black uppercase tracking-widest text-indigo-600 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-indigo-600"></span> Technical Skills
-            </h2>
-            <div className="pl-4 space-y-1.5 text-xs">
-              {programmingLanguages.length > 0 && (
-                <div className="flex gap-2 items-center">
-                  <span className="font-bold text-slate-900 min-w-[110px]">Languages:</span>
-                  <div className="flex flex-wrap gap-1">
-                    {programmingLanguages.map((s, i) => (
-                      <span key={i} className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-semibold text-[11px] border border-indigo-100">{s}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {webTechnologies.length > 0 && (
-                <div className="flex gap-2 items-center">
-                  <span className="font-bold text-slate-900 min-w-[110px]">Web Tech:</span>
-                  <div className="flex flex-wrap gap-1">
-                    {webTechnologies.map((s, i) => (
-                      <span key={i} className="bg-indigo-50/70 text-indigo-800 px-2 py-0.5 rounded font-semibold text-[11px]">{s}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {frameworksLibraries.length > 0 && (
-                <div className="flex gap-2 items-center">
-                  <span className="font-bold text-slate-900 min-w-[110px]">Frameworks:</span>
-                  <div className="flex flex-wrap gap-1">
-                    {frameworksLibraries.map((s, i) => (
-                      <span key={i} className="bg-slate-100 text-slate-800 px-2 py-0.5 rounded font-semibold text-[11px]">{s}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {databases.length > 0 && (
-                <div className="flex gap-2 items-center">
-                  <span className="font-bold text-slate-900 min-w-[110px]">Databases:</span>
-                  <div className="flex flex-wrap gap-1">
-                    {databases.map((s, i) => (
-                      <span key={i} className="bg-slate-100 text-slate-800 px-2 py-0.5 rounded font-semibold text-[11px]">{s}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {toolsAndTech.length > 0 && (
-                <div className="flex gap-2 items-center">
-                  <span className="font-bold text-slate-900 min-w-[110px]">Tools:</span>
-                  <div className="flex flex-wrap gap-1">
-                    {toolsAndTech.map((s, i) => (
-                      <span key={i} className="bg-slate-100 text-slate-800 px-2 py-0.5 rounded font-semibold text-[11px]">{s}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Projects */}
-        {projects.length > 0 && (
-          <div className="mt-6 space-y-3">
-            <h2 className="text-xs font-black uppercase tracking-widest text-indigo-600 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-indigo-600"></span> Projects
-            </h2>
-            <div className="pl-4 space-y-3">
-              {projects.map((proj, idx) => (
-                <div key={idx} className="space-y-1 text-xs">
-                  <div className="flex justify-between items-center">
-                    <h3 className="font-extrabold text-slate-900 text-sm">{proj.title}</h3>
-                    <div className="text-[11px] font-semibold text-indigo-600 flex gap-3">
-                      {proj.gitHubUrl && <span>GitHub</span>}
-                      {proj.demoUrl && <span>Demo</span>}
-                    </div>
-                  </div>
-                  <p className="text-slate-700 leading-relaxed">{proj.description}</p>
-                  {proj.keyContributions && <p className="text-indigo-900 font-medium text-[11px]">• {proj.keyContributions}</p>}
-                  {proj.techStack && proj.techStack.length > 0 && (
-                    <div className="flex flex-wrap gap-1 pt-1">
-                      {(Array.isArray(proj.techStack) ? proj.techStack : [proj.techStack]).map((t, i) => (
-                        <span key={i} className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[10px] font-medium">{t}</span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Experience */}
-        {experience.length > 0 && (
-          <div className="mt-6 space-y-3">
-            <h2 className="text-xs font-black uppercase tracking-widest text-indigo-600 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-indigo-600"></span> Experience
-            </h2>
-            <div className="pl-4 space-y-2">
-              {experience.map((exp, idx) => (
-                <div key={idx} className="space-y-1 text-xs">
-                  <div className="flex justify-between items-center font-extrabold text-slate-900">
-                    <span>{exp.role} — {exp.company}</span>
-                    <span className="text-indigo-600 font-medium">{exp.startDate && exp.endDate ? `${exp.startDate} - ${exp.endDate}` : exp.duration}</span>
-                  </div>
-                  <p className="text-slate-700">{exp.description}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Certifications & Achievements */}
-        {(certifications.length > 0 || achievements.length > 0 || leadership.length > 0) && (
-          <div className="mt-6 space-y-2">
-            <h2 className="text-xs font-black uppercase tracking-widest text-indigo-600 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-indigo-600"></span> Certifications & Achievements
-            </h2>
-            <div className="pl-4 text-xs space-y-1.5">
-              {certifications.map((c, idx) => (
-                <div key={idx} className="flex justify-between text-slate-800">
-                  <span className="font-bold">{c.title} {c.issuer ? `— ${c.issuer}` : ''}</span>
-                  <span className="text-slate-500 font-semibold">{c.year || c.date}</span>
-                </div>
-              ))}
-              {achievements.map((ach, idx) => (
-                <div key={idx} className="text-slate-700">• {ach}</div>
-              ))}
-              {leadership.map((lead, idx) => (
-                <div key={idx} className="text-slate-700">• <span className="font-semibold text-indigo-900">Leadership:</span> {lead}</div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // --- TEMPLATE 4: MINIMAL CLEAN ---
-  return (
-    <div className="w-full max-w-full box-border bg-white text-slate-900 font-sans p-6 sm:p-8 overflow-hidden break-words text-left print:shadow-none print:border-none print:max-w-none print:w-full print:p-0">
-      {/* Header */}
-      <div className="text-left space-y-1.5 pb-4 border-b-2 border-slate-900">
-        <h1 className="text-3xl font-black text-slate-900 tracking-tight">
-          {fullName || 'YOUR NAME'}
-        </h1>
-        {professionalTitle && (
-          <p className="text-xs font-bold uppercase tracking-wider text-slate-600">{professionalTitle}</p>
-        )}
-        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs font-medium text-slate-600 pt-1">
-          {email && <span>{email}</span>}
-          {phone && <span>• {phone}</span>}
-          {location && <span>• {location}</span>}
-          {linkedIn && <span>• {linkedIn}</span>}
-          {gitHub && <span>• {gitHub}</span>}
-          {portfolio && <span>• {portfolio}</span>}
-        </div>
-      </div>
-
-      {/* Summary */}
-      {summary && (
-        <div className="py-3 border-b border-slate-200 space-y-1">
-          <p className="text-xs text-slate-700 leading-relaxed italic">{summary}</p>
-        </div>
+        ))
+      ) : (
+        <div>{allSkillsList.join(', ')}</div>
       )}
+    </div>
+  );
 
-      {/* Grid Layout for Education & Skills */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 py-4 border-b border-slate-200">
-        {/* Education Column */}
-        {education.length > 0 && (
-          <div className="space-y-2">
-            <h2 className="text-xs font-black uppercase tracking-wider text-slate-900">Education</h2>
-            {education.map((edu, idx) => (
-              <div key={idx} className="text-xs space-y-0.5">
-                <div className="font-bold text-slate-900">{edu.degree}{edu.department ? ` (${edu.department})` : ''}</div>
-                <div className="text-slate-600 text-[11px]">{edu.institution}</div>
-                <div className="text-slate-500 text-[10px] font-semibold">
-                  {edu.startYear && edu.endYear ? `${edu.startYear} - ${edu.endYear}` : edu.graduationYear} | CGPA: {edu.cgpa}
-                </div>
+  // Helper for projects section
+  const renderProjectsSection = (titleClass = 'text-xs font-bold uppercase tracking-wider text-slate-900 border-b border-slate-300 pb-0.5 mb-2') => (
+    projects.length > 0 && (
+      <div className="space-y-2 mt-4 text-left">
+        <h2 className={titleClass}>Projects</h2>
+        <div className="space-y-2.5">
+          {projects.map((proj, idx) => (
+            <div key={idx} className="text-xs space-y-0.5">
+              <div className="flex justify-between items-baseline font-bold text-slate-900">
+                <span>{proj.title}</span>
+                {proj.gitHubUrl && <span className="text-[10px] text-blue-600 font-normal">GitHub: {proj.gitHubUrl}</span>}
               </div>
-            ))}
+              {proj.techStack && proj.techStack.length > 0 && (
+                <div className="text-[11px] font-semibold text-indigo-700">
+                  Tech Stack: {Array.isArray(proj.techStack) ? proj.techStack.join(', ') : proj.techStack}
+                </div>
+              )}
+              {proj.description && <p className="text-slate-700 leading-relaxed text-[11px]">{proj.description}</p>}
+              {proj.keyContributions && (
+                <p className="text-slate-700 text-[11px] font-medium pt-0.5">• Key Contributions: {proj.keyContributions}</p>
+              )}
+              {proj.demoUrl && <div className="text-[10px] text-blue-600">Demo: {proj.demoUrl}</div>}
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  );
+
+  // Helper for experience section
+  const renderExperienceSection = (titleClass = 'text-xs font-bold uppercase tracking-wider text-slate-900 border-b border-slate-300 pb-0.5 mb-2') => (
+    experience.length > 0 && (
+      <div className="space-y-2 mt-4 text-left">
+        <h2 className={titleClass}>Experience & Internships</h2>
+        <div className="space-y-2.5">
+          {experience.map((exp, idx) => (
+            <div key={idx} className="text-xs space-y-0.5">
+              <div className="flex justify-between items-baseline font-bold text-slate-900">
+                <span>{exp.role} — {exp.company}</span>
+                <span className="text-[11px] font-normal text-slate-600">{exp.duration || `${exp.startDate || ''} - ${exp.endDate || ''}`}</span>
+              </div>
+              {exp.location && <div className="text-[11px] text-slate-500">{exp.location}</div>}
+              {exp.description && <p className="text-slate-700 leading-relaxed text-[11px]">{exp.description}</p>}
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  );
+
+  // Helper for education section
+  const renderEducationSection = (titleClass = 'text-xs font-bold uppercase tracking-wider text-slate-900 border-b border-slate-300 pb-0.5 mb-2') => (
+    education.length > 0 && (
+      <div className="space-y-2 mt-4 text-left">
+        <h2 className={titleClass}>Education</h2>
+        <div className="space-y-2">
+          {education.map((edu, idx) => (
+            <div key={idx} className="text-xs">
+              <div className="flex justify-between font-bold text-slate-900">
+                <span>{edu.degree}{edu.department ? ` (${edu.department})` : ''}</span>
+                <span>{edu.startYear && edu.endYear ? `${edu.startYear} - ${edu.endYear}` : edu.graduationYear || ''}</span>
+              </div>
+              <div className="flex justify-between text-slate-700 text-[11px]">
+                <span>{edu.institution}{edu.university ? `, ${edu.university}` : ''}{edu.location ? ` | ${edu.location}` : ''}</span>
+                {edu.cgpa && <span className="font-semibold">CGPA/Score: {edu.cgpa}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  );
+
+  // Helper for certifications & achievements
+  const renderCertificationsSection = (titleClass = 'text-xs font-bold uppercase tracking-wider text-slate-900 border-b border-slate-300 pb-0.5 mb-2') => (
+    (certifications.length > 0 || achievements.length > 0 || leadership.length > 0 || languages.length > 0) && (
+      <div className="space-y-2 mt-4 text-left text-xs">
+        <h2 className={titleClass}>Certifications, Achievements & Languages</h2>
+        <div className="space-y-1.5 text-slate-800">
+          {certifications.length > 0 && (
+            <div>
+              <span className="font-bold text-slate-900">Certifications: </span>
+              {certifications.map((c) => `${c.title}${c.issuer ? ` (${c.issuer})` : ''}`).join(', ')}
+            </div>
+          )}
+          {achievements.length > 0 && (
+            <div>
+              <span className="font-bold text-slate-900">Key Achievements: </span>
+              {achievements.join(' • ')}
+            </div>
+          )}
+          {leadership.length > 0 && (
+            <div>
+              <span className="font-bold text-slate-900">Leadership & Activities: </span>
+              {leadership.join(' • ')}
+            </div>
+          )}
+          {languages.length > 0 && (
+            <div>
+              <span className="font-bold text-slate-900">Languages: </span>
+              {languages.map((l) => `${l.language} (${l.proficiency})`).join(', ')}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  );
+
+  // =========================================================================================
+  // 1. ATS FRIENDLY (Pure single-column maximum parser compatibility)
+  // =========================================================================================
+  if (tId === 'ats-friendly') {
+    return (
+      <div className="w-full bg-white text-slate-900 font-sans p-6 sm:p-8 text-left break-words">
+        <div className="border-b border-slate-400 pb-3">
+          <h1 className="text-2xl font-bold uppercase tracking-wide text-slate-900">{fullName || 'YOUR NAME'}</h1>
+          {professionalTitle && <p className="text-sm font-semibold text-slate-700">{professionalTitle}</p>}
+          {renderContactBar('|')}
+        </div>
+        {summary && (
+          <div className="mt-3">
+            <h2 className="text-xs font-bold uppercase tracking-wider border-b border-slate-300 pb-0.5">Professional Summary</h2>
+            <p className="text-xs text-slate-800 leading-relaxed mt-1">{summary}</p>
           </div>
         )}
-
-        {/* Skills Column */}
+        {renderEducationSection()}
         {allSkillsList.length > 0 && (
-          <div className="space-y-2">
-            <h2 className="text-xs font-black uppercase tracking-wider text-slate-900">Core Skills</h2>
+          <div className="mt-4">
+            <h2 className="text-xs font-bold uppercase tracking-wider border-b border-slate-300 pb-0.5 mb-1">Technical Skills</h2>
+            {renderCategorizedSkills()}
+          </div>
+        )}
+        {renderProjectsSection()}
+        {renderExperienceSection()}
+        {renderCertificationsSection()}
+      </div>
+    );
+  }
+
+  // =========================================================================================
+  // 2. MINIMAL CLEAN (Ultra-clean layout with left border accent)
+  // =========================================================================================
+  if (tId === 'minimal') {
+    return (
+      <div className="w-full bg-white text-slate-900 font-sans p-6 sm:p-8 text-left border-l-8 border-slate-900">
+        <div className="pb-3 border-b border-slate-200">
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">{fullName || 'YOUR NAME'}</h1>
+          {professionalTitle && <p className="text-xs font-bold uppercase tracking-widest text-slate-500 mt-0.5">{professionalTitle}</p>}
+          <div className="pt-2">{renderContactBar('•')}</div>
+        </div>
+        {summary && <p className="text-xs text-slate-700 leading-relaxed italic my-3">{summary}</p>}
+        {renderEducationSection('text-xs font-black uppercase tracking-wider text-slate-900 border-b-2 border-slate-900 pb-1 mb-2')}
+        {allSkillsList.length > 0 && (
+          <div className="mt-4">
+            <h2 className="text-xs font-black uppercase tracking-wider text-slate-900 border-b-2 border-slate-900 pb-1 mb-2">Technical Core</h2>
+            {renderCategorizedSkills()}
+          </div>
+        )}
+        {renderProjectsSection('text-xs font-black uppercase tracking-wider text-slate-900 border-b-2 border-slate-900 pb-1 mb-2')}
+        {renderExperienceSection('text-xs font-black uppercase tracking-wider text-slate-900 border-b-2 border-slate-900 pb-1 mb-2')}
+        {renderCertificationsSection('text-xs font-black uppercase tracking-wider text-slate-900 border-b-2 border-slate-900 pb-1 mb-2')}
+      </div>
+    );
+  }
+
+  // =========================================================================================
+  // 3. EXECUTIVE LEADERSHIP (Dark navy banner header & serif typography)
+  // =========================================================================================
+  if (tId === 'executive') {
+    return (
+      <div className="w-full bg-white text-slate-900 font-serif p-0 text-left">
+        <div className="bg-slate-950 text-white p-6 sm:p-8 text-center space-y-1.5 border-b-4 border-amber-500">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-wider font-serif uppercase">{fullName || 'YOUR NAME'}</h1>
+          {professionalTitle && <p className="text-xs uppercase tracking-widest text-amber-400 font-sans">{professionalTitle}</p>}
+          <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs text-slate-300 font-sans pt-1">
+            {email && <span>{email}</span>}
+            {phone && <span>• {phone}</span>}
+            {location && <span>• {location}</span>}
+            {linkedIn && <span>• {linkedIn}</span>}
+          </div>
+        </div>
+        <div className="p-6 sm:p-8 font-sans space-y-4">
+          {summary && (
+            <div>
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-900 border-b-2 border-slate-900 pb-1 mb-1 font-serif">Executive Summary</h2>
+              <p className="text-xs text-slate-800 leading-relaxed font-serif">{summary}</p>
+            </div>
+          )}
+          {renderExperienceSection('text-xs font-bold uppercase tracking-wider text-slate-900 border-b-2 border-slate-900 pb-1 mb-2 font-serif')}
+          {renderProjectsSection('text-xs font-bold uppercase tracking-wider text-slate-900 border-b-2 border-slate-900 pb-1 mb-2 font-serif')}
+          {renderEducationSection('text-xs font-bold uppercase tracking-wider text-slate-900 border-b-2 border-slate-900 pb-1 mb-2 font-serif')}
+          {allSkillsList.length > 0 && (
+            <div>
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-900 border-b-2 border-slate-900 pb-1 mb-2 font-serif">Competencies & Skills</h2>
+              {renderCategorizedSkills()}
+            </div>
+          )}
+          {renderCertificationsSection('text-xs font-bold uppercase tracking-wider text-slate-900 border-b-2 border-slate-900 pb-1 mb-2 font-serif')}
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================================================================
+  // 4. ELEGANT SERIF (Gold/Warm top rule & elegant two-column layout)
+  // =========================================================================================
+  if (tId === 'elegant') {
+    return (
+      <div className="w-full bg-white text-slate-900 font-serif p-6 sm:p-8 text-left border-t-8 border-amber-600">
+        <div className="text-center border-b border-amber-200 pb-4">
+          <h1 className="text-3xl font-bold text-slate-900 tracking-wide">{fullName || 'YOUR NAME'}</h1>
+          {professionalTitle && <p className="text-xs font-sans uppercase tracking-widest text-amber-700 mt-1 font-bold">{professionalTitle}</p>}
+          <div className="flex flex-wrap justify-center gap-3 text-xs text-slate-600 font-sans pt-2">
+            {email && <span>{email}</span>}
+            {phone && <span>• {phone}</span>}
+            {location && <span>• {location}</span>}
+            {linkedIn && <span>• {linkedIn}</span>}
+          </div>
+        </div>
+        {summary && <p className="text-xs text-slate-800 leading-relaxed italic my-4 text-center px-4">{summary}</p>}
+        {renderEducationSection('text-xs font-bold uppercase tracking-widest text-amber-800 border-b border-amber-300 pb-1 mb-2 font-sans')}
+        {allSkillsList.length > 0 && (
+          <div className="mt-4 font-sans">
+            <h2 className="text-xs font-bold uppercase tracking-widest text-amber-800 border-b border-amber-300 pb-1 mb-2">Technical Stack</h2>
+            {renderCategorizedSkills()}
+          </div>
+        )}
+        {renderProjectsSection('text-xs font-bold uppercase tracking-widest text-amber-800 border-b border-amber-300 pb-1 mb-2 font-sans')}
+        {renderExperienceSection('text-xs font-bold uppercase tracking-widest text-amber-800 border-b border-amber-300 pb-1 mb-2 font-sans')}
+        {renderCertificationsSection('text-xs font-bold uppercase tracking-widest text-amber-800 border-b border-amber-300 pb-1 mb-2 font-sans')}
+      </div>
+    );
+  }
+
+  // =========================================================================================
+  // 5. TECHNICAL ENGINEER (Monospace accents & dark slate sidebar for skills)
+  // =========================================================================================
+  if (tId === 'technical') {
+    return (
+      <div className="w-full bg-white text-slate-900 font-mono p-6 sm:p-8 text-left">
+        <div className="bg-slate-900 text-emerald-400 p-4 rounded-xl space-y-1 mb-4">
+          <div className="text-[10px] text-slate-400 font-mono">// ENGINEER_PROFILE_V2.0</div>
+          <h1 className="text-2xl font-bold font-mono text-white">{fullName || 'YOUR NAME'}</h1>
+          {professionalTitle && <p className="text-xs text-emerald-400 font-bold">{professionalTitle}</p>}
+          <div className="text-[11px] text-slate-300 pt-1 font-sans">
+            {email} | {phone} | {location} {gitHub ? `| GitHub: ${gitHub}` : ''}
+          </div>
+        </div>
+        <div className="font-sans space-y-4">
+          {summary && (
+            <div>
+              <h2 className="text-xs font-bold font-mono text-emerald-700 uppercase tracking-wider border-b border-emerald-500 pb-0.5 mb-1">&gt; System Summary</h2>
+              <p className="text-xs text-slate-800 leading-relaxed font-sans">{summary}</p>
+            </div>
+          )}
+          {allSkillsList.length > 0 && (
+            <div>
+              <h2 className="text-xs font-bold font-mono text-emerald-700 uppercase tracking-wider border-b border-emerald-500 pb-0.5 mb-1">&gt; Technical Skills Matrix</h2>
+              {renderCategorizedSkills()}
+            </div>
+          )}
+          {renderProjectsSection('text-xs font-bold font-mono text-emerald-700 uppercase tracking-wider border-b border-emerald-500 pb-0.5 mb-1')}
+          {renderExperienceSection('text-xs font-bold font-mono text-emerald-700 uppercase tracking-wider border-b border-emerald-500 pb-0.5 mb-1')}
+          {renderEducationSection('text-xs font-bold font-mono text-emerald-700 uppercase tracking-wider border-b border-emerald-500 pb-0.5 mb-1')}
+          {renderCertificationsSection('text-xs font-bold font-mono text-emerald-700 uppercase tracking-wider border-b border-emerald-500 pb-0.5 mb-1')}
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================================================================
+  // 6. CREATIVE DUAL-TONE (30% Left Indigo Sidebar, 70% Right Main Column)
+  // =========================================================================================
+  if (tId === 'creative' || tId === 'split') {
+    return (
+      <div className="w-full bg-white text-slate-900 font-sans grid grid-cols-12 min-h-[600px] text-left">
+        {/* Left Sidebar 30% */}
+        <div className="col-span-4 bg-slate-900 text-white p-5 space-y-4 text-left">
+          <div>
+            <h1 className="text-xl font-black text-cyan-300 leading-tight">{fullName || 'YOUR NAME'}</h1>
+            {professionalTitle && <p className="text-[11px] font-bold text-slate-300 mt-1 uppercase">{professionalTitle}</p>}
+          </div>
+          <div className="space-y-1.5 text-[11px] text-slate-300 border-t border-slate-800 pt-3">
+            <div className="font-bold text-cyan-400 uppercase text-[10px]">Contact</div>
+            {email && <div className="break-all">{email}</div>}
+            {phone && <div>{phone}</div>}
+            {location && <div>{location}</div>}
+            {linkedIn && <div className="break-all">LinkedIn: {linkedIn}</div>}
+            {gitHub && <div className="break-all">GitHub: {gitHub}</div>}
+          </div>
+          {allSkillsList.length > 0 && (
+            <div className="border-t border-slate-800 pt-3 space-y-2">
+              <div className="font-bold text-cyan-400 uppercase text-[10px]">Skills</div>
+              <div className="flex flex-wrap gap-1">
+                {allSkillsList.map((sk, idx) => (
+                  <span key={idx} className="px-2 py-0.5 rounded bg-slate-800 text-cyan-200 text-[10px] font-semibold border border-slate-700">
+                    {sk}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          {languages.length > 0 && (
+            <div className="border-t border-slate-800 pt-3 space-y-1 text-[11px]">
+              <div className="font-bold text-cyan-400 uppercase text-[10px]">Languages</div>
+              {languages.map((l, idx) => (
+                <div key={idx} className="text-slate-300">{l.language} ({l.proficiency})</div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Right Main Column 70% */}
+        <div className="col-span-8 p-6 space-y-4 bg-white">
+          {summary && (
+            <div>
+              <h2 className="text-xs font-extrabold uppercase tracking-wider text-slate-900 border-b-2 border-indigo-600 pb-0.5 mb-1">About Me</h2>
+              <p className="text-xs text-slate-700 leading-relaxed">{summary}</p>
+            </div>
+          )}
+          {renderProjectsSection('text-xs font-extrabold uppercase tracking-wider text-slate-900 border-b-2 border-indigo-600 pb-0.5 mb-1')}
+          {renderExperienceSection('text-xs font-extrabold uppercase tracking-wider text-slate-900 border-b-2 border-indigo-600 pb-0.5 mb-1')}
+          {renderEducationSection('text-xs font-extrabold uppercase tracking-wider text-slate-900 border-b-2 border-indigo-600 pb-0.5 mb-1')}
+          {renderCertificationsSection('text-xs font-extrabold uppercase tracking-wider text-slate-900 border-b-2 border-indigo-600 pb-0.5 mb-1')}
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================================================================
+  // 7. CLASSIC CORPORATE (Standard corporate layout, serif headings)
+  // =========================================================================================
+  if (tId === 'classic') {
+    return (
+      <div className="w-full bg-white text-slate-900 font-serif p-6 sm:p-8 text-left">
+        <div className="text-center pb-3 border-b-2 border-slate-900">
+          <h1 className="text-3xl font-bold tracking-wide text-slate-900">{fullName || 'YOUR NAME'}</h1>
+          {professionalTitle && <p className="text-xs font-sans font-bold uppercase tracking-widest text-slate-600 mt-1">{professionalTitle}</p>}
+          <div className="pt-2">{renderContactBar('•')}</div>
+        </div>
+        {summary && <p className="text-xs text-slate-800 leading-relaxed italic my-3 text-center px-2">{summary}</p>}
+        {renderEducationSection('text-xs font-bold uppercase tracking-widest text-slate-900 border-b border-slate-400 pb-0.5 mb-2 font-sans')}
+        {allSkillsList.length > 0 && (
+          <div className="mt-4 font-sans">
+            <h2 className="text-xs font-bold uppercase tracking-widest text-slate-900 border-b border-slate-400 pb-0.5 mb-2">Technical Skills</h2>
+            {renderCategorizedSkills()}
+          </div>
+        )}
+        {renderProjectsSection('text-xs font-bold uppercase tracking-widest text-slate-900 border-b border-slate-400 pb-0.5 mb-2 font-sans')}
+        {renderExperienceSection('text-xs font-bold uppercase tracking-widest text-slate-900 border-b border-slate-400 pb-0.5 mb-2 font-sans')}
+        {renderCertificationsSection('text-xs font-bold uppercase tracking-widest text-slate-900 border-b border-slate-400 pb-0.5 mb-2 font-sans')}
+      </div>
+    );
+  }
+
+  // =========================================================================================
+  // 8. CORPORATE STEEL (Steel blue header rule & bold section badges)
+  // =========================================================================================
+  if (tId === 'corporate') {
+    return (
+      <div className="w-full bg-white text-slate-900 font-sans p-6 sm:p-8 text-left">
+        <div className="bg-blue-900 text-white p-5 rounded-t-xl space-y-1 border-b-4 border-cyan-400">
+          <h1 className="text-2xl font-black">{fullName || 'YOUR NAME'}</h1>
+          {professionalTitle && <p className="text-xs font-bold text-cyan-300 uppercase">{professionalTitle}</p>}
+          <div className="text-[11px] text-blue-100 pt-1">{email} • {phone} • {location}</div>
+        </div>
+        <div className="p-4 border border-t-0 border-slate-200 rounded-b-xl space-y-4">
+          {summary && <p className="text-xs text-slate-800 leading-relaxed">{summary}</p>}
+          {renderEducationSection('text-xs font-black uppercase tracking-wider text-blue-950 border-b-2 border-blue-900 pb-0.5 mb-2')}
+          {allSkillsList.length > 0 && (
+            <div>
+              <h2 className="text-xs font-black uppercase tracking-wider text-blue-950 border-b-2 border-blue-900 pb-0.5 mb-2">Technical Skills</h2>
+              {renderCategorizedSkills()}
+            </div>
+          )}
+          {renderProjectsSection('text-xs font-black uppercase tracking-wider text-blue-950 border-b-2 border-blue-900 pb-0.5 mb-2')}
+          {renderExperienceSection('text-xs font-black uppercase tracking-wider text-blue-950 border-b-2 border-blue-900 pb-0.5 mb-2')}
+          {renderCertificationsSection('text-xs font-black uppercase tracking-wider text-blue-950 border-b-2 border-blue-900 pb-0.5 mb-2')}
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================================================================
+  // 9. DEVELOPER TECH (Dark terminal style header & pill stack tags)
+  // =========================================================================================
+  if (tId === 'developer') {
+    return (
+      <div className="w-full bg-white text-slate-900 font-sans p-6 sm:p-8 text-left">
+        <div className="bg-slate-950 text-cyan-300 p-5 rounded-2xl border border-cyan-500/30 space-y-2 mb-4 font-mono">
+          <div className="text-[10px] text-slate-500">$ cat candidate_profile.json</div>
+          <h1 className="text-2xl font-bold text-white tracking-tight">{fullName || 'YOUR NAME'}</h1>
+          {professionalTitle && <p className="text-xs text-cyan-400 font-bold">// {professionalTitle}</p>}
+          {renderContactBar('|')}
+        </div>
+        {summary && (
+          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-800 leading-relaxed mb-4">
+            <span className="font-mono font-bold text-indigo-600 block mb-1">&gt; Summary:</span>
+            {summary}
+          </div>
+        )}
+        {allSkillsList.length > 0 && (
+          <div className="mb-4">
+            <h2 className="text-xs font-mono font-bold text-slate-900 uppercase border-b-2 border-cyan-500 pb-1 mb-2">&gt; Tech Stack & Capabilities</h2>
             <div className="flex flex-wrap gap-1.5">
-              {allSkillsList.map((skill, idx) => (
-                <span key={idx} className="px-2 py-0.5 rounded bg-slate-100 text-slate-900 text-[11px] font-bold border border-slate-200">
-                  {skill}
+              {allSkillsList.map((sk, idx) => (
+                <span key={idx} className="px-2 py-0.5 rounded bg-slate-900 text-cyan-300 text-[11px] font-mono font-semibold">
+                  {sk}
                 </span>
               ))}
             </div>
           </div>
         )}
+        {renderProjectsSection('text-xs font-mono font-bold text-slate-900 uppercase border-b-2 border-cyan-500 pb-1 mb-2')}
+        {renderExperienceSection('text-xs font-mono font-bold text-slate-900 uppercase border-b-2 border-cyan-500 pb-1 mb-2')}
+        {renderEducationSection('text-xs font-mono font-bold text-slate-900 uppercase border-b-2 border-cyan-500 pb-1 mb-2')}
+        {renderCertificationsSection('text-xs font-mono font-bold text-slate-900 uppercase border-b-2 border-cyan-500 pb-1 mb-2')}
+      </div>
+    );
+  }
+
+  // =========================================================================================
+  // 10. STARTUP MODERN (Gradient accent line & rounded section cards)
+  // =========================================================================================
+  if (tId === 'startup') {
+    return (
+      <div className="w-full bg-white text-slate-900 font-sans p-6 sm:p-8 text-left space-y-4">
+        <div className="p-5 rounded-2xl bg-gradient-to-r from-teal-500 to-cyan-600 text-white shadow-md space-y-1">
+          <h1 className="text-2xl font-black tracking-tight">{fullName || 'YOUR NAME'}</h1>
+          {professionalTitle && <p className="text-xs font-extrabold text-teal-100 uppercase">{professionalTitle}</p>}
+          <div className="text-xs text-white/90 font-medium pt-1">{email} • {phone} • {location}</div>
+        </div>
+        {summary && <p className="text-xs text-slate-700 leading-relaxed p-3 bg-teal-50/50 rounded-xl border border-teal-100">{summary}</p>}
+        {renderEducationSection('text-xs font-black uppercase text-teal-800 border-b-2 border-teal-500 pb-1 mb-2')}
+        {allSkillsList.length > 0 && (
+          <div>
+            <h2 className="text-xs font-black uppercase text-teal-800 border-b-2 border-teal-500 pb-1 mb-2">Key Skills</h2>
+            {renderCategorizedSkills()}
+          </div>
+        )}
+        {renderProjectsSection('text-xs font-black uppercase text-teal-800 border-b-2 border-teal-500 pb-1 mb-2')}
+        {renderExperienceSection('text-xs font-black uppercase text-teal-800 border-b-2 border-teal-500 pb-1 mb-2')}
+        {renderCertificationsSection('text-xs font-black uppercase text-teal-800 border-b-2 border-teal-500 pb-1 mb-2')}
+      </div>
+    );
+  }
+
+  // =========================================================================================
+  // 11. IVY LEAGUE ACADEMIC (Harvard/Yale traditional serif style, centered header)
+  // =========================================================================================
+  if (tId === 'ivy') {
+    return (
+      <div className="w-full bg-white text-stone-900 font-serif p-6 sm:p-8 text-center space-y-3 border-t-4 border-stone-800">
+        <div className="border-b-2 border-stone-800 pb-3">
+          <h1 className="text-3xl font-bold uppercase tracking-widest">{fullName || 'YOUR NAME'}</h1>
+          {professionalTitle && <p className="text-xs uppercase tracking-widest text-stone-600 font-bold mt-1">{professionalTitle}</p>}
+          <div className="flex flex-wrap justify-center gap-3 text-xs text-stone-600 pt-2 font-sans">
+            {email && <span>{email}</span>}
+            {phone && <span>• {phone}</span>}
+            {location && <span>• {location}</span>}
+            {linkedIn && <span>• {linkedIn}</span>}
+          </div>
+        </div>
+        {summary && <p className="text-xs text-stone-700 leading-relaxed italic text-center px-4">{summary}</p>}
+        {renderEducationSection('text-xs font-bold uppercase tracking-widest text-stone-900 border-b border-stone-400 pb-0.5 mb-2 font-serif text-center')}
+        {renderProjectsSection('text-xs font-bold uppercase tracking-widest text-stone-900 border-b border-stone-400 pb-0.5 mb-2 font-serif text-center')}
+        {renderExperienceSection('text-xs font-bold uppercase tracking-widest text-stone-900 border-b border-stone-400 pb-0.5 mb-2 font-serif text-center')}
+        {allSkillsList.length > 0 && (
+          <div className="text-left font-sans mt-3">
+            <h2 className="text-xs font-bold uppercase tracking-widest text-stone-900 border-b border-stone-400 pb-0.5 mb-2 font-serif text-center">Core Qualifications</h2>
+            {renderCategorizedSkills()}
+          </div>
+        )}
+        {renderCertificationsSection('text-xs font-bold uppercase tracking-widest text-stone-900 border-b border-stone-400 pb-0.5 mb-2 font-serif text-center')}
+      </div>
+    );
+  }
+
+  // =========================================================================================
+  // 12. BOLD HEADER BANNER (Solid full-width dark background header banner with high contrast)
+  // =========================================================================================
+  if (tId === 'bold-header') {
+    return (
+      <div className="w-full bg-white text-slate-900 font-sans p-0 text-left">
+        <div className="bg-indigo-950 text-white p-6 sm:p-8 space-y-1 border-b-4 border-indigo-500">
+          <h1 className="text-3xl font-black tracking-tight">{fullName || 'YOUR NAME'}</h1>
+          {professionalTitle && <p className="text-xs font-bold text-indigo-300 uppercase tracking-wider">{professionalTitle}</p>}
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-300 font-medium pt-2">
+            {email && <span>{email}</span>}
+            {phone && <span>• {phone}</span>}
+            {location && <span>• {location}</span>}
+            {gitHub && <span>• GitHub: {gitHub}</span>}
+          </div>
+        </div>
+        <div className="p-6 sm:p-8 space-y-4">
+          {summary && <p className="text-xs text-slate-700 leading-relaxed p-3 bg-slate-50 rounded-xl border border-slate-200">{summary}</p>}
+          {renderEducationSection('text-xs font-black uppercase text-indigo-950 border-b-2 border-indigo-600 pb-1 mb-2')}
+          {allSkillsList.length > 0 && (
+            <div>
+              <h2 className="text-xs font-black uppercase text-indigo-950 border-b-2 border-indigo-600 pb-1 mb-2">Technical Competencies</h2>
+              {renderCategorizedSkills()}
+            </div>
+          )}
+          {renderProjectsSection('text-xs font-black uppercase text-indigo-950 border-b-2 border-indigo-600 pb-1 mb-2')}
+          {renderExperienceSection('text-xs font-black uppercase text-indigo-950 border-b-2 border-indigo-600 pb-1 mb-2')}
+          {renderCertificationsSection('text-xs font-black uppercase text-indigo-950 border-b-2 border-indigo-600 pb-1 mb-2')}
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================================================================
+  // 13. GEOMETRIC MODERN (Purple geometric section dividers and badge tags)
+  // =========================================================================================
+  if (tId === 'geometric') {
+    return (
+      <div className="w-full bg-white text-slate-900 font-sans p-6 sm:p-8 text-left space-y-4">
+        <div className="p-5 bg-slate-900 text-purple-300 rounded-2xl border-l-8 border-purple-500 space-y-1">
+          <h1 className="text-2xl font-black text-white">{fullName || 'YOUR NAME'}</h1>
+          {professionalTitle && <p className="text-xs font-bold text-purple-400 uppercase">{professionalTitle}</p>}
+          {renderContactBar('◆')}
+        </div>
+        {summary && <p className="text-xs text-slate-800 leading-relaxed border-l-2 border-purple-400 pl-3 italic">{summary}</p>}
+        {renderEducationSection('text-xs font-black uppercase text-purple-900 border-b-2 border-purple-500 pb-0.5 mb-2')}
+        {allSkillsList.length > 0 && (
+          <div>
+            <h2 className="text-xs font-black uppercase text-purple-900 border-b-2 border-purple-500 pb-0.5 mb-2">Core Skills Matrix</h2>
+            {renderCategorizedSkills()}
+          </div>
+        )}
+        {renderProjectsSection('text-xs font-black uppercase text-purple-900 border-b-2 border-purple-500 pb-0.5 mb-2')}
+        {renderExperienceSection('text-xs font-black uppercase text-purple-900 border-b-2 border-purple-500 pb-0.5 mb-2')}
+        {renderCertificationsSection('text-xs font-black uppercase text-purple-900 border-b-2 border-purple-500 pb-0.5 mb-2')}
+      </div>
+    );
+  }
+
+  // =========================================================================================
+  // DEFAULT / MODERN PROFESSIONAL (Template fallback for all other IDs: clean, high-impact)
+  // =========================================================================================
+  return (
+    <div className="w-full max-w-full box-border bg-white text-slate-900 font-sans p-6 sm:p-8 overflow-hidden break-words text-left print:shadow-none print:border-none print:max-w-none print:w-full print:p-0">
+      {/* Header Bar */}
+      <div className="border-b-2 border-indigo-600 pb-4 text-left space-y-1">
+        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 font-['Space_Grotesk']">
+          {fullName || 'YOUR FULL NAME'}
+        </h1>
+        {professionalTitle && (
+          <p className="text-xs font-extrabold uppercase tracking-wider text-indigo-600">
+            {professionalTitle}
+          </p>
+        )}
+        {renderContactBar('•')}
       </div>
 
-      {/* Projects */}
-      {projects.length > 0 && (
-        <div className="py-4 border-b border-slate-200 space-y-3">
-          <h2 className="text-xs font-black uppercase tracking-wider text-slate-900">Projects</h2>
-          {projects.map((proj, idx) => (
-            <div key={idx} className="text-xs space-y-1">
-              <div className="font-bold text-slate-900 flex justify-between">
-                <span>{proj.title}</span>
-                {proj.techStack && <span className="font-normal text-[11px] text-slate-500">{Array.isArray(proj.techStack) ? proj.techStack.join(', ') : proj.techStack}</span>}
-              </div>
-              <p className="text-slate-700 leading-normal">{proj.description}</p>
-            </div>
-          ))}
+      {/* Summary */}
+      {summary && (
+        <div className="mt-4 space-y-1">
+          <h2 className="text-xs font-extrabold uppercase tracking-wider text-slate-900 border-b border-slate-200 pb-1">
+            Professional Summary
+          </h2>
+          <p className="text-xs text-slate-700 leading-relaxed">{summary}</p>
         </div>
       )}
 
-      {/* Certifications & Achievements */}
-      {(certifications.length > 0 || achievements.length > 0 || workshops.length > 0) && (
-        <div className="pt-3 space-y-2">
-          <h2 className="text-xs font-black uppercase tracking-wider text-slate-900">Certifications & Achievements</h2>
-          <ul className="text-xs text-slate-700 space-y-1 list-disc list-inside">
-            {certifications.map((c, idx) => (
-              <li key={idx}><span className="font-bold">{c.title}</span> {c.issuer ? `(${c.issuer})` : ''}</li>
-            ))}
-            {achievements.map((ach, idx) => (
-              <li key={idx}>{ach}</li>
-            ))}
-          </ul>
+      {/* Education */}
+      {renderEducationSection('text-xs font-extrabold uppercase tracking-wider text-slate-900 border-b border-slate-200 pb-1 mb-2')}
+
+      {/* Skills */}
+      {allSkillsList.length > 0 && (
+        <div className="mt-4 space-y-1">
+          <h2 className="text-xs font-extrabold uppercase tracking-wider text-slate-900 border-b border-slate-200 pb-1">
+            Technical & Core Skills
+          </h2>
+          {renderCategorizedSkills()}
         </div>
       )}
+
+      {/* Projects */}
+      {renderProjectsSection('text-xs font-extrabold uppercase tracking-wider text-slate-900 border-b border-slate-200 pb-1 mb-2')}
+
+      {/* Experience */}
+      {renderExperienceSection('text-xs font-extrabold uppercase tracking-wider text-slate-900 border-b border-slate-200 pb-1 mb-2')}
+
+      {/* Certifications & Achievements */}
+      {renderCertificationsSection('text-xs font-extrabold uppercase tracking-wider text-slate-900 border-b border-slate-200 pb-1 mb-2')}
     </div>
   );
 };

@@ -280,7 +280,7 @@ export interface ResumeData {
   workshops?: string[];
   languages?: LanguageProficiency[];
   additionalLinks?: AdditionalLink[];
-  selectedTemplate?: 'classic' | 'modern' | 'minimal' | 'ats-friendly';
+  selectedTemplate?: string;
 }
 
 export interface ResumeAnalysis {
