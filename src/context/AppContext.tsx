@@ -83,9 +83,18 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUserState] = useState<UserProfile>(() =>
-    getInitialProfileForEmail('student@college.edu')
-  );
+  const [user, setUserState] = useState<UserProfile>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const active = localStorage.getItem('acehire_active_user');
+        if (active) {
+          const parsed = JSON.parse(active);
+          if (parsed && parsed.email) return parsed;
+        }
+      } catch (e) {}
+    }
+    return getInitialProfileForEmail('student@college.edu');
+  });
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
   const [currentUserId, setCurrentUserId] = useState<string>('');
 
@@ -260,6 +269,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const setUser = (newUser: UserProfile) => {
     setUserState(newUser);
+    if (typeof window !== 'undefined' && newUser?.email) {
+      try {
+        localStorage.setItem(`acehire_user_profile_${newUser.email.toLowerCase()}`, JSON.stringify(newUser));
+        localStorage.setItem('acehire_active_user', JSON.stringify(newUser));
+      } catch (e) {}
+    }
     if (currentUserId || newUser.id) {
       SupabaseService.saveProfile(newUser, currentUserId || newUser.id);
     }

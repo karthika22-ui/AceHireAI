@@ -281,6 +281,7 @@ export interface ResumeData {
   languages?: LanguageProficiency[];
   additionalLinks?: AdditionalLink[];
   selectedTemplate?: string;
+  photoUrl?: string;
 }
 
 export interface ResumeAnalysis {

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   FileText,
   Sparkles,
@@ -27,17 +27,26 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { analyzeResumeWithAI } from '../../services/aiEngine';
-import { ResumeAnalysis } from '../../types';
+import { ResumeData, ResumeAnalysis } from '../../types';
 import { SessionResumeModal } from '../Common/SessionResumeModal';
 
 interface ATSAnalyzerViewProps {
   onBackToSelection?: () => void;
+  initialResumeData?: ResumeData;
 }
 
-export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelection }) => {
+export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelection, initialResumeData }) => {
   const { resume, recordUserActivity, setActiveTab } = useApp();
 
-  const [uploadedFile, setUploadedFile] = useState<{ name: string; size: string; type: string } | null>(null);
+  const [uploadedFile, setUploadedFile] = useState<{ name: string; size: string; type: string } | null>(
+    initialResumeData
+      ? {
+          name: `${initialResumeData.fullName || 'Candidate'}_Generated_Resume.pdf`,
+          size: '1.2 MB',
+          type: 'Generated Resume'
+        }
+      : null
+  );
 
   const [showResumeSessionModal, setShowResumeSessionModal] = useState<boolean>(false);
 
@@ -100,8 +109,9 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
     setAnalysisResult(null);
   };
 
-  const handleRunATSScan = async () => {
-    if (isAnalyzing || !uploadedFile) return;
+  const handleRunATSScan = async (customData?: any) => {
+    const target = customData || uploadedFile;
+    if (isAnalyzing || !target) return;
     setIsAnalyzing(true);
     setLoadingStep(1);
 
@@ -110,7 +120,7 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
     }, 450);
 
     try {
-      const result = await analyzeResumeWithAI(uploadedFile);
+      const result = await analyzeResumeWithAI(target);
       clearInterval(interval);
       setLoadingStep(5);
       await new Promise((resolve) => setTimeout(resolve, 300));
@@ -123,6 +133,12 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
       setIsAnalyzing(false);
     }
   };
+
+  useEffect(() => {
+    if (initialResumeData && !analysisResult && !isAnalyzing) {
+      handleRunATSScan(initialResumeData);
+    }
+  }, [initialResumeData]);
 
   const getScoreTheme = (score: number) => {
     if (score >= 80) {
