@@ -432,33 +432,103 @@ Return ONLY the improved bullet points without introductory text or markdown pro
         </div>
       )}
 
-      {/* STEP PROGRESS WIZARD INDICATOR */}
-      <div className="print:hidden">
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 lg:grid-cols-12 gap-1.5 bg-slate-100 dark:bg-slate-900/80 p-2 rounded-2xl border border-slate-200 dark:border-slate-800">
-          {steps.map((s) => {
-            const isActive = currentStep === s.num;
-            const isCompleted = isSectionCompleted(s.num);
-            return (
-              <button
-                key={s.num}
-                onClick={() => setCurrentStep(s.num)}
-                title={`${s.num}. ${s.label}`}
-                className={`px-2 py-2 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer truncate ${
-                  isActive
-                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md scale-[1.02] ring-2 ring-indigo-500/30 font-extrabold'
-                    : isCompleted
-                    ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-300/40 dark:border-emerald-800/40'
-                    : 'bg-white/40 dark:bg-slate-800/40 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'
-                }`}
-              >
-                <span className={`p-0.5 rounded ${isActive ? 'bg-white/20' : ''}`}>{s.icon}</span>
-                <span className="truncate">{s.num}. {s.label}</span>
-                {isCompleted && <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0 font-black" />}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      {/* REDESIGNED FOCUSED STEP-BY-STEP PROGRESS BAR & NAVIGATION */}
+      {(() => {
+        const currentStepObj = steps.find((s) => s.num === currentStep) || steps[0];
+        const isCompleted = isSectionCompleted(currentStep);
+        const progressPercent = Math.round((currentStep / steps.length) * 100);
+
+        return (
+          <div className="glass-card rounded-2xl p-4 sm:p-5 border border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/90 shadow-md space-y-3.5 print:hidden">
+            {/* Step Header & Navigation */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white flex items-center justify-center font-extrabold shadow-md shrink-0">
+                  {currentStepObj.icon}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                      Step {currentStep} of {steps.length}
+                    </span>
+                    {isCompleted && (
+                      <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Completed
+                      </span>
+                    )}
+                  </div>
+                  <h2 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white font-['Space_Grotesk']">
+                    {currentStepObj.label}
+                  </h2>
+                </div>
+              </div>
+
+              {/* Step Previous & Next Quick Navigation */}
+              <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                <button
+                  type="button"
+                  onClick={handlePrevStep}
+                  disabled={currentStep === 1}
+                  className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs flex items-center gap-1 transition-all disabled:opacity-40 cursor-pointer"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Previous</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleNextStep}
+                  disabled={currentStep === 12}
+                  className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center gap-1 shadow transition-all disabled:opacity-40 cursor-pointer"
+                >
+                  <span>Next Step</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Overall Wizard Progress Indicator */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                <span>Wizard Progress</span>
+                <span className="text-indigo-600 dark:text-indigo-400 font-extrabold">{progressPercent}%</span>
+              </div>
+              <div className="w-full h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden p-0.5 border border-slate-200 dark:border-slate-700">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-blue-600 via-indigo-600 to-emerald-500 transition-all duration-500 ease-out"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Quick Step Navigation Pills */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700">
+              {steps.map((s) => {
+                const isActive = currentStep === s.num;
+                const isDone = isSectionCompleted(s.num);
+                return (
+                  <button
+                    key={s.num}
+                    type="button"
+                    onClick={() => setCurrentStep(s.num)}
+                    title={`Step ${s.num}: ${s.label}`}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 flex items-center gap-1.5 transition-all cursor-pointer ${
+                      isActive
+                        ? 'bg-indigo-600 text-white shadow-md ring-2 ring-indigo-500/30 font-extrabold'
+                        : isDone
+                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    <span className="text-[10px] opacity-75">{s.num}.</span>
+                    <span className="whitespace-nowrap">{s.label}</span>
+                    {isDone && <Check className="w-3 h-3 text-emerald-500 shrink-0 font-extrabold" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* MAIN TWO-COLUMN 12-COLUMN GRID LAYOUT */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start relative">
