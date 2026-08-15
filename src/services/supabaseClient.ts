@@ -52,7 +52,20 @@ export const INITIAL_READINESS: ReadinessScore = {
 };
 
 export const getInitialProfileForEmail = (email: string): UserProfile => {
-  const rawName = email.split('@')[0] || 'Student';
+  const cleanEmail = email.trim().toLowerCase();
+  
+  // Check local storage for existing saved profile
+  if (cleanEmail && typeof window !== 'undefined') {
+    try {
+      const saved = localStorage.getItem(`acehire_user_profile_${cleanEmail}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.email) return parsed;
+      }
+    } catch (e) {}
+  }
+
+  const rawName = email.split('@')[0] || 'User';
   const nameFromEmail = rawName
     .replace(/[._]/g, ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase());
@@ -61,6 +74,8 @@ export const getInitialProfileForEmail = (email: string): UserProfile => {
     id: `usr-${Date.now()}`,
     name: nameFromEmail,
     email: email,
+    phone: '',
+    userStatus: 'College Student',
     college: '',
     department: '',
     preferredLanguage: 'Tanglish',
@@ -88,34 +103,46 @@ export const getInitialResumeForEmail = (email: string, name?: string): ResumeDa
 export class SupabaseService {
   // AUTH HELPERS
   static async signUp(email: string, pass: string, profileData?: Partial<UserProfile>) {
-    if (!isSupabaseConfigured()) {
-      return { data: { user: { id: `local-${Date.now()}`, email } }, error: null };
+    const cleanEmail = email.trim().toLowerCase();
+    const defaultProfile = getInitialProfileForEmail(cleanEmail);
+
+    const profile: UserProfile = {
+      ...defaultProfile,
+      ...profileData,
+      id: profileData?.id || defaultProfile.id || `local-${Date.now()}`,
+      email: cleanEmail,
+      name: profileData?.name || defaultProfile.name
+    };
+
+    // Save to LocalStorage immediately
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(`acehire_user_profile_${cleanEmail}`, JSON.stringify(profile));
+        localStorage.setItem('acehire_active_user', JSON.stringify(profile));
+      } catch (e) {}
     }
+
+    if (!isSupabaseConfigured()) {
+      return { data: { user: { id: profile.id, email: cleanEmail } }, error: null };
+    }
+
     const { data, error } = await supabase.auth.signUp({
-      email,
+      email: cleanEmail,
       password: pass,
       options: {
         data: {
-          name: profileData?.name || email.split('@')[0],
-          college: profileData?.college || '',
-          department: profileData?.department || '',
-          preferred_language: profileData?.preferredLanguage || 'Tanglish'
+          name: profile.name,
+          phone: profile.phone || '',
+          user_status: profile.userStatus || 'College Student',
+          college: profile.college || '',
+          department: profile.department || '',
+          preferred_language: profile.preferredLanguage || 'Tanglish'
         }
       }
     });
 
     if (!error && data.user) {
-      const profile: UserProfile = {
-        id: data.user.id,
-        name: profileData?.name || email.split('@')[0],
-        email: email,
-        college: profileData?.college || '',
-        department: profileData?.department || '',
-        preferredLanguage: profileData?.preferredLanguage || 'Tanglish',
-        avatarUrl:
-          'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-        createdAt: new Date().toISOString()
-      };
+      profile.id = data.user.id;
       await this.saveProfile(profile, data.user.id);
     }
     return { data, error };
@@ -123,11 +150,24 @@ export class SupabaseService {
 
   static async signIn(email: string, pass: string) {
     if (!isSupabaseConfigured()) {
-      return { data: { user: { id: `local-${Date.now()}`, email } }, error: null };
+      const cleanEmail = email.trim().toLowerCase();
+      return { data: { user: { id: `local-${Date.now()}`, email: cleanEmail } }, error: null };
     }
     return await supabase.auth.signInWithPassword({
-      email,
+      email: email.trim().toLowerCase(),
       password: pass
+    });
+  }
+
+  static async signInWithGoogle() {
+    if (!isSupabaseConfigured()) {
+      throw new Error('Google Sign-In requires active Supabase configuration. Please configure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your environment.');
+    }
+    return await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin
+      }
     });
   }
 
@@ -144,9 +184,28 @@ export class SupabaseService {
 
   // 1. PROFILES TABLE OPERATIONS
   static async fetchProfile(userIdOrEmail: string): Promise<UserProfile> {
-    const fallback = getInitialProfileForEmail(
-      userIdOrEmail.includes('@') ? userIdOrEmail : 'student@college.edu'
-    );
+    const cleanKey = userIdOrEmail.trim().toLowerCase();
+    
+    // Check local storage first
+    let localProfile: UserProfile | null = null;
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem(`acehire_user_profile_${cleanKey}`);
+        if (stored) localProfile = JSON.parse(stored);
+        
+        if (!localProfile) {
+          const active = localStorage.getItem('acehire_active_user');
+          if (active) {
+            const parsedActive = JSON.parse(active);
+            if (parsedActive.email?.toLowerCase() === cleanKey || parsedActive.id === cleanKey) {
+              localProfile = parsedActive;
+            }
+          }
+        }
+      } catch (e) {}
+    }
+
+    const fallback = localProfile || getInitialProfileForEmail(cleanKey.includes('@') ? cleanKey : 'user@college.edu');
     if (!isSupabaseConfigured() || !userIdOrEmail) return fallback;
 
     try {
@@ -158,18 +217,45 @@ export class SupabaseService {
 
       if (error || !data) return fallback;
 
-      return {
-        id: data.id,
+      const remoteExtra = data.custom_profile_data || {};
+
+      const mergedProfile: UserProfile = {
+        ...fallback,
+        id: data.id || fallback.id,
         name: data.name || fallback.name,
         email: data.email || fallback.email,
-        college: data.college || '',
-        department: data.department || '',
-        preferredLanguage: data.preferred_language || 'Tanglish',
-        avatarUrl:
-          data.avatar_url ||
-          'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-        createdAt: data.created_at || new Date().toISOString()
+        phone: data.phone || remoteExtra.phone || fallback.phone || '',
+        userStatus: data.user_status || remoteExtra.userStatus || fallback.userStatus || 'College Student',
+        schoolName: remoteExtra.schoolName || fallback.schoolName,
+        stream: remoteExtra.stream || fallback.stream,
+        expectedCompletionYear: remoteExtra.expectedCompletionYear || fallback.expectedCompletionYear,
+        college: data.college || fallback.college || '',
+        degree: remoteExtra.degree || fallback.degree,
+        department: data.department || fallback.department || '',
+        currentYear: remoteExtra.currentYear || fallback.currentYear,
+        graduationYear: remoteExtra.graduationYear || fallback.graduationYear,
+        highestQualification: remoteExtra.highestQualification || fallback.highestQualification,
+        currentRole: remoteExtra.currentRole || fallback.currentRole,
+        company: remoteExtra.company || fallback.company,
+        experience: remoteExtra.experience || fallback.experience,
+        targetIndustry: remoteExtra.targetIndustry || fallback.targetIndustry,
+        passoutYear: remoteExtra.passoutYear || fallback.passoutYear,
+        preferredLanguage: data.preferred_language || fallback.preferredLanguage || 'Tanglish',
+        targetJobRole: remoteExtra.targetJobRole || fallback.targetJobRole,
+        skills: remoteExtra.skills || fallback.skills,
+        avatarUrl: data.avatar_url || fallback.avatarUrl,
+        createdAt: data.created_at || fallback.createdAt
       };
+
+      // Sync local storage with merged profile
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem(`acehire_user_profile_${mergedProfile.email.toLowerCase()}`, JSON.stringify(mergedProfile));
+          localStorage.setItem('acehire_active_user', JSON.stringify(mergedProfile));
+        } catch (e) {}
+      }
+
+      return mergedProfile;
     } catch (e) {
       console.warn('Supabase fetchProfile error:', e);
       return fallback;
@@ -177,17 +263,28 @@ export class SupabaseService {
   }
 
   static async saveProfile(profile: UserProfile, userId?: string): Promise<boolean> {
+    const cleanEmail = profile.email.trim().toLowerCase();
+    
+    // Save to LocalStorage immediately
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(`acehire_user_profile_${cleanEmail}`, JSON.stringify(profile));
+        localStorage.setItem('acehire_active_user', JSON.stringify(profile));
+      } catch (e) {}
+    }
+
     if (!isSupabaseConfigured()) return true;
 
     try {
-      const payload = {
+      const payload: Record<string, any> = {
         id: userId || profile.id,
         name: profile.name,
         email: profile.email,
-        college: profile.college,
-        department: profile.department,
+        college: profile.college || '',
+        department: profile.department || '',
         preferred_language: profile.preferredLanguage,
-        avatar_url: profile.avatarUrl
+        avatar_url: profile.avatarUrl,
+        custom_profile_data: profile
       };
 
       const { error } = await supabase.from('profiles').upsert(payload, { onConflict: 'id' });

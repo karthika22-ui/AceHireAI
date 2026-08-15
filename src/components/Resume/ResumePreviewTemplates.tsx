@@ -56,7 +56,7 @@ export const ResumePreviewTemplates: React.FC<ResumePreviewTemplatesProps> = ({ 
   // --- TEMPLATE 1: ATS FRIENDLY (Pure text, standard headers, high parseability) ---
   if (template === 'ats-friendly') {
     return (
-      <div className="bg-white text-slate-900 font-sans p-8 sm:p-12 shadow-2xl rounded-sm max-w-3xl mx-auto border border-slate-300 print:shadow-none print:border-none print:max-w-none print:w-full print:p-0">
+      <div className="w-full max-w-full box-border bg-white text-slate-900 font-sans p-6 sm:p-8 overflow-hidden break-words text-left print:shadow-none print:border-none print:max-w-none print:w-full print:p-0">
         {/* Header */}
         <div className="border-b border-slate-400 pb-3 text-left space-y-1">
           <h1 className="text-2xl sm:text-3xl font-bold uppercase tracking-wide text-slate-900">
@@ -246,7 +246,7 @@ export const ResumePreviewTemplates: React.FC<ResumePreviewTemplatesProps> = ({ 
   // --- TEMPLATE 2: CLASSIC PROFESSIONAL ---
   if (template === 'classic') {
     return (
-      <div className="bg-white text-slate-900 font-serif p-8 sm:p-12 shadow-2xl rounded-sm max-w-3xl mx-auto border border-slate-200 print:shadow-none print:border-none print:max-w-none print:w-full print:p-0">
+      <div className="w-full max-w-full box-border bg-white text-slate-900 font-serif p-6 sm:p-8 overflow-hidden break-words text-left print:shadow-none print:border-none print:max-w-none print:w-full print:p-0">
         {/* Header */}
         <div className="border-b-2 border-slate-900 pb-4 text-center space-y-1">
           <h1 className="text-2xl sm:text-3xl font-bold uppercase tracking-wider text-slate-900">
@@ -402,21 +402,21 @@ export const ResumePreviewTemplates: React.FC<ResumePreviewTemplatesProps> = ({ 
   // --- TEMPLATE 3: MODERN PROFESSIONAL ---
   if (template === 'modern') {
     return (
-      <div className="bg-white text-slate-900 font-sans p-8 sm:p-12 shadow-2xl rounded-sm max-w-3xl mx-auto border-t-8 border-indigo-600 print:shadow-none print:border-t-8 print:max-w-none print:w-full print:p-0">
+      <div className="w-full max-w-full box-border bg-white text-slate-900 font-sans p-6 sm:p-8 border-t-8 border-indigo-600 overflow-hidden break-words text-left print:shadow-none print:border-t-8 print:max-w-none print:w-full print:p-0">
         {/* Header */}
-        <div className="flex justify-between items-start pb-6 border-b border-slate-200">
+        <div className="flex flex-col sm:flex-row justify-between items-start gap-4 pb-5 border-b border-slate-200">
           <div className="space-y-1">
-            <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
               {fullName || 'Your Full Name'}
             </h1>
             <p className="text-sm font-semibold text-indigo-600">
-              {professionalTitle || education[0]?.degree || 'Aspiring Software Engineer'}
+              {professionalTitle || 'Software Engineering Candidate'}
             </p>
           </div>
-          <div className="text-right text-xs space-y-1 text-slate-600 font-medium">
-            {email && <div className="flex items-center justify-end gap-1.5"><Mail className="w-3.5 h-3.5 text-indigo-500" />{email}</div>}
-            {phone && <div className="flex items-center justify-end gap-1.5"><Phone className="w-3.5 h-3.5 text-indigo-500" />{phone}</div>}
-            {location && <div className="flex items-center justify-end gap-1.5"><MapPin className="w-3.5 h-3.5 text-indigo-500" />{location}</div>}
+          <div className="text-left sm:text-right text-xs space-y-1 text-slate-600 font-medium shrink-0">
+            <div className="flex items-center sm:justify-end gap-1.5"><Mail className="w-3.5 h-3.5 text-indigo-500" />{email || 'email@example.com'}</div>
+            <div className="flex items-center sm:justify-end gap-1.5"><Phone className="w-3.5 h-3.5 text-indigo-500" />{phone || '+91 98765 43210'}</div>
+            <div className="flex items-center sm:justify-end gap-1.5"><MapPin className="w-3.5 h-3.5 text-indigo-500" />{location || 'Chennai, India'}</div>
           </div>
         </div>
 
@@ -604,7 +604,7 @@ export const ResumePreviewTemplates: React.FC<ResumePreviewTemplatesProps> = ({ 
 
   // --- TEMPLATE 4: MINIMAL CLEAN ---
   return (
-    <div className="bg-white text-slate-900 font-sans p-8 sm:p-12 shadow-2xl rounded-sm max-w-3xl mx-auto border border-slate-200 print:shadow-none print:border-none print:max-w-none print:w-full print:p-0">
+    <div className="w-full max-w-full box-border bg-white text-slate-900 font-sans p-6 sm:p-8 overflow-hidden break-words text-left print:shadow-none print:border-none print:max-w-none print:w-full print:p-0">
       {/* Header */}
       <div className="text-left space-y-1.5 pb-4 border-b-2 border-slate-900">
         <h1 className="text-3xl font-black text-slate-900 tracking-tight">

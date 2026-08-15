@@ -393,7 +393,7 @@ export const CommunicationView: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto space-y-6 max-w-4xl mx-auto py-2 px-4 sm:px-6 relative animate-in fade-in duration-300">
+    <div className="flex-1 overflow-y-auto space-y-6 max-w-6xl w-full mx-auto py-4 px-4 sm:px-8 relative animate-in fade-in duration-300">
       
       {/* Session Resume Modal */}
       <SessionResumeModal

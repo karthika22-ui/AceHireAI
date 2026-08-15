@@ -1,12 +1,45 @@
 export type LanguagePreference = 'English' | 'Tanglish';
 
+export type UserStatus =
+  | 'Plus Two Student'
+  | 'College Student'
+  | 'Graduate'
+  | 'Postgraduate'
+  | 'Working Professional'
+  | 'Job Seeker';
+
 export interface UserProfile {
   id: string;
   name: string;
   email: string;
-  college: string;
-  department: string;
+  phone?: string;
+  userStatus?: UserStatus;
+
+  // Plus Two Student Fields
+  schoolName?: string;
+  stream?: string;
+  expectedCompletionYear?: string;
+
+  // College / Graduate / Postgraduate Fields
+  college?: string;
+  degree?: string;
+  department?: string;
+  currentYear?: string;
+  graduationYear?: string;
+
+  // Working Professional / Job Seeker Fields
+  highestQualification?: string;
+  currentRole?: string;
+  company?: string;
+  experience?: string;
+  targetIndustry?: string;
+  passoutYear?: string;
+
+  // General Placement & Skill Fields
   preferredLanguage: LanguagePreference;
+  targetJobRole?: string;
+  skills?: string[];
+
   avatarUrl?: string;
   createdAt: string;
 }
@@ -64,6 +97,24 @@ export interface DetailedGrammarReport {
   contentStatusMessage?: string;
 }
 
+export interface CameraMetric {
+  title: string;
+  rating: string;
+  score: number;
+  evidence: string;
+  suggestion?: string;
+}
+
+export interface CameraAnalysisResult {
+  isCameraOn: boolean;
+  notice?: string;
+  eyeContact?: CameraMetric;
+  facialExpression?: CameraMetric;
+  posture?: CameraMetric;
+  movement?: CameraMetric;
+  overallVisualPresence?: CameraMetric;
+}
+
 export interface DualLanguageFeedback {
   // AI Evaluation Status & Explanation
   status: AnswerEvaluationStatus;
@@ -84,6 +135,9 @@ export interface DualLanguageFeedback {
   professionalismScore: number;
   overallScore: number;
   scoreExplanation: string;
+
+  // Camera & Visual Analysis (Optional, present when camera is ON)
+  cameraAnalysis?: CameraAnalysisResult | null;
 
   // Legacy Compatibility Fields
   englishExplanation: string;

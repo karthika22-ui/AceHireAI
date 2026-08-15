@@ -111,3 +111,30 @@ ALTER TABLE public.learning_roadmap ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can manage own profile" ON public.profiles FOR ALL USING (auth.uid() = id);
 CREATE POLICY "Users can manage own resumes" ON public.resumes FOR ALL USING (auth.uid() = user_id);
 CREATE POLICY "Users can manage own interviews" ON public.interview_sessions FOR ALL USING (auth.uid() = user_id);
+
+-- Automatic Profile Creation Trigger for Supabase Auth
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (id, name, email, college, department, preferred_language, avatar_url)
+  VALUES (
+    NEW.id,
+    COALESCE(NEW.raw_user_meta_data->>'name', split_part(NEW.email, '@', 1)),
+    NEW.email,
+    COALESCE(NEW.raw_user_meta_data->>'college', ''),
+    COALESCE(NEW.raw_user_meta_data->>'department', ''),
+    COALESCE(NEW.raw_user_meta_data->>'preferred_language', 'Tanglish'),
+    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'
+  )
+  ON CONFLICT (id) DO UPDATE SET
+    name = EXCLUDED.name,
+    email = EXCLUDED.email;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { X, Sparkles, User, GraduationCap, ArrowRight } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { LanguagePreference } from '../../types';
 
 export const AuthModal: React.FC = () => {
   const { isAuthModalOpen, setIsAuthModalOpen, user, setUser, signup, login } = useApp();
@@ -11,9 +10,10 @@ export const AuthModal: React.FC = () => {
   const [name, setName] = useState(user.name);
   const [email, setEmail] = useState(user.email);
   const [password, setPassword] = useState('');
-  const [college, setCollege] = useState(user.college);
-  const [department, setDepartment] = useState(user.department);
-  const [preferredLanguage, setPreferredLanguage] = useState<LanguagePreference>(user.preferredLanguage);
+  const [phone, setPhone] = useState(user.phone || '');
+  const [userStatus, setUserStatus] = useState(user.userStatus || 'College Student');
+  const [college, setCollege] = useState(user.college || '');
+  const [department, setDepartment] = useState(user.department || '');
   const [loading, setLoading] = useState(false);
 
   if (!isAuthModalOpen) return null;
@@ -26,9 +26,10 @@ export const AuthModal: React.FC = () => {
       if (mode === 'signup' && password) {
         await signup(email, password, {
           name,
+          phone,
+          userStatus,
           college,
-          department,
-          preferredLanguage
+          department
         });
       } else if (mode === 'login' && password) {
         await login(email, password);
@@ -37,9 +38,10 @@ export const AuthModal: React.FC = () => {
           ...user,
           name,
           email,
+          phone,
+          userStatus,
           college,
-          department,
-          preferredLanguage
+          department
         });
       }
     } catch (err) {
@@ -71,7 +73,7 @@ export const AuthModal: React.FC = () => {
             {mode === 'signup' ? 'Create Student Profile' : mode === 'login' ? 'Welcome Back' : 'Reset Password'}
           </h2>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Tailor AI Mock Interviews & Dual-Language Feedback to your goals.
+            Tailor AI Mock Interviews & Placement Practice to your goals.
           </p>
         </div>
 
@@ -126,52 +128,6 @@ export const AuthModal: React.FC = () => {
                     placeholder="e.g. CSE / ECE / IT"
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
-                </div>
-              </div>
-
-
-
-              {/* Preferred Language Dual Option */}
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
-                  AI Feedback Explanation Language
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setPreferredLanguage('Tanglish')}
-                    className={`p-3 rounded-2xl border text-left transition-all ${
-                      preferredLanguage === 'Tanglish'
-                        ? 'bg-amber-500/10 border-amber-500 text-amber-900 dark:text-amber-300 ring-2 ring-amber-500'
-                        : 'border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between font-bold text-sm">
-                      <span>Tanglish</span>
-                      <span className="tanglish-badge px-2 py-0.5 rounded text-[10px]">Tamil+English</span>
-                    </div>
-                    <p className="text-xs opacity-80 mt-1">
-                      "Interested apram eppovume 'in' use pannanum."
-                    </p>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPreferredLanguage('English')}
-                    className={`p-3 rounded-2xl border text-left transition-all ${
-                      preferredLanguage === 'English'
-                        ? 'bg-blue-500/10 border-blue-500 text-blue-900 dark:text-blue-300 ring-2 ring-blue-500'
-                        : 'border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between font-bold text-sm">
-                      <span>English</span>
-                      <span className="bg-blue-600 text-white px-2 py-0.5 rounded text-[10px] font-bold">Standard</span>
-                    </div>
-                    <p className="text-xs opacity-80 mt-1">
-                      "Interested should always be followed by 'in'."
-                    </p>
-                  </button>
                 </div>
               </div>
             </>

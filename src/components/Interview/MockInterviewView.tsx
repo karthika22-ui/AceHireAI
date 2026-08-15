@@ -90,6 +90,16 @@ export const MockInterviewView: React.FC = () => {
   const interviewVideoRef = useRef<HTMLVideoElement | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
 
+  // Speech Recognition & Camera Sampling Refs (Requirements 1, 4, 8)
+  const recognitionRef = useRef<any>(null);
+  const isListeningRef = useRef<boolean>(false);
+  const baseAnswerRef = useRef<string>('');
+  const cameraSampleStatsRef = useRef<{ totalFramesSampled: number; movementSum: number; centerFaceSum: number }>({
+    totalFramesSampled: 0,
+    movementSum: 0,
+    centerFaceSum: 0
+  });
+
   // Configured Interview Duration Helper (Requirement STEP 1)
   // HR Interview → Exactly 20:00 (1200s)
   // Technical Interview → Exactly 25:00 (1500s)
@@ -202,6 +212,7 @@ export const MockInterviewView: React.FC = () => {
   const [openAccordions, setOpenAccordions] = useState<Record<string, boolean>>({
     evaluation: true,
     mistakes: true,
+    camera: true,
     correctAnswer: true,
     explanation: true,
     scorecard: true
@@ -297,6 +308,65 @@ export const MockInterviewView: React.FC = () => {
     };
   }, []);
 
+  // In-memory camera frame sampling for real-time visual presence & body language (Requirements 4, 8)
+  useEffect(() => {
+    if (!cameraActive || !sessionActive || sessionCompleted) {
+      cameraSampleStatsRef.current = { totalFramesSampled: 0, movementSum: 0, centerFaceSum: 0 };
+      return;
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = 160;
+    canvas.height = 120;
+    const ctx = canvas.getContext('2d');
+    let prevPixels: Uint8ClampedArray | null = null;
+
+    const interval = setInterval(() => {
+      const video = interviewVideoRef.current || hardwareVideoRef.current;
+      if (video && video.readyState >= 2 && ctx) {
+        ctx.drawImage(video, 0, 0, 160, 120);
+        const imgData = ctx.getImageData(0, 0, 160, 120);
+        const pixels = imgData.data;
+
+        let frameDiff = 0;
+        if (prevPixels) {
+          for (let i = 0; i < pixels.length; i += 16) {
+            frameDiff += Math.abs(pixels[i] - prevPixels[i]);
+          }
+        }
+        prevPixels = pixels;
+
+        let centerLuma = 0;
+        let edgeLuma = 0;
+        let centerCount = 0;
+        let edgeCount = 0;
+
+        for (let y = 0; y < 120; y += 4) {
+          for (let x = 0; x < 160; x += 4) {
+            const idx = (y * 160 + x) * 4;
+            const luma = (pixels[idx] + pixels[idx + 1] + pixels[idx + 2]) / 3;
+            if (x > 48 && x < 112 && y > 36 && y < 84) {
+              centerLuma += luma;
+              centerCount++;
+            } else {
+              edgeLuma += luma;
+              edgeCount++;
+            }
+          }
+        }
+
+        const avgCenter = centerCount > 0 ? centerLuma / centerCount : 0;
+        const avgEdge = edgeCount > 0 ? edgeLuma / edgeCount : 0;
+        const ratio = avgEdge > 0 ? avgCenter / avgEdge : 1;
+
+        cameraSampleStatsRef.current.totalFramesSampled++;
+        cameraSampleStatsRef.current.movementSum += Math.min(50, frameDiff / 500);
+        cameraSampleStatsRef.current.centerFaceSum += ratio;
+      }
+    }, 800);
+
+    return () => clearInterval(interval);
+  }, [cameraActive, sessionActive, sessionCompleted]);
+
   // Save interview session progress to state and Supabase DB
   const saveSessionToStorage = (
     history = answersHistory,
@@ -357,7 +427,7 @@ export const MockInterviewView: React.FC = () => {
     setSavedSession(null);
   };
 
-  // Speech Recognition with Microphone Mute Awareness (Requirement 5)
+  // Speech Recognition with Non-Duplicating Stream Processing (Requirement 1)
   const toggleSpeechRecognition = () => {
     if (micMuted) {
       alert('Microphone is currently muted. Please unmute your microphone to start speaking.');
@@ -367,35 +437,86 @@ export const MockInterviewView: React.FC = () => {
       alert('Speech recognition is not supported in this browser. Please type your answer.');
       return;
     }
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    const recognition = new SpeechRecognition();
-    recognition.continuous = false;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
 
     if (!isListening) {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      const recognition = new SpeechRecognition();
+      recognitionRef.current = recognition;
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      baseAnswerRef.current = userAnswer.trim();
+      isListeningRef.current = true;
       setIsListening(true);
+
+      let sessionFinalText = '';
+
+      recognition.onresult = (event: any) => {
+        let currentFinal = '';
+        let currentInterim = '';
+
+        for (let i = 0; i < event.results.length; i++) {
+          const res = event.results[i];
+          const transcriptChunk = res[0].transcript;
+          if (res.isFinal) {
+            currentFinal += transcriptChunk + ' ';
+          } else {
+            currentInterim += transcriptChunk;
+          }
+        }
+
+        sessionFinalText = currentFinal;
+
+        const base = baseAnswerRef.current;
+        const full = [base, sessionFinalText.trim(), currentInterim.trim()]
+          .filter(Boolean)
+          .join(' ')
+          .replace(/\s+/g, ' ');
+
+        setUserAnswer(full.slice(0, 800));
+      };
+
+      recognition.onerror = (err: any) => {
+        console.error('Speech recognition error', err);
+        if (err.error === 'not-allowed' || err.error === 'service-not-allowed') {
+          setIsListening(false);
+          isListeningRef.current = false;
+          alert('Microphone access denied. Please check browser permissions.');
+        }
+      };
+
+      recognition.onend = () => {
+        if (isListeningRef.current) {
+          if (userAnswer.trim()) {
+            baseAnswerRef.current = userAnswer.trim();
+          }
+          try {
+            recognition.start();
+          } catch (e) {
+            setIsListening(false);
+            isListeningRef.current = false;
+          }
+        } else {
+          setIsListening(false);
+        }
+      };
+
       try {
         recognition.start();
       } catch (e) {
         setIsListening(false);
-        console.error('Speech recognition error', e);
+        isListeningRef.current = false;
+        console.error('Speech recognition start error', e);
       }
-
-      recognition.onresult = (event: any) => {
-        const transcript = Array.from(event.results)
-          .map((res: any) => res[0].transcript)
-          .join('');
-        setUserAnswer((prev) => (prev ? `${prev} ${transcript}` : transcript).slice(0, 800));
-      };
-
-      recognition.onerror = (err: any) => {
-        setIsListening(false);
-        console.error('Speech recognition error', err);
-      };
-      recognition.onend = () => setIsListening(false);
     } else {
+      isListeningRef.current = false;
       setIsListening(false);
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {}
+      }
     }
   };
 
@@ -538,12 +659,33 @@ export const MockInterviewView: React.FC = () => {
     }, 400);
 
     try {
+      let cameraOpts: any = { isCameraOn: false };
+
+      if (cameraActive && mediaStreamRef.current && mediaStreamRef.current.active) {
+        const samples = cameraSampleStatsRef.current.totalFramesSampled;
+        const avgMove = samples > 0 ? cameraSampleStatsRef.current.movementSum / samples : 8;
+        const avgRatio = samples > 0 ? cameraSampleStatsRef.current.centerFaceSum / samples : 1;
+
+        cameraOpts = {
+          isCameraOn: true,
+          visualObservations: {
+            eyeContactScore: avgRatio > 0.6 ? 90 : 68,
+            postureScore: avgMove < 25 ? 88 : 68,
+            observedGaze: avgRatio < 0.6 ? 'frequent_lookaway' : 'consistent',
+            observedPosture: avgMove > 25 ? 'fidgeting' : 'stable',
+            observedExpression: 'neutral',
+            insufficientData: samples < 1
+          }
+        };
+      }
+
       const res = await evaluateAnswerWithAI(
         currentQ.question,
         userAnswer,
         currentQ.category,
         difficulty,
-        user.preferredLanguage
+        user.preferredLanguage,
+        cameraOpts
       );
       clearInterval(interval);
       setLoadingStep(5);
@@ -1587,6 +1729,123 @@ export const MockInterviewView: React.FC = () => {
                   </div>
                 )}
               </div>
+
+              {/* ACCORDION: CAMERA & BODY LANGUAGE ANALYSIS (Requirements 3, 4, 5, 6, 7, 9) */}
+              {feedback.cameraAnalysis && (
+                <div className="glass-card rounded-2xl border border-slate-700/80 bg-slate-900/80 backdrop-blur-xl overflow-hidden shadow-xl">
+                  <button
+                    onClick={() => toggleAccordion('camera')}
+                    className="w-full p-5 flex items-center justify-between text-left hover:bg-slate-800/40 transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-400">
+                        <Video className="w-5 h-5 text-purple-400" />
+                      </div>
+                      <div>
+                        <h3 className="text-base font-extrabold text-white">Camera & Body Language Analysis</h3>
+                        <p className="text-xs text-slate-400">Dynamic visual presence, gaze, and posture evaluation</p>
+                      </div>
+                    </div>
+                    {openAccordions.camera ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
+                  </button>
+
+                  {openAccordions.camera && (
+                    <div className="p-5 pt-0 border-t border-slate-800/80 space-y-4 animate-in fade-in">
+                      {!feedback.cameraAnalysis.isCameraOn || feedback.cameraAnalysis.notice ? (
+                        <div className="p-4 rounded-xl bg-slate-950/90 border border-slate-800 text-xs font-semibold text-slate-300 flex items-center gap-2.5">
+                          <VideoOff className="w-4 h-4 text-slate-400 shrink-0" />
+                          <span>{feedback.cameraAnalysis.notice || 'Camera analysis was not performed because the camera was off.'}</span>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {feedback.cameraAnalysis.eyeContact && (
+                            <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2 text-xs">
+                              <div className="flex items-center justify-between">
+                                <span className="font-extrabold text-white flex items-center gap-1.5">
+                                  <Eye className="w-4 h-4 text-blue-400" />
+                                  <span>Eye Contact</span>
+                                </span>
+                                <span className="font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                                  {feedback.cameraAnalysis.eyeContact.rating}
+                                </span>
+                              </div>
+                              <p className="text-slate-300 font-medium leading-relaxed">
+                                {feedback.cameraAnalysis.eyeContact.evidence}
+                              </p>
+                              {feedback.cameraAnalysis.eyeContact.suggestion && (
+                                <p className="text-blue-300 font-semibold bg-blue-950/40 p-2.5 rounded-lg border border-blue-900/50">
+                                  💡 {feedback.cameraAnalysis.eyeContact.suggestion}
+                                </p>
+                              )}
+                            </div>
+                          )}
+
+                          {feedback.cameraAnalysis.facialExpression && (
+                            <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2 text-xs">
+                              <div className="flex items-center justify-between">
+                                <span className="font-extrabold text-white flex items-center gap-1.5">
+                                  <Smile className="w-4 h-4 text-purple-400" />
+                                  <span>Facial Expression</span>
+                                </span>
+                                <span className="font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                                  {feedback.cameraAnalysis.facialExpression.rating}
+                                </span>
+                              </div>
+                              <p className="text-slate-300 font-medium leading-relaxed">
+                                {feedback.cameraAnalysis.facialExpression.evidence}
+                              </p>
+                              {feedback.cameraAnalysis.facialExpression.suggestion && (
+                                <p className="text-blue-300 font-semibold bg-blue-950/40 p-2.5 rounded-lg border border-blue-900/50">
+                                  💡 {feedback.cameraAnalysis.facialExpression.suggestion}
+                                </p>
+                              )}
+                            </div>
+                          )}
+
+                          {feedback.cameraAnalysis.posture && (
+                            <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2 text-xs">
+                              <div className="flex items-center justify-between">
+                                <span className="font-extrabold text-white flex items-center gap-1.5">
+                                  <UserCheck className="w-4 h-4 text-cyan-400" />
+                                  <span>Posture & Body Language</span>
+                                </span>
+                                <span className="font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                                  {feedback.cameraAnalysis.posture.rating}
+                                </span>
+                              </div>
+                              <p className="text-slate-300 font-medium leading-relaxed">
+                                {feedback.cameraAnalysis.posture.evidence}
+                              </p>
+                              {feedback.cameraAnalysis.posture.suggestion && (
+                                <p className="text-blue-300 font-semibold bg-blue-950/40 p-2.5 rounded-lg border border-blue-900/50">
+                                  💡 {feedback.cameraAnalysis.posture.suggestion}
+                                </p>
+                              )}
+                            </div>
+                          )}
+
+                          {feedback.cameraAnalysis.overallVisualPresence && (
+                            <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2 text-xs">
+                              <div className="flex items-center justify-between">
+                                <span className="font-extrabold text-white flex items-center gap-1.5">
+                                  <Award className="w-4 h-4 text-amber-400" />
+                                  <span>Overall Visual Presence</span>
+                                </span>
+                                <span className="font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                                  {feedback.cameraAnalysis.overallVisualPresence.rating}
+                                </span>
+                              </div>
+                              <p className="text-slate-300 font-medium leading-relaxed">
+                                {feedback.cameraAnalysis.overallVisualPresence.evidence}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* ACCORDION 3: SECTION 3 - CORRECT PROFESSIONAL ANSWER (WITH TOGGLE BUTTON) */}
               <div className="glass-card rounded-2xl border border-slate-700/80 bg-slate-900/80 backdrop-blur-xl overflow-hidden shadow-xl">

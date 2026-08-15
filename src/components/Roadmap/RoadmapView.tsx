@@ -20,7 +20,10 @@ import {
   Zap,
   Brain,
   Edit3,
-  X
+  X,
+  RefreshCw,
+  AlertCircle,
+  Rocket
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { SessionResumeModal } from '../Common/SessionResumeModal';
@@ -29,7 +32,7 @@ export type UserLevel = 'Beginner' | 'Intermediate' | 'Advanced';
 export type DailyTime = '30 min' | '1 hour' | '2 hours' | '3+ hours';
 export type TimeFilter = 'All' | 'Daily' | 'Weekly' | 'Monthly';
 
-interface RoadmapTask {
+export interface RoadmapTask {
   id: string;
   title: string;
   duration: string;
@@ -37,7 +40,7 @@ interface RoadmapTask {
   period: TimeFilter;
 }
 
-interface RoadmapStage {
+export interface RoadmapStage {
   id: string;
   topic: string;
   description: string;
@@ -47,9 +50,18 @@ interface RoadmapStage {
   tasks: RoadmapTask[];
 }
 
-const LOCAL_STORAGE_KEY = 'acehire_ai_roadmap_state_v3';
+const LOCAL_STORAGE_KEY = 'acehire_ai_roadmap_state_v4';
 
-// Helper to generate dynamic roadmap stages for ANY entered career goal
+const POPULAR_CAREER_TAGS = [
+  'Software Engineer',
+  'Data Scientist',
+  'UI/UX Designer',
+  'Cloud Engineer',
+  'AI Engineer',
+  'Cybersecurity Engineer'
+];
+
+// Helper to generate dynamic roadmap stages tailored to ANY career goal
 function generateDynamicRoadmapStages(
   goalText: string,
   level: UserLevel,
@@ -84,133 +96,225 @@ function generateDynamicRoadmapStages(
         topic: 'Deep Learning & Neural Networks',
         description: 'PyTorch / TensorFlow, Neural Network Architectures, and Model Tuning.',
         hours: 50,
-        taskTitles: ['Build Neural Network in PyTorch', 'Hyperparameter Tuning & Cross Validation']
+        taskTitles: ['Build Neural Network in PyTorch', 'Hyperparameter Tuning & Cross Validation', 'CNNs for Computer Vision & NLP Basics']
       },
       {
-        topic: 'Model Deployment & Portfolio Case Studies',
+        topic: 'Model Deployment & Portfolio Projects',
         description: 'Deploy ML models using FastAPI, Streamlit, and Docker on Cloud platforms.',
         hours: 30,
-        taskTitles: ['Build Streamlit Interactive ML Web App', 'Deploy ML Model API with FastAPI & Docker']
+        taskTitles: ['Build Streamlit Interactive ML Web App', 'Deploy ML Model API with FastAPI & Docker', 'Complete End-to-End Data Science Capstone']
+      },
+      {
+        topic: 'Data Science Interview Preparation',
+        description: 'Mock technical interviews, SQL queries, ML theory, and case study rounds.',
+        hours: 25,
+        taskTitles: ['Solve 20 Advanced SQL Data Science Queries', 'Practice Machine Learning System Design', 'Conduct AI Mock Technical Interview']
       }
     ];
   } else if (gLower.includes('cyber') || gLower.includes('security')) {
     stageTemplates = [
       {
-        topic: 'Networking & Linux Fundamentals',
-        description: 'Master TCP/IP protocols, Linux CLI commands, and network architecture.',
-        hours: 20,
-        taskTitles: ['Learn TCP/IP & Subnetting Basics', 'Master Linux Terminal Commands', 'Configure Wireshark Packet Inspection']
+        topic: 'Networking & Linux Administration Core',
+        description: 'Master TCP/IP protocols, OSI layers, Linux CLI commands, and network architecture.',
+        hours: 25,
+        taskTitles: ['Learn TCP/IP & Subnetting Basics', 'Master Linux Terminal & Bash Scripting', 'Configure Wireshark Packet Inspection']
       },
       {
         topic: 'Ethical Hacking & Vulnerability Assessment',
-        description: 'Understand OWASP Top 10, Nmap port scanning, and vulnerability auditing.',
+        description: 'Understand OWASP Top 10, Nmap port scanning, and web security auditing.',
+        hours: 35,
+        taskTitles: ['OWASP Top 10 Web Vulnerabilities Audit', 'Nmap Network Recon & Port Scanning', 'Burp Suite Web Proxy Testing']
+      },
+      {
+        topic: 'Cryptography & Security Infrastructure',
+        description: 'Symmetric/Asymmetric Encryption, SSL/TLS, PKI, and IAM authentication.',
         hours: 30,
-        taskTitles: ['OWASP Top 10 Web Vulnerabilities', 'Nmap Network Scanning & Recon', 'Burp Suite Proxy Basics']
+        taskTitles: ['AES vs RSA Encryption Principles', 'SSL/TLS Handshake & Certificate Config', 'Implement Identity & Access Management (IAM)']
       },
       {
-        topic: 'Cryptography & Security Protocols',
-        description: 'Symmetric/Asymmetric Encryption, SSL/TLS, and PKI infrastructure.',
-        hours: 25,
-        taskTitles: ['AES vs RSA Encryption Principles', 'SSL/TLS Handshake & Certificates']
-      },
-      {
-        topic: 'Penetration Testing & SIEM Tools',
-        description: 'Hands-on Metasploit, Snort IDS, and log analysis in Splunk.',
-        hours: 40,
-        taskTitles: ['Metasploit Exploitation Basics', 'Analyze Security Logs in Splunk']
+        topic: 'Penetration Testing & SIEM Analytics',
+        description: 'Hands-on Metasploit, intrusion detection (Snort), and log analysis in Splunk.',
+        hours: 45,
+        taskTitles: ['Metasploit Exploitation & Payload Setup', 'Analyze Security Logs in Splunk SIEM', 'Build Intrusion Detection System Rules']
       },
       {
         topic: 'Security Portfolio & Certification Prep',
-        description: 'Build security audit reports and prepare for CompTIA Security+ / CEH.',
+        description: 'Construct security audit reports and prepare for CompTIA Security+ / CEH.',
         hours: 35,
-        taskTitles: ['Complete Security Audit Case Study', 'CompTIA Security+ Mock Exam Practice']
-      }
-    ];
-  } else if (gLower.includes('data analyst')) {
-    stageTemplates = [
-      {
-        topic: 'Excel & Data Fundamentals',
-        description: 'Advanced Excel formulas, Pivot tables, VLOOKUP/XLOOKUP, and data hygiene.',
-        hours: 20,
-        taskTitles: ['Advanced Pivot Tables & Slicers', 'Excel XLOOKUP & Data Validation']
-      },
-      {
-        topic: 'SQL Querying for Data Analytics',
-        description: 'Complex SQL joins, Group By, Window Functions (ROW_NUMBER, RANK), and aggregations.',
-        hours: 30,
-        taskTitles: ['Master SQL Window Functions', 'Write Analytical Subqueries & CTEs']
-      },
-      {
-        topic: 'PowerBI / Tableau Visual Analytics',
-        description: 'Interactive dashboard creation, DAX measures, and stakeholder storytelling.',
-        hours: 25,
-        taskTitles: ['Create Interactive PowerBI Dashboard', 'Build DAX Calculated Measures']
-      },
-      {
-        topic: 'Python for Data Analysis',
-        description: 'Pandas, NumPy, and statistical hypothesis testing for business insight.',
-        hours: 30,
-        taskTitles: ['Perform Statistical Hypothesis Testing', 'Automate Data Extraction Scripts']
+        taskTitles: ['Complete Security Audit Report for Sample App', 'CompTIA Security+ Practice Test Round', 'Conduct Cybersecurity Mock Interview']
       }
     ];
   } else if (gLower.includes('ui') || gLower.includes('ux') || gLower.includes('design')) {
     stageTemplates = [
       {
-        topic: 'UX Design Principles & Research',
-        description: 'Understand user research, personas, wireframing, and Information Architecture.',
+        topic: 'UX Design Thinking & User Research',
+        description: 'Master user interviews, persona creation, empathy mapping, and information architecture.',
         hours: 20,
-        taskTitles: ['Conduct User Interviews & Personas', 'Information Architecture & Flow Mapping']
+        taskTitles: ['Conduct User Research & Build Target Personas', 'Construct Information Architecture & Sitemap', 'Create User Journey Maps']
       },
       {
-        topic: 'Figma Mastery & Design Systems',
+        topic: 'Figma Mastery & Scalable Design Systems',
         description: 'Master Auto-Layout, Constraints, Component Variants, and Design Tokens in Figma.',
-        hours: 30,
-        taskTitles: ['Figma Auto-Layout & Constraints Mastery', 'Create Scalable Component Systems']
+        hours: 35,
+        taskTitles: ['Figma Auto-Layout & Constraints Mastery', 'Create Scalable UI Component Library', 'Design Responsive Mobile & Desktop Layouts']
       },
       {
-        topic: 'High-Fidelity UI & Responsive Layouts',
-        description: 'Color theory, Typography hierarchy, Accessibility (WCAG), and responsive breakpoints.',
-        hours: 25,
-        taskTitles: ['Apply WCAG Color Contrast & Accessibility', 'Design Mobile & Desktop Breakpoints']
+        topic: 'Visual UI Design & Accessibility (WCAG)',
+        description: 'Color theory, typography hierarchy, grid systems, and WCAG accessibility standards.',
+        hours: 30,
+        taskTitles: ['Apply WCAG Color Contrast & Accessibility', 'Master Typography Scale & Visual Hierarchy', 'Design Dark & Light Mode Themes']
       },
       {
         topic: 'Interactive Prototyping & Usability Testing',
-        description: 'Build interactive prototypes and conduct usability testing sessions.',
+        description: 'Build interactive high-fidelity prototypes and conduct usability testing sessions.',
+        hours: 30,
+        taskTitles: ['Build Micro-Animations & Micro-Interactions', 'Conduct Usability Testing & Iterate Designs', 'Prepare Handoff Specifications for Developers']
+      },
+      {
+        topic: 'UI/UX Portfolio & Product Design Case Studies',
+        description: 'Construct end-to-end product design case studies to showcase to design leads.',
+        hours: 35,
+        taskTitles: ['Publish 2 End-to-End Figma Case Studies', 'Design Interactive Web Portfolio', 'Conduct UI/UX Design Mock Interview']
+      }
+    ];
+  } else if (gLower.includes('cloud') || gLower.includes('devops')) {
+    stageTemplates = [
+      {
+        topic: 'Linux System Administration & Networking',
+        description: 'Linux shell scripting, Systemd services, SSH keys, DNS, and networking basics.',
         hours: 25,
-        taskTitles: ['Build Interactive Micro-Animations in Figma', 'Conduct Usability Test Sessions']
+        taskTitles: ['Master Linux Bash Automation Scripts', 'Configure Systemd & Process Monitoring', 'Setup SSH & Firewalld Rules']
+      },
+      {
+        topic: 'Cloud Infrastructure (AWS / Azure / GCP)',
+        description: 'IAM, EC2/VMs, VPC networking, S3 storage, and load balancing.',
+        hours: 40,
+        taskTitles: ['Provision Cloud Compute Instances & Storage', 'Configure Custom Cloud VPC & Subnets', 'Deploy Application behind Elastic Load Balancer']
+      },
+      {
+        topic: 'Containerization & Orchestration (Docker & K8s)',
+        description: 'Build Docker containers, compose files, and manage Kubernetes clusters.',
+        hours: 45,
+        taskTitles: ['Containerize Microservices with Dockerfile', 'Setup Docker Compose Multi-Container App', 'Deploy & Scale Pods in Kubernetes']
+      },
+      {
+        topic: 'Infrastructure as Code (Terraform) & CI/CD',
+        description: 'Automate infrastructure using Terraform and build GitHub Actions CI/CD pipelines.',
+        hours: 40,
+        taskTitles: ['Write Modular Terraform Provisioning Code', 'Build Automated CI/CD Deployment Pipeline', 'Implement Cloud Monitoring with Prometheus & Grafana']
+      },
+      {
+        topic: 'Cloud Architecture & Certification Prep',
+        description: 'Cloud Security best practices and AWS Solutions Architect interview preparation.',
+        hours: 30,
+        taskTitles: ['Design High Availability Cloud Architecture', 'Complete AWS / Azure Practice Exam', 'Conduct Cloud DevOps Mock Interview']
+      }
+    ];
+  } else if (gLower.includes('ai') || gLower.includes('machine learning') || gLower.includes('ml')) {
+    stageTemplates = [
+      {
+        topic: 'Python Math Foundations & Data Stack',
+        description: 'Linear Algebra, Probability, Calculus, NumPy, Pandas, and Matplotlib.',
+        hours: 25,
+        taskTitles: ['NumPy Vectorization & Matrix Math', 'Pandas Data Wrangling & Cleaning', 'Exploratory Data Analysis Plots']
+      },
+      {
+        topic: 'Core Machine Learning & Scikit-Learn',
+        description: 'Supervised Learning, Regression, Trees, Ensemble Learning, and Model Metrics.',
+        hours: 35,
+        taskTitles: ['Build Classification & Regression Models', 'Tune Hyperparameters with GridSearch', 'Evaluate ROC-AUC & Confusion Matrix']
+      },
+      {
+        topic: 'Deep Learning & Neural Architectures',
+        description: 'PyTorch, Neural Networks, CNNs for Vision, Transformers, and PyTorch Lightning.',
+        hours: 45,
+        taskTitles: ['Implement Feedforward Neural Net in PyTorch', 'Train Convolutional Neural Network (CNN)', 'Fine-Tune Transformer Model (HuggingFace)']
+      },
+      {
+        topic: 'Generative AI, LLMs & Agentic Systems',
+        description: 'Prompt Engineering, LangChain, RAG architecture, Vector Databases, and Agents.',
+        hours: 45,
+        taskTitles: ['Build RAG Pipeline with Vector Database', 'Develop Autonomous AI Agent with Tools', 'Deploy GenAI App using FastAPI']
+      },
+      {
+        topic: 'AI Systems Engineering & Interview Prep',
+        description: 'Production MLOps, LLM Evaluation, System Design, and Placement interviews.',
+        hours: 30,
+        taskTitles: ['Implement ML Model Monitoring & Logging', 'Practice AI Systems Design Interview', 'Conduct AI Engineering Mock Interview']
+      }
+    ];
+  } else if (gLower.includes('software engineer') || gLower.includes('software development') || gLower.includes('swe')) {
+    stageTemplates = [
+      {
+        topic: 'Stage 1 → Programming Fundamentals',
+        description: 'Master core programming constructs, object-oriented concepts, and clean code principles in Java, C++, or Python.',
+        hours: 25,
+        taskTitles: ['Master OOP Core Principles (Encapsulation, Polymorphism)', 'Solve 15 Control Flow & Recursion Problems', 'Write Clean & Modular Code Modules']
+      },
+      {
+        topic: 'Stage 2 → Data Structures & Algorithms',
+        description: 'Arrays, Linked Lists, Stacks, Queues, Trees, Graphs, Sorting, and Dynamic Programming.',
+        hours: 50,
+        taskTitles: ['Master Time & Space Complexity Analysis (Big O)', 'Solve 30 Array & String LeetCode Problems', 'Implement Binary Trees & Graph Traversal (DFS/BFS)']
+      },
+      {
+        topic: 'Stage 3 → Database & SQL',
+        description: 'Relational Database Design, SQL Joins, Indexing, Transactions, and Normalization.',
+        hours: 30,
+        taskTitles: ['Write Complex SQL Joins & Grouping Queries', 'Master Database Indexing & Query Optimization', 'Design Normalized Entity-Relationship Schemas']
+      },
+      {
+        topic: 'Stage 4 → Web/Backend Development',
+        description: 'REST APIs, Server-side Architecture, Middleware, Auth, and System Design basics.',
+        hours: 45,
+        taskTitles: ['Build RESTful API Services with Node.js/Java', 'Implement JWT User Authentication & Security', 'Integrate Database ORM & Connection Pooling']
+      },
+      {
+        topic: 'Stage 5 → Projects',
+        description: 'Construct full-stack production application with deployment, CI/CD, and Git workflows.',
+        hours: 40,
+        taskTitles: ['Build Full-Stack Web Application', 'Deploy Project to Production Cloud Hosting', 'Write Unit & Integration Test Suite']
+      },
+      {
+        topic: 'Stage 6 → Interview Preparation',
+        description: 'System design rounds, live coding drills, resume review, and HR mock interviews.',
+        hours: 30,
+        taskTitles: ['Complete 5 System Design Case Studies', 'Practice Live Technical Coding Drills', 'Conduct AI Mock HR & Technical Interviews']
       }
     ];
   } else {
+    // Dynamic Generator for ANY custom entered career goal!
+    const capitalizedGoal = goalText.trim().replace(/\b\w/g, (c) => c.toUpperCase());
     stageTemplates = [
       {
-        topic: `Foundations of ${goal}`,
-        description: `Master core concepts, terminology, and essential tools required for ${goal}.`,
+        topic: `Stage 1 → Core Foundations of ${capitalizedGoal}`,
+        description: `Master fundamental principles, terminology, and standard tools essential for ${capitalizedGoal}.`,
         hours: 25,
-        taskTitles: [`Learn Fundamental Concepts for ${goal}`, `Set Up Development Environment & Tools`, `Build First Starter Exercise`]
+        taskTitles: [`Learn Essential Terminology & Fundamentals for ${capitalizedGoal}`, `Set Up Industry Standard Workspace & Tools`, `Complete 5 Foundational Practice Exercises`]
       },
       {
-        topic: `Core Concepts & Hands-on Practice`,
-        description: `Deep-dive into primary frameworks, libraries, and practical implementation patterns.`,
+        topic: `Stage 2 → Key Concepts & Applied Practice`,
+        description: `Deep dive into primary frameworks, methods, and hands-on implementation patterns.`,
         hours: 35,
-        taskTitles: [`Practical Hands-on Module for ${goal}`, `Solve 3 Guided Practice Exercises`, `Understand Architecture & State Flow`]
+        taskTitles: [`Master Primary Concepts & Workflows for ${capitalizedGoal}`, `Solve 10 Practical Application Challenges`, `Understand System Architecture & Flow`]
       },
       {
-        topic: `Advanced Architecture & Tooling`,
-        description: `Explore production-level architecture, performance tuning, and design patterns.`,
+        topic: `Stage 3 → Advanced Architecture & Optimization`,
+        description: `Explore production-grade techniques, performance tuning, and professional standards.`,
         hours: 40,
-        taskTitles: [`Implement Scalable Architecture Patterns`, `Optimize Performance & Code Quality`]
+        taskTitles: [`Implement Scalable Design & Engineering Patterns`, `Optimize Performance, Security & Quality Standards`, `Conduct Code/Work Reviews & Refactoring`]
       },
       {
-        topic: `Portfolio Projects & Real-World Capstone`,
-        description: `Construct and deploy production-ready projects to showcase to employers.`,
+        topic: `Stage 4 → Industry Portfolio Projects`,
+        description: `Construct and publish real-world capstone projects to showcase domain expertise to employers.`,
         hours: 45,
-        taskTitles: [`Build Portfolio Project for ${goal}`, `Deploy App to Production Platform`]
+        taskTitles: [`Design & Develop Major Portfolio Capstone Project`, `Deploy & Document Solution for Stakeholders`, `Write Project Technical Documentation`]
       },
       {
-        topic: `Placement & Technical Interview Prep`,
-        description: `Prepare for technical interview rounds, system design, and resume alignment.`,
+        topic: `Stage 5 → Placement & Interview Mastery`,
+        description: `Prepare for technical interview rounds, domain assessments, and placement drives.`,
         hours: 30,
-        taskTitles: [`Review Top Technical Interview Questions for ${goal}`, `Conduct Mock Technical Interview Round`]
+        taskTitles: [`Review Top 50 Interview Questions for ${capitalizedGoal}`, `Optimize Resume & Project Portfolio Highlights`, `Complete AI Mock Technical & HR Interview Rounds`]
       }
     ];
   }
@@ -230,7 +334,7 @@ function generateDynamicRoadmapStages(
       progress = 100;
     } else if (isFirst || (level === 'Intermediate' && isSecond) || (level === 'Advanced' && sIdx === 2)) {
       status = 'Current';
-      progress = level === 'Beginner' ? 35 : 50;
+      progress = level === 'Beginner' ? 0 : 25;
     }
 
     return {
@@ -244,7 +348,7 @@ function generateDynamicRoadmapStages(
         id: `task-${sIdx + 1}-${tIdx + 1}`,
         title: title,
         duration: dailyTime === '30 min' ? '30 min' : dailyTime === '1 hour' ? '45 min' : '60 min',
-        completed: status === 'Completed' || (status === 'Current' && tIdx === 0),
+        completed: status === 'Completed',
         period: (tIdx % 2 === 0 ? 'Daily' : 'Weekly') as TimeFilter
       }))
     };
@@ -254,19 +358,22 @@ function generateDynamicRoadmapStages(
 export const RoadmapView: React.FC = () => {
   const { setActiveTab, recordActivity } = useApp();
 
-  // Mode: 'initial' | 'loading' | 'generated'
-  const [screenMode, setScreenMode] = useState<'initial' | 'loading' | 'generated'>('initial');
+  // Screen modes: 'empty' | 'form' | 'loading' | 'generated'
+  const [screenMode, setScreenMode] = useState<'empty' | 'form' | 'loading' | 'generated'>('empty');
 
-  // Single Free-Text Career Goal Input (NO Predefined buttons)
+  // Input states (NO prefilled career goal)
   const [customGoalInput, setCustomGoalInput] = useState<string>('');
   const [userLevel, setUserLevel] = useState<UserLevel>('Beginner');
   const [dailyTime, setDailyTime] = useState<DailyTime>('1 hour');
+
+  // Validation Error State
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   // Generated Roadmap State
   const [stages, setStages] = useState<RoadmapStage[]>([]);
   const [selectedStage, setSelectedStage] = useState<RoadmapStage | null>(null);
 
-  // Resume Modal
+  // Session Resume Modal State
   const [showRoadmapModal, setShowRoadmapModal] = useState<boolean>(false);
 
   // Load persisted state on mount
@@ -275,28 +382,32 @@ export const RoadmapView: React.FC = () => {
       const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed && parsed.stages && parsed.stages.length > 0) {
-          setCustomGoalInput(parsed.customGoalInput || '');
+        if (parsed && parsed.customGoalInput && parsed.stages && parsed.stages.length > 0) {
+          setCustomGoalInput(parsed.customGoalInput);
           setUserLevel(parsed.userLevel || 'Beginner');
           setDailyTime(parsed.dailyTime || '1 hour');
           setStages(parsed.stages);
           setScreenMode('generated');
+          return;
         }
       }
+      setScreenMode('empty');
     } catch (e) {
       console.warn('Could not load saved roadmap state:', e);
+      setScreenMode('empty');
     }
   }, []);
 
-  // Save state to localStorage
+  // Save state to localStorage whenever stages or inputs change in generated mode
   useEffect(() => {
-    if (screenMode === 'generated' && stages.length > 0) {
+    if (screenMode === 'generated' && stages.length > 0 && customGoalInput.trim()) {
       try {
         const payload = {
-          customGoalInput,
+          customGoalInput: customGoalInput.trim(),
           userLevel,
           dailyTime,
-          stages
+          stages,
+          lastUpdated: new Date().toISOString()
         };
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(payload));
       } catch (e) {
@@ -305,22 +416,29 @@ export const RoadmapView: React.FC = () => {
     }
   }, [screenMode, stages, customGoalInput, userLevel, dailyTime]);
 
-  const activeGoalName = customGoalInput.trim() || 'Software Engineer';
+  const activeGoalName = customGoalInput.trim();
 
   const handleExitToDashboard = () => {
     setActiveTab('home');
   };
 
-  // Generate Personalized AI Roadmap with 2-second loading animation
+  // Generate Personalized AI Roadmap with input validation & loading state
   const handleGenerateRoadmap = () => {
+    if (!customGoalInput.trim()) {
+      setValidationError('Please enter your career goal.');
+      return;
+    }
+
+    setValidationError(null);
     setScreenMode('loading');
-    
+
     setTimeout(() => {
-      const generatedStages = generateDynamicRoadmapStages(activeGoalName, userLevel, dailyTime);
+      const goalToUse = customGoalInput.trim();
+      const generatedStages = generateDynamicRoadmapStages(goalToUse, userLevel, dailyTime);
       setStages(generatedStages);
       setScreenMode('generated');
-      recordActivity(`Generated AI Roadmap for ${activeGoalName}`, 'Roadmap', 'In Progress', 'roadmap');
-    }, 2000);
+      recordActivity(`Generated AI Roadmap for ${goalToUse}`, 'Roadmap', 'In Progress', 'roadmap');
+    }, 1800);
   };
 
   // Toggle task completion
@@ -359,7 +477,7 @@ export const RoadmapView: React.FC = () => {
     });
   };
 
-  // Stats
+  // Statistics & Calculations
   const allTasks = stages.flatMap((s) => s.tasks);
   const completedTasksCount = allTasks.filter((t) => t.completed).length;
   const overallProgress = allTasks.length > 0 ? Math.round((completedTasksCount / allTasks.length) * 100) : 0;
@@ -367,13 +485,25 @@ export const RoadmapView: React.FC = () => {
   const completedStagesCount = stages.filter((s) => s.status === 'Completed').length;
   const totalHours = stages.reduce((acc, s) => acc + s.estimatedHours, 0);
 
+  // Time conversion
+  const dailyHoursMap: Record<DailyTime, number> = {
+    '30 min': 0.5,
+    '1 hour': 1.0,
+    '2 hours': 2.0,
+    '3+ hours': 3.5
+  };
+  const hoursPerDay = dailyHoursMap[dailyTime] || 1.0;
+  const totalDaysNeeded = Math.ceil(totalHours / hoursPerDay);
+  const totalWeeksNeeded = Math.ceil(totalDaysNeeded / 7);
+  const totalMonthsNeeded = Math.max(1, Math.round(totalWeeksNeeded / 4.3));
+
   const todayTasks = currentStageObj ? currentStageObj.tasks.filter((t) => !t.completed) : [];
 
   const getGoalSpecificAIInsight = () => {
     if (!activeGoalName) return 'Focus on building strong core fundamentals first.';
     
     if (completedStagesCount === 0) {
-      return `For ${activeGoalName}, master "${stages[0]?.topic || 'core concepts'}" first. Building foundational skills will accelerate your learning path.`;
+      return `For ${activeGoalName}, focus on mastering "${stages[0]?.topic || 'Stage 1'}" first. Consistent daily effort of ${dailyTime} will build momentum fast.`;
     }
     if (currentStageObj) {
       return `You're currently mastering "${currentStageObj.topic}". Completing today's tasks will boost your ${activeGoalName} readiness to ${Math.min(100, overallProgress + 15)}%!`;
@@ -398,19 +528,57 @@ export const RoadmapView: React.FC = () => {
       <div className="absolute -bottom-24 -right-20 w-96 h-96 bg-purple-500/15 rounded-full blur-3xl pointer-events-none dark:opacity-100 opacity-25" />
 
       {/* ========================================================================= */}
-      {/* SCREEN MODE 1: INITIAL GOAL SELECTION LANDING SCREEN */}
+      {/* SCREEN MODE 1: EMPTY STATE (Requirement 10) */}
       {/* ========================================================================= */}
-      {screenMode === 'initial' && (
+      {screenMode === 'empty' && (
+        <div className="min-h-[460px] flex flex-col items-center justify-center space-y-6 text-center animate-in fade-in duration-300 py-8">
+          
+          <div className="relative w-24 h-24 rounded-3xl bg-gradient-to-tr from-cyan-400 via-indigo-600 to-purple-600 p-0.5 shadow-2xl flex items-center justify-center">
+            <div className="w-full h-full bg-slate-900 rounded-[22px] flex items-center justify-center text-cyan-300">
+              <Map className="w-12 h-12 animate-pulse" />
+            </div>
+          </div>
+
+          <div className="space-y-2 max-w-md">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-cyan-300 text-xs font-extrabold">
+              <Sparkles className="w-4 h-4 text-cyan-400" />
+              <span>Smart Interview Simulator AI</span>
+            </div>
+
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white font-['Space_Grotesk']">
+              No roadmap generated yet.
+            </h2>
+            
+            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed font-medium">
+              Enter your target career goal, skill level, and daily commitment to generate a structured, personalized learning path with milestones and daily tasks.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setScreenMode('form')}
+            className="px-8 py-4 rounded-2xl bg-gradient-to-r from-cyan-400 via-teal-300 to-emerald-400 hover:from-cyan-300 hover:to-emerald-300 text-slate-950 font-black text-sm sm:text-base flex items-center justify-center gap-3 shadow-xl shadow-cyan-400/25 transition-all duration-300 hover:scale-[1.02] active:scale-98 cursor-pointer"
+          >
+            <Rocket className="w-5 h-5 text-slate-950" />
+            <span>Create My AI Roadmap</span>
+          </button>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* SCREEN MODE 2: CAREER GOAL FORM SETUP & DYNAMIC PREVIEW */}
+      {/* ========================================================================= */}
+      {screenMode === 'form' && (
         <div className="space-y-6 animate-in fade-in duration-300">
           
           <div className="animated-border-glow-wrapper">
             <div className="relative overflow-hidden rounded-[26px] bg-gradient-to-br from-blue-600 via-indigo-800 to-purple-900 dark:from-slate-900 dark:via-indigo-950 dark:to-slate-950 p-6 sm:p-9 text-white border-0 shadow-2xl">
               <div className="absolute top-0 right-0 -mt-16 -mr-16 w-80 h-80 bg-cyan-400/10 rounded-full blur-3xl pointer-events-none" />
 
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center relative z-10">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch relative z-10">
                 
                 {/* Left Column: Form & Inputs */}
-                <div className="lg:col-span-7 space-y-6">
+                <div className="lg:col-span-7 space-y-6 flex flex-col justify-between">
                   
                   <div className="space-y-2">
                     <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/10 border border-white/20 text-cyan-200 text-xs font-bold backdrop-blur-md">
@@ -422,31 +590,80 @@ export const RoadmapView: React.FC = () => {
                       🧠 AI Learning Roadmap
                     </h1>
                     <p className="text-sm sm:text-base text-slate-100 dark:text-slate-300 font-medium leading-relaxed">
-                      Enter your goal. We'll build your personalized learning journey.
+                      Enter your career goal. We'll build your personalized learning journey.
                     </p>
                   </div>
 
-                  {/* Clean Text Input for ANY Career Goal (No predefined buttons) */}
+                  {/* Career Goal Input (Requirement 1) */}
                   <div className="space-y-2">
-                    <label className="text-xs font-extrabold text-cyan-200 block uppercase tracking-wider">
-                      Enter Career Goal
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-extrabold text-cyan-200 block uppercase tracking-wider">
+                        Enter your career goal <span className="text-pink-400">*</span>
+                      </label>
+                      {activeGoalName && (
+                        <span className="text-[10px] text-cyan-300 font-bold bg-cyan-400/10 px-2 py-0.5 rounded-md border border-cyan-400/20">
+                          Active Input
+                        </span>
+                      )}
+                    </div>
+
                     <div className="relative">
                       <input
                         type="text"
                         value={customGoalInput}
-                        onChange={(e) => setCustomGoalInput(e.target.value)}
-                        placeholder="Enter your career goal (e.g., Data Scientist, UI/UX Designer, Cloud Engineer...)"
-                        className="w-full p-4 pr-12 rounded-2xl bg-white/10 dark:bg-slate-950/80 border border-white/25 dark:border-slate-800 text-white placeholder-slate-300 dark:placeholder-slate-500 text-xs sm:text-sm font-semibold focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 backdrop-blur-xl transition-all"
+                        onChange={(e) => {
+                          setCustomGoalInput(e.target.value);
+                          if (e.target.value.trim()) setValidationError(null);
+                        }}
+                        placeholder="e.g., Data Scientist, UI/UX Designer, Cloud Engineer..."
+                        className={`w-full p-4 pr-12 rounded-2xl bg-white/10 dark:bg-slate-950/80 border ${
+                          validationError
+                            ? 'border-red-400 ring-2 ring-red-400/30'
+                            : 'border-white/25 dark:border-slate-800'
+                        } text-white placeholder-slate-300 dark:placeholder-slate-500 text-xs sm:text-sm font-semibold focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 backdrop-blur-xl transition-all`}
                       />
                       <Sparkles className="w-5 h-5 text-cyan-300 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" />
                     </div>
+
+                    {/* Inline Validation Error Message (Requirement 1 & 5) */}
+                    {validationError && (
+                      <div className="p-3 rounded-xl bg-red-500/20 border border-red-400/40 text-red-200 text-xs font-extrabold flex items-center gap-2 animate-in fade-in duration-200">
+                        <AlertCircle className="w-4 h-4 text-red-300 shrink-0" />
+                        <span>{validationError}</span>
+                      </div>
+                    )}
+
+                    {/* Example Suggestion Tags */}
+                    <div className="pt-1 space-y-1">
+                      <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wider block">
+                        Popular Career Examples:
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {POPULAR_CAREER_TAGS.map((tag) => (
+                          <button
+                            key={tag}
+                            type="button"
+                            onClick={() => {
+                              setCustomGoalInput(tag);
+                              setValidationError(null);
+                            }}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+                              customGoalInput.trim().toLowerCase() === tag.toLowerCase()
+                                ? 'bg-cyan-400 text-slate-950 font-bold'
+                                : 'bg-white/10 hover:bg-white/20 text-slate-200 border border-white/15'
+                            }`}
+                          >
+                            {tag}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Balanced 2-Column Selectors: Skill Level & Daily Study Time */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* 2-Column Selectors: Skill Level & Daily Study Time (Requirement 2 & 3) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
                     
-                    {/* Skill Level */}
+                    {/* Skill Level Selector */}
                     <div className="space-y-2">
                       <label className="text-xs font-extrabold text-slate-200 block uppercase tracking-wider">
                         Skill Level
@@ -469,7 +686,7 @@ export const RoadmapView: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Daily Study Time */}
+                    {/* Daily Study Time Selector */}
                     <div className="space-y-2">
                       <label className="text-xs font-extrabold text-slate-200 block uppercase tracking-wider">
                         Daily Study Time
@@ -494,11 +711,11 @@ export const RoadmapView: React.FC = () => {
 
                   </div>
 
-                  {/* Primary CTA Button */}
+                  {/* Primary CTA Button (Requirement 5) */}
                   <button
                     type="button"
                     onClick={handleGenerateRoadmap}
-                    className="w-full py-4 rounded-2xl bg-gradient-to-r from-cyan-400 via-teal-300 to-emerald-400 hover:from-cyan-300 hover:to-emerald-300 text-slate-950 font-black text-sm sm:text-base flex items-center justify-center gap-2.5 shadow-xl shadow-cyan-400/25 transition-all duration-300 hover:scale-[1.01] active:scale-98 cursor-pointer"
+                    className="w-full py-4 rounded-2xl bg-gradient-to-r from-cyan-400 via-teal-300 to-emerald-400 hover:from-cyan-300 hover:to-emerald-300 text-slate-950 font-black text-sm sm:text-base flex items-center justify-center gap-2.5 shadow-xl shadow-cyan-400/25 transition-all duration-300 hover:scale-[1.01] active:scale-98 cursor-pointer mt-2"
                   >
                     <Sparkles className="w-5 h-5 text-slate-950 animate-spin [animation-duration:4s]" />
                     <span>✨ Generate My AI Roadmap</span>
@@ -506,40 +723,68 @@ export const RoadmapView: React.FC = () => {
 
                 </div>
 
-                {/* Right Column: HIGHLIGHTED PROFESSIONAL AI CARD (Brighter Accent Color) */}
-                <div className="lg:col-span-5 flex flex-col items-center justify-center">
-                  <div className="relative w-full max-w-sm p-6 rounded-3xl bg-slate-900/90 dark:bg-slate-950/90 border border-cyan-400/40 shadow-[0_0_30px_rgba(56,189,248,0.25)] space-y-5 text-center relative overflow-hidden">
+                {/* Right Column: DYNAMIC PREVIEW CARD (Requirement 4) */}
+                <div className="lg:col-span-5 flex flex-col justify-between">
+                  <div className="relative h-full p-6 sm:p-7 rounded-3xl bg-slate-900/90 dark:bg-slate-950/90 border border-cyan-400/40 shadow-[0_0_30px_rgba(56,189,248,0.2)] flex flex-col justify-between space-y-6 text-center overflow-hidden">
                     
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-400/10 rounded-full blur-2xl pointer-events-none" />
+                    <div className="absolute top-0 right-0 w-36 h-36 bg-cyan-400/10 rounded-full blur-2xl pointer-events-none" />
 
-                    <div className="w-20 h-20 mx-auto rounded-2xl bg-gradient-to-tr from-cyan-400 via-indigo-500 to-purple-500 p-0.5 shadow-lg flex items-center justify-center">
-                      <div className="w-full h-full bg-slate-900 rounded-[14px] flex items-center justify-center text-cyan-300">
-                        <Bot className="w-10 h-10 animate-pulse" />
+                    <div className="space-y-4">
+                      <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-tr from-cyan-400 via-indigo-500 to-purple-500 p-0.5 shadow-lg flex items-center justify-center">
+                        <div className="w-full h-full bg-slate-900 rounded-[14px] flex items-center justify-center text-cyan-300">
+                          <Bot className="w-8 h-8 animate-pulse" />
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <span className="text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-400/30">
+                          🤖 AI Roadmap Live Preview
+                        </span>
+                        
+                        {/* Dynamic Title (Requirement 4: NEVER permanently software engineer) */}
+                        <h3 className="text-lg sm:text-xl font-extrabold text-white font-['Space_Grotesk'] pt-1 min-h-[32px] flex items-center justify-center">
+                          {activeGoalName ? `🎯 ${activeGoalName}` : 'Your Target Career Goal'}
+                        </h3>
+                        
+                        <p className="text-xs text-slate-300 leading-relaxed font-medium px-2">
+                          {activeGoalName ? (
+                            <>
+                              Your roadmap will be personalized specifically for <strong>"{activeGoalName}"</strong> based on your selected <strong>{userLevel}</strong> skill level and <strong>{dailyTime}</strong> daily study commitment.
+                            </>
+                          ) : (
+                            'Enter your target career goal to preview your personalized AI roadmap structure.'
+                          )}
+                        </p>
                       </div>
                     </div>
 
-                    <div className="space-y-1.5">
-                      <span className="text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-400/30">
-                        🤖 AI Roadmap Insight
-                      </span>
-                      <h3 className="text-base sm:text-lg font-extrabold text-white font-['Space_Grotesk'] pt-1">
-                        {activeGoalName}
-                      </h3>
-                      <p className="text-xs text-slate-300 leading-relaxed font-medium">
-                        Enter any career goal. Our AI generates tailored stages, skill requirements, and milestones optimized for your target.
-                      </p>
+                    {/* Dynamic Preview Badges */}
+                    <div className="space-y-2 pt-2 border-t border-slate-800">
+                      <div className="grid grid-cols-2 gap-2 text-left text-[11px] font-extrabold">
+                        <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300">
+                          <span className="text-[10px] text-slate-400 block uppercase font-bold">Target Career</span>
+                          <strong className="text-cyan-300 truncate block">{activeGoalName || 'Not entered'}</strong>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300">
+                          <span className="text-[10px] text-slate-400 block uppercase font-bold">Skill Level</span>
+                          <strong className="text-emerald-400 block">{userLevel}</strong>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300">
+                          <span className="text-[10px] text-slate-400 block uppercase font-bold">Daily Time</span>
+                          <strong className="text-purple-400 block">{dailyTime}</strong>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300">
+                          <span className="text-[10px] text-slate-400 block uppercase font-bold">Curriculum</span>
+                          <strong className="text-cyan-300 block">Dynamic Modules</strong>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-center gap-1.5 text-[11px] font-extrabold text-emerald-400 pt-1">
+                        <CheckCircle2 className="w-4 h-4 shrink-0" />
+                        <span>Adaptive Stages & Task Tracker</span>
+                      </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2 text-left pt-2 border-t border-slate-800 text-[11px] font-extrabold text-cyan-300">
-                      <div className="flex items-center gap-1.5">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                        <span>Dynamic Modules</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                        <span>Adaptive Tasks</span>
-                      </div>
-                    </div>
                   </div>
                 </div>
 
@@ -551,28 +796,29 @@ export const RoadmapView: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* SCREEN MODE 2: POLISHED 2-SECOND LOADING ANIMATION */}
+      {/* SCREEN MODE 3: PROPER LOADING STATE (Requirement 5) */}
       {/* ========================================================================= */}
       {screenMode === 'loading' && (
-        <div className="min-h-[400px] flex flex-col items-center justify-center space-y-6 text-center animate-in fade-in duration-300">
-          <div className="relative w-24 h-24 flex items-center justify-center">
-            <div className="absolute inset-0 rounded-full border-4 border-blue-500/20 border-t-cyan-400 animate-spin" />
-            <Brain className="w-10 h-10 text-cyan-300 animate-pulse" />
+        <div className="min-h-[440px] flex flex-col items-center justify-center space-y-6 text-center animate-in fade-in duration-300 py-10">
+          <div className="relative w-28 h-28 flex items-center justify-center">
+            <div className="absolute inset-0 rounded-full border-4 border-cyan-500/20 border-t-cyan-400 animate-spin" />
+            <div className="absolute inset-3 rounded-full border-4 border-purple-500/20 border-b-purple-400 animate-spin [animation-duration:3s]" />
+            <Brain className="w-12 h-12 text-cyan-300 animate-pulse" />
           </div>
 
-          <div className="space-y-2">
-            <h3 className="text-xl font-extrabold text-slate-900 dark:text-white font-['Space_Grotesk']">
-              Building your personalized roadmap...
+          <div className="space-y-2 max-w-md">
+            <h3 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white font-['Space_Grotesk']">
+              Creating your personalized AI roadmap...
             </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto font-medium">
-              Structuring stages, topics, and daily milestones for "{activeGoalName}".
+            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 font-medium">
+              Structuring customized stages, learning topics, and daily milestones for <strong>"{activeGoalName}"</strong>.
             </p>
           </div>
         </div>
       )}
 
       {/* ========================================================================= */}
-      {/* SCREEN MODE 3: GENERATED PERSONALIZED ROADMAP JOURNEY */}
+      {/* SCREEN MODE 4: GENERATED ROADMAP RESULT PAGE (Requirement 7 & 8) */}
       {/* ========================================================================= */}
       {screenMode === 'generated' && (
         <div className="space-y-6 animate-in fade-in duration-300">
@@ -580,84 +826,86 @@ export const RoadmapView: React.FC = () => {
           {/* TARGET GOAL HERO HEADER */}
           <div className="glass-card rounded-3xl p-6 border border-slate-200 dark:border-purple-500/20 bg-white/95 dark:bg-slate-900/85 backdrop-blur-2xl shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="space-y-1">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 text-blue-600 dark:text-cyan-400 text-xs font-bold">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 text-xs font-bold border border-cyan-500/20">
                 <Target className="w-4 h-4" />
                 <span>Selected Career Goal</span>
               </div>
-              <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white font-['Space_Grotesk'] flex items-center gap-2">
+              <h2 className="text-xl sm:text-3xl font-extrabold text-slate-900 dark:text-white font-['Space_Grotesk'] flex items-center gap-2">
                 🎯 {activeGoalName}
               </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                Skill Level: <strong>{userLevel}</strong> • Daily Time: <strong>{dailyTime}</strong> • Estimated Duration: <strong>~{totalHours} Hours</strong>
+              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 font-medium">
+                Skill Level: <strong className="text-blue-500 dark:text-cyan-400">{userLevel}</strong> • Daily Commitment: <strong className="text-purple-500 dark:text-purple-400">{dailyTime}</strong> • Estimated Duration: <strong className="text-emerald-500">{totalHours} Hours</strong> (~{totalWeeksNeeded} Weeks / ~{totalMonthsNeeded} Months)
               </p>
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
+              {/* Regenerate Option (Requirement 8) */}
               <button
                 type="button"
-                onClick={() => setScreenMode('initial')}
-                className="px-4 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-extrabold flex items-center gap-1.5 border border-slate-300 dark:border-slate-700 transition-all cursor-pointer"
+                onClick={() => setScreenMode('form')}
+                className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-extrabold flex items-center gap-2 shadow-md transition-all cursor-pointer"
               >
-                <Edit3 className="w-4 h-4 text-blue-500" />
-                <span>Change Goal / Level</span>
+                <RefreshCw className="w-4 h-4" />
+                <span>Regenerate Roadmap</span>
               </button>
 
               <button
+                type="button"
                 onClick={handleExitToDashboard}
-                className="px-3.5 py-2.5 rounded-2xl bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/30 text-xs font-extrabold flex items-center gap-1.5 transition-all cursor-pointer"
+                className="px-3.5 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 text-xs font-extrabold flex items-center gap-1.5 transition-all cursor-pointer"
               >
                 <LogOut className="w-3.5 h-3.5" />
-                <span>Exit</span>
+                <span>Dashboard</span>
               </button>
             </div>
           </div>
 
-          {/* ROADMAP OVERVIEW STATS & AI INSIGHT */}
+          {/* ROADMAP OVERVIEW STATS & TIMELINE */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             
-            {/* Overall Roadmap Progress */}
+            {/* Overall Roadmap Progress Card */}
             <div className="md:col-span-2 glass-card rounded-3xl p-6 border border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/85 backdrop-blur-2xl shadow-xl space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 text-blue-500" />
+                  <TrendingUp className="w-5 h-5 text-cyan-400" />
                   <h3 className="text-sm font-extrabold text-slate-900 dark:text-white font-['Space_Grotesk']">
                     Overall Roadmap Progress
                   </h3>
                 </div>
-                <span className="text-xl font-black text-blue-600 dark:text-cyan-400 font-mono">
+                <span className="text-xl font-black text-cyan-400 font-mono">
                   {overallProgress}%
                 </span>
               </div>
 
-              <div className="w-full bg-slate-200 dark:bg-slate-800 h-3 rounded-full overflow-hidden p-0.5 border border-slate-300 dark:border-slate-700">
+              <div className="w-full bg-slate-200 dark:bg-slate-800 h-3.5 rounded-full overflow-hidden p-0.5 border border-slate-300 dark:border-slate-700">
                 <div
-                  className="bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 h-full rounded-full transition-all duration-700 ease-out"
+                  className="bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-500 h-full rounded-full transition-all duration-700 ease-out"
                   style={{ width: `${overallProgress}%` }}
                 />
               </div>
 
               <div className="grid grid-cols-3 gap-2 text-center text-xs pt-1">
                 <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
-                  <span className="text-slate-500 block text-[10px] font-bold">Completed Modules</span>
-                  <strong className="text-emerald-500 text-xs font-black">{completedStagesCount} / {stages.length}</strong>
+                  <span className="text-slate-500 block text-[10px] font-bold">Tasks Completed</span>
+                  <strong className="text-emerald-400 text-xs font-black">{completedTasksCount} / {allTasks.length}</strong>
                 </div>
                 <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
-                  <span className="text-slate-500 block text-[10px] font-bold">Current Module</span>
-                  <strong className="text-blue-500 text-xs font-extrabold truncate block">{currentStageObj ? currentStageObj.topic.split(' ')[0] : 'None'}</strong>
+                  <span className="text-slate-500 block text-[10px] font-bold">Completed Stages</span>
+                  <strong className="text-cyan-400 text-xs font-extrabold truncate block">{completedStagesCount} / {stages.length}</strong>
                 </div>
                 <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
-                  <span className="text-slate-500 block text-[10px] font-bold">Remaining Modules</span>
-                  <strong className="text-purple-500 text-xs font-black">{stages.length - completedStagesCount}</strong>
+                  <span className="text-slate-500 block text-[10px] font-bold">Estimated Weeks</span>
+                  <strong className="text-purple-400 text-xs font-black">~{totalWeeksNeeded} Weeks</strong>
                 </div>
               </div>
             </div>
 
-            {/* HIGHLIGHTED AI INSIGHT CARD */}
+            {/* AI INSIGHT & READINESS CARD */}
             <div className="glass-card rounded-3xl p-5 border border-purple-500/30 bg-white/95 dark:bg-slate-900/85 backdrop-blur-2xl shadow-xl flex flex-col justify-between space-y-3">
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <div className="flex items-center gap-1.5 text-purple-600 dark:text-purple-400 font-extrabold text-xs">
                   <Bot className="w-4 h-4" />
-                  <span>🤖 AI Insight ({activeGoalName})</span>
+                  <span>🤖 AI Roadmap Insight</span>
                 </div>
                 <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 leading-relaxed">
                   "{getGoalSpecificAIInsight()}"
@@ -665,21 +913,21 @@ export const RoadmapView: React.FC = () => {
               </div>
 
               <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-[11px] font-bold text-slate-500">
-                <span>Readiness Level:</span>
-                <span className="text-emerald-500 font-extrabold">{Math.min(100, overallProgress + 15)}% Job Ready</span>
+                <span>Placement Readiness:</span>
+                <span className="text-emerald-400 font-extrabold font-mono text-xs">{Math.min(100, Math.max(15, overallProgress + 20))}% Job Ready</span>
               </div>
             </div>
           </div>
 
-          {/* CURRENT MODULE CARD */}
+          {/* CURRENT ACTIVE STAGE CARD */}
           {currentStageObj && (
-            <div className="glass-card rounded-3xl p-5 sm:p-6 border border-blue-500/30 bg-gradient-to-r from-blue-500/10 via-indigo-500/10 to-purple-500/10 dark:bg-slate-900/90 backdrop-blur-2xl shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="glass-card rounded-3xl p-5 sm:p-6 border border-cyan-500/30 bg-gradient-to-r from-cyan-500/10 via-indigo-500/10 to-purple-500/10 dark:bg-slate-900/90 backdrop-blur-2xl shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="space-y-1.5 max-w-xl">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 text-blue-600 dark:text-cyan-300 text-[11px] font-extrabold">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 text-[11px] font-extrabold border border-cyan-500/30">
                   <Flame className="w-3.5 h-3.5 text-amber-500" />
-                  <span>Current Module (Learning Now)</span>
+                  <span>Current Active Module</span>
                 </div>
-                <h3 className="text-lg font-extrabold text-slate-900 dark:text-white font-['Space_Grotesk']">
+                <h3 className="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white font-['Space_Grotesk']">
                   {currentStageObj.topic}
                 </h3>
                 <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
@@ -687,10 +935,10 @@ export const RoadmapView: React.FC = () => {
                 </p>
 
                 <div className="flex items-center gap-3 pt-1">
-                  <div className="w-40 bg-slate-200 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
-                    <div className="bg-blue-500 h-full rounded-full" style={{ width: `${currentStageObj.progress}%` }} />
+                  <div className="w-48 bg-slate-200 dark:bg-slate-800 h-2.5 rounded-full overflow-hidden">
+                    <div className="bg-cyan-400 h-full rounded-full transition-all duration-500" style={{ width: `${currentStageObj.progress}%` }} />
                   </div>
-                  <span className="text-xs font-black text-blue-600 dark:text-cyan-400 font-mono">
+                  <span className="text-xs font-black text-cyan-400 font-mono">
                     {currentStageObj.progress}%
                   </span>
                 </div>
@@ -699,28 +947,28 @@ export const RoadmapView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setSelectedStage(currentStageObj)}
-                className="px-5 py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-blue-600/25 transition-all cursor-pointer shrink-0"
+                className="px-5 py-2.5 rounded-2xl bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-black text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-cyan-400/20 transition-all cursor-pointer shrink-0"
               >
-                <span>View Tasks</span>
+                <span>View Stage Tasks</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
           )}
 
-          {/* PERSONALIZED ROADMAP NODES */}
+          {/* CONNECTED ROADMAP STAGE NODES */}
           <div className="glass-card rounded-3xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/85 backdrop-blur-2xl shadow-xl space-y-6">
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
               <div>
                 <h2 className="text-xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2 font-['Space_Grotesk']">
-                  <Map className="w-6 h-6 text-blue-500" />
-                  <span>Personalized Roadmap Nodes</span>
+                  <Map className="w-6 h-6 text-cyan-400" />
+                  <span>Personalized Learning Stages</span>
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Click any stage node to view tasks and detailed learning content.
+                  Click any stage node to view detailed topics and tasks.
                 </p>
               </div>
-              <span className="text-xs font-extrabold px-3 py-1 rounded-full bg-blue-500/10 text-blue-600 dark:text-cyan-400 border border-blue-500/20">
-                {stages.length} Connected Stages
+              <span className="text-xs font-extrabold px-3 py-1 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                {stages.length} Structured Stages
               </span>
             </div>
 
@@ -739,10 +987,10 @@ export const RoadmapView: React.FC = () => {
                       onClick={() => setSelectedStage(stage)}
                       className={`relative z-10 p-5 rounded-2xl border transition-all cursor-pointer flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 group ${
                         isCurrent
-                          ? 'border-blue-500 bg-blue-500/10 dark:bg-blue-500/15 shadow-xl shadow-blue-500/10 scale-[1.01]'
+                          ? 'border-cyan-400 bg-cyan-500/10 dark:bg-cyan-500/15 shadow-xl shadow-cyan-400/10 scale-[1.01]'
                           : isCompleted
                           ? 'border-emerald-500/40 bg-emerald-500/5 dark:bg-emerald-500/10'
-                          : 'border-slate-200 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-950/40 opacity-60 hover:opacity-100'
+                          : 'border-slate-200 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-950/40 opacity-70 hover:opacity-100'
                       }`}
                     >
                       <div className="flex items-start sm:items-center gap-4">
@@ -751,7 +999,7 @@ export const RoadmapView: React.FC = () => {
                             isCompleted
                               ? 'bg-emerald-500 text-white'
                               : isCurrent
-                              ? 'bg-blue-600 text-white ring-4 ring-blue-500/20'
+                              ? 'bg-cyan-400 text-slate-950 ring-4 ring-cyan-400/20'
                               : 'bg-slate-200 dark:bg-slate-800 text-slate-400'
                           }`}
                         >
@@ -771,7 +1019,7 @@ export const RoadmapView: React.FC = () => {
                                 isCompleted
                                   ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
                                   : isCurrent
-                                  ? 'bg-blue-500/20 text-blue-600 dark:text-cyan-400'
+                                  ? 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-300'
                                   : 'bg-slate-200 dark:bg-slate-800 text-slate-400'
                               }`}
                             >
@@ -794,7 +1042,7 @@ export const RoadmapView: React.FC = () => {
                       <div className="flex items-center gap-4 shrink-0 w-full sm:w-auto justify-between sm:justify-end border-t sm:border-t-0 pt-3 sm:pt-0 border-slate-200 dark:border-slate-800">
                         <div className="text-right space-y-1">
                           <span className="text-[10px] text-slate-400 font-bold block uppercase">
-                            Stage Progress
+                            Progress
                           </span>
                           <span className="text-xs font-black text-slate-900 dark:text-white font-mono">
                             {stage.progress}%
@@ -805,13 +1053,13 @@ export const RoadmapView: React.FC = () => {
                           type="button"
                           className={`px-4 py-2 rounded-xl text-xs font-extrabold flex items-center gap-1 transition-all ${
                             isCurrent
-                              ? 'bg-blue-600 text-white shadow-md'
+                              ? 'bg-cyan-400 text-slate-950 font-black shadow-md'
                               : isCompleted
                               ? 'bg-emerald-600 text-white'
                               : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
                           }`}
                         >
-                          <span>View Tasks</span>
+                          <span>Tasks ({stage.tasks.filter(t => t.completed).length}/{stage.tasks.length})</span>
                           <ChevronRight className="w-4 h-4" />
                         </button>
                       </div>
@@ -822,20 +1070,20 @@ export const RoadmapView: React.FC = () => {
             </div>
           </div>
 
-          {/* TODAY'S LEARNING PLAN */}
+          {/* TODAY'S LEARNING PLAN (DAILY TASKS WITH TOGGLE) */}
           <div className="glass-card rounded-3xl p-6 border border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/85 backdrop-blur-2xl shadow-xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
               <div>
                 <h2 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2 font-['Space_Grotesk']">
-                  <Calendar className="w-4 h-4 text-purple-500" />
-                  <span>Today's Learning Plan ({currentStageObj ? currentStageObj.topic : 'Current Module'})</span>
+                  <Calendar className="w-4 h-4 text-purple-400" />
+                  <span>Daily Actionable Plan ({currentStageObj ? currentStageObj.topic : 'Active Module'})</span>
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Complete these tasks today to advance your roadmap progress.
+                  Complete these tasks to advance your overall roadmap progress.
                 </p>
               </div>
               <span className="text-[11px] font-bold text-slate-500">
-                {todayTasks.length} Tasks Pending
+                {todayTasks.length} Pending
               </span>
             </div>
 
@@ -845,12 +1093,12 @@ export const RoadmapView: React.FC = () => {
                   <div
                     key={t.id}
                     onClick={() => currentStageObj && handleToggleTask(currentStageObj.id, t.id)}
-                    className="p-3.5 rounded-2xl border cursor-pointer transition-all flex items-center justify-between gap-4 bg-slate-50/80 dark:bg-slate-950/80 border-slate-200 dark:border-slate-800 hover:border-blue-400"
+                    className="p-3.5 rounded-2xl border cursor-pointer transition-all flex items-center justify-between gap-4 bg-slate-50/80 dark:bg-slate-950/80 border-slate-200 dark:border-slate-800 hover:border-cyan-400/60 group"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-5 h-5 rounded-full border-2 border-slate-300 dark:border-slate-700 flex items-center justify-center shrink-0" />
+                      <div className="w-5 h-5 rounded-full border-2 border-slate-400 dark:border-slate-600 flex items-center justify-center shrink-0 group-hover:border-cyan-400 transition-colors" />
                       <div>
-                        <span className="text-[10px] font-black uppercase text-blue-500 block">
+                        <span className="text-[10px] font-black uppercase text-cyan-400 block">
                           {currentStageObj?.topic}
                         </span>
                         <h4 className="text-xs font-bold text-slate-900 dark:text-white">
@@ -867,13 +1115,13 @@ export const RoadmapView: React.FC = () => {
                 ))
               ) : (
                 <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-bold flex items-center justify-between">
-                  <span>🎉 All tasks for today's active module are completed!</span>
+                  <span>🎉 All tasks for the current module are completed!</span>
                   <button
                     type="button"
-                    onClick={() => setScreenMode('initial')}
-                    className="px-3 py-1 rounded-xl bg-emerald-600 text-white text-[11px]"
+                    onClick={() => setScreenMode('form')}
+                    className="px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-[11px] font-extrabold cursor-pointer"
                   >
-                    Unlock Next Module
+                    Create New Goal Roadmap
                   </button>
                 </div>
               )}
@@ -883,13 +1131,13 @@ export const RoadmapView: React.FC = () => {
         </div>
       )}
 
-      {/* VIEW TASKS MODAL */}
+      {/* STAGE TASKS MODAL */}
       {selectedStage && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="glass-card rounded-3xl p-6 max-w-xl w-full border border-blue-500/30 bg-slate-900 text-white shadow-2xl space-y-6 relative overflow-hidden">
+          <div className="glass-card rounded-3xl p-6 max-w-xl w-full border border-cyan-500/30 bg-slate-900 text-white shadow-2xl space-y-6 relative overflow-hidden">
             <div className="flex items-center justify-between border-b border-slate-800 pb-4">
               <div>
-                <span className="text-[10px] font-black uppercase tracking-wider text-blue-400">
+                <span className="text-[10px] font-black uppercase tracking-wider text-cyan-400">
                   Stage Module Details
                 </span>
                 <h3 className="text-lg font-extrabold text-white font-['Space_Grotesk']">
@@ -900,9 +1148,9 @@ export const RoadmapView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setSelectedStage(null)}
-                className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all"
+                className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all cursor-pointer"
               >
-                ✕
+                <X className="w-4 h-4" />
               </button>
             </div>
 
@@ -911,24 +1159,29 @@ export const RoadmapView: React.FC = () => {
             </p>
 
             <div className="space-y-3">
-              <h4 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider">
-                Module Tasks ({selectedStage.tasks.filter((t) => t.completed).length} / {selectedStage.tasks.length} Done)
-              </h4>
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider">
+                  Module Tasks ({selectedStage.tasks.filter((t) => t.completed).length} / {selectedStage.tasks.length} Done)
+                </h4>
+                <span className="text-xs font-mono font-bold text-cyan-400">
+                  ~{selectedStage.estimatedHours} Hours
+                </span>
+              </div>
 
               <div className="space-y-2">
                 {selectedStage.tasks.map((t) => (
                   <div
                     key={t.id}
                     onClick={() => handleToggleTask(selectedStage.id, t.id)}
-                    className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-3 cursor-pointer hover:border-blue-500/50"
+                    className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-3 cursor-pointer hover:border-cyan-400/50 transition-all"
                   >
                     <div className="flex items-center gap-3">
                       <div
-                        className={`w-5 h-5 rounded-full border flex items-center justify-center ${
+                        className={`w-5 h-5 rounded-full border flex items-center justify-center transition-all ${
                           t.completed ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-700'
                         }`}
                       >
-                        {t.completed && <Check className="w-3 h-3" />}
+                        {t.completed && <Check className="w-3.5 h-3.5" />}
                       </div>
                       <span className={`text-xs font-semibold ${t.completed ? 'line-through text-slate-500' : 'text-slate-200'}`}>
                         {t.title}
@@ -947,7 +1200,7 @@ export const RoadmapView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setSelectedStage(null)}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-extrabold text-slate-300"
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-extrabold text-slate-300 cursor-pointer"
               >
                 Close
               </button>
@@ -956,18 +1209,18 @@ export const RoadmapView: React.FC = () => {
                 type="button"
                 onClick={() => {
                   setSelectedStage(null);
-                  if (selectedStage.topic.includes('DSA') || selectedStage.topic.includes('Algorithms')) {
+                  if (selectedStage.topic.includes('DSA') || selectedStage.topic.includes('Algorithms') || selectedStage.topic.includes('Programming')) {
                     setActiveTab('coding');
-                  } else if (selectedStage.topic.includes('Interview')) {
+                  } else if (selectedStage.topic.includes('Interview') || selectedStage.topic.includes('Prep')) {
                     setActiveTab('interview');
                   } else {
                     setActiveTab('aptitude');
                   }
                 }}
-                className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-extrabold flex items-center gap-2 shadow-lg shadow-blue-600/30"
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-400 hover:from-cyan-300 hover:to-teal-300 text-slate-950 text-xs font-black flex items-center gap-2 shadow-lg shadow-cyan-400/20 cursor-pointer"
               >
-                <span>Start Learning</span>
-                <ArrowRight className="w-4 h-4" />
+                <span>Start Practice</span>
+                <ArrowRight className="w-4 h-4 text-slate-950" />
               </button>
             </div>
           </div>
@@ -979,3 +1232,4 @@ export const RoadmapView: React.FC = () => {
 };
 
 export default RoadmapView;
+

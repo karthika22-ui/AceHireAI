@@ -39,6 +39,7 @@ interface AppContextType {
   setUser: (user: UserProfile) => void;
   isLoggedIn: boolean;
   login: (email: string, pass: string) => Promise<boolean>;
+  loginWithGoogle: () => Promise<void>;
   signup: (email: string, pass: string, details?: Partial<UserProfile>) => Promise<boolean>;
   logout: () => Promise<void>;
   updateLanguagePreference: (lang: LanguagePreference) => void;
@@ -160,14 +161,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Check existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
-        handleAuthUserChange(session.user.id, session.user.email || '');
+        handleAuthUserChange(session.user.id, session.user.email || '', session.user.user_metadata);
       }
     });
 
     // Listen to real-time auth changes
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
-        await handleAuthUserChange(session.user.id, session.user.email || '');
+        await handleAuthUserChange(session.user.id, session.user.email || '', session.user.user_metadata);
       } else if (event === 'SIGNED_OUT') {
         setIsLoggedIn(false);
         setCurrentUserId('');
@@ -179,17 +180,65 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, []);
 
-  const handleAuthUserChange = async (userId: string, email: string) => {
+  const handleAuthUserChange = async (userId: string, email: string, userMetadata?: Record<string, any>) => {
     setIsLoggedIn(true);
     setCurrentUserId(userId);
 
-    // Fetch user-specific data from Supabase DB tables
-    const [fetchedProfile, fetchedScores, fetchedResume, fetchedActivities] = await Promise.all([
+    // Fetch user-specific data from Supabase DB tables or LocalStorage
+    let [fetchedProfile, fetchedScores, fetchedResume, fetchedActivities] = await Promise.all([
       SupabaseService.fetchProfile(userId),
       SupabaseService.fetchReadinessScore(userId),
       SupabaseService.fetchResume(userId, email),
       SupabaseService.fetchRecentActivities(userId)
     ]);
+
+    // Extract actual Google name & picture metadata if user authenticated via Google OAuth
+    const rawGoogleName = userMetadata?.full_name || 
+                          userMetadata?.name || 
+                          (email ? email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '');
+    const googleAvatar = userMetadata?.avatar_url || userMetadata?.picture;
+
+    // Auto-create or repair profile if missing, fallback, or incomplete
+    if (
+      !fetchedProfile ||
+      !fetchedProfile.name ||
+      fetchedProfile.name === 'User' ||
+      fetchedProfile.name === 'Google' ||
+      fetchedProfile.name === 'Google Student'
+    ) {
+      const finalName = rawGoogleName || fetchedProfile?.name || 'Student User';
+      const newProfile: UserProfile = {
+        id: userId,
+        name: finalName,
+        email: email || fetchedProfile?.email || 'student@college.edu',
+        phone: fetchedProfile?.phone || '',
+        userStatus: fetchedProfile?.userStatus || 'College Student',
+        schoolName: fetchedProfile?.schoolName || '',
+        stream: fetchedProfile?.stream || '',
+        expectedCompletionYear: fetchedProfile?.expectedCompletionYear || '',
+        college: fetchedProfile?.college || '',
+        degree: fetchedProfile?.degree || '',
+        department: fetchedProfile?.department || '',
+        currentYear: fetchedProfile?.currentYear || '',
+        graduationYear: fetchedProfile?.graduationYear || '',
+        highestQualification: fetchedProfile?.highestQualification || '',
+        currentRole: fetchedProfile?.currentRole || '',
+        company: fetchedProfile?.company || '',
+        experience: fetchedProfile?.experience || '',
+        targetIndustry: fetchedProfile?.targetIndustry || '',
+        passoutYear: fetchedProfile?.passoutYear || '',
+        preferredLanguage: fetchedProfile?.preferredLanguage || 'Tanglish',
+        targetJobRole: fetchedProfile?.targetJobRole || '',
+        skills: fetchedProfile?.skills || [],
+        avatarUrl:
+          googleAvatar ||
+          fetchedProfile?.avatarUrl ||
+          'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+        createdAt: fetchedProfile?.createdAt || new Date().toISOString()
+      };
+      fetchedProfile = newProfile;
+      await SupabaseService.saveProfile(newProfile, userId);
+    }
 
     if (fetchedProfile) setUserState(fetchedProfile);
     if (fetchedScores) setReadinessScore(fetchedScores);
@@ -342,29 +391,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // SUPABASE LOGIN ACTION
   const login = async (email: string, pass: string): Promise<boolean> => {
-    const cleanEmail = email.trim() || 'student@college.edu';
+    const cleanEmail = email.trim().toLowerCase();
     const { data, error } = await SupabaseService.signIn(cleanEmail, pass);
 
     if (error && isSupabaseConfigured()) {
       console.error('Supabase Sign In error:', error.message);
-      // Fallback for demo login if needed
     }
 
     const userId = data?.user?.id || currentUserId || `user-${Date.now()}`;
     setIsLoggedIn(true);
     setCurrentUserId(userId);
 
-    // Fetch User Data from Supabase DB
-    const loadedProfile = await SupabaseService.fetchProfile(userId);
+    // Fetch User Data from Supabase DB or Local Storage
+    const loadedProfile = await SupabaseService.fetchProfile(cleanEmail || userId);
     const loadedScores = await SupabaseService.fetchReadinessScore(userId);
     const loadedResume = await SupabaseService.fetchResume(userId, cleanEmail);
     const loadedActivities = await SupabaseService.fetchRecentActivities(userId);
 
     setUserState(loadedProfile);
-    setReadinessScore(loadedScores);
-    setResumeState(loadedResume);
-    setRecentActivities(loadedActivities);
-    setCompletedTasksCount(loadedActivities.length);
+    if (loadedScores) setReadinessScore(loadedScores);
+    if (loadedResume) setResumeState(loadedResume);
+    if (loadedActivities) {
+      setRecentActivities(loadedActivities);
+      setCompletedTasksCount(loadedActivities.length);
+    }
 
     setShowSplash(false);
     if (pendingTargetTab && pendingTargetTab !== 'login') {
@@ -382,7 +432,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     pass: string,
     details?: Partial<UserProfile>
   ): Promise<boolean> => {
-    const cleanEmail = email.trim();
+    const cleanEmail = email.trim().toLowerCase();
     const { data, error } = await SupabaseService.signUp(cleanEmail, pass, details);
 
     if (error && isSupabaseConfigured()) {
@@ -397,10 +447,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: userId,
       name: details?.name || cleanEmail.split('@')[0],
       email: cleanEmail,
+      phone: details?.phone || '',
+      userStatus: details?.userStatus || 'College Student',
+      schoolName: details?.schoolName || '',
+      stream: details?.stream || '',
+      expectedCompletionYear: details?.expectedCompletionYear || '',
       college: details?.college || '',
+      degree: details?.degree || '',
       department: details?.department || '',
+      currentYear: details?.currentYear || '',
+      graduationYear: details?.graduationYear || '',
+      highestQualification: details?.highestQualification || '',
+      currentRole: details?.currentRole || '',
+      company: details?.company || '',
+      experience: details?.experience || '',
+      targetIndustry: details?.targetIndustry || '',
+      passoutYear: details?.passoutYear || '',
       preferredLanguage: details?.preferredLanguage || 'Tanglish',
+      targetJobRole: details?.targetJobRole || '',
+      skills: details?.skills || [],
       avatarUrl:
+        details?.avatarUrl ||
         'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
       createdAt: new Date().toISOString()
     };
@@ -468,6 +535,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
+  // SUPABASE GOOGLE OAUTH ACTION
+  const loginWithGoogle = async (): Promise<void> => {
+    if (!isSupabaseConfigured()) {
+      throw new Error('Google Sign-In requires active Supabase configuration. Please configure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your environment.');
+    }
+    const { error } = await SupabaseService.signInWithGoogle();
+    if (error) {
+      throw error;
+    }
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -475,6 +553,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setUser,
         isLoggedIn,
         login,
+        loginWithGoogle,
         signup,
         logout,
         updateLanguagePreference,

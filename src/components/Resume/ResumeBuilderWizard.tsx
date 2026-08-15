@@ -57,7 +57,7 @@ export const ResumeBuilderWizard: React.FC<ResumeBuilderWizardProps> = ({ onBack
   // Form State
   const [formData, setFormData] = useState<ResumeData>(() => ({
     fullName: resume?.fullName || '',
-    professionalTitle: resume?.professionalTitle || 'Software Engineering Student',
+    professionalTitle: resume?.professionalTitle || '',
     email: resume?.email || '',
     phone: resume?.phone || '',
     location: resume?.location || '',
@@ -65,35 +65,24 @@ export const ResumeBuilderWizard: React.FC<ResumeBuilderWizardProps> = ({ onBack
     gitHub: resume?.gitHub || '',
     portfolio: resume?.portfolio || '',
     summary: resume?.summary || '',
-    education: resume?.education && resume.education.length > 0 ? resume.education : [
-      { degree: 'B.E. / B.Tech Computer Science', institution: 'Engineering College', department: 'Computer Science', location: '', startYear: '2022', endYear: '2026', graduationYear: '2026', cgpa: '8.5 / 10' }
-    ],
+    education: resume?.education || [],
     skills: resume?.skills || [],
-    programmingLanguages: resume?.programmingLanguages || ['Java', 'Python', 'JavaScript', 'C++'],
-    webTechnologies: resume?.webTechnologies || ['HTML5/CSS3', 'React.js', 'Tailwind CSS'],
-    frameworksLibraries: resume?.frameworksLibraries || ['Node.js', 'Express.js'],
-    databases: resume?.databases || ['SQL', 'MongoDB', 'PostgreSQL'],
-    toolsAndTech: resume?.toolsAndTech || ['Git', 'GitHub', 'VS Code'],
-    otherSkills: resume?.otherSkills || ['Problem Solving', 'Data Structures & Algorithms'],
-    technicalSkills: resume?.technicalSkills || ['OOP', 'DBMS', 'Operating Systems'],
-    projects: resume?.projects && resume.projects.length > 0 ? resume.projects : [
-      { title: 'Placement Preparation Ecosystem', description: 'Developed an interactive AI placement platform supporting automated mock interviews and resume ATS scoring.', techStack: ['React', 'TypeScript', 'Tailwind CSS'], keyContributions: 'Built responsive UI components and state integration.', gitHubUrl: 'https://github.com/example/project' }
-    ],
+    programmingLanguages: resume?.programmingLanguages || [],
+    webTechnologies: resume?.webTechnologies || [],
+    frameworksLibraries: resume?.frameworksLibraries || [],
+    databases: resume?.databases || [],
+    toolsAndTech: resume?.toolsAndTech || [],
+    otherSkills: resume?.otherSkills || [],
+    technicalSkills: resume?.technicalSkills || [],
+    projects: resume?.projects || [],
     experience: resume?.experience || [],
-    certifications: resume?.certifications || [
-      { title: 'Full Stack Web Development', issuer: 'Coursera / Meta', date: '2024', credentialUrl: '' }
-    ],
-    achievements: resume?.achievements || ['Secured 1st Place in College Hackathon 2024'],
-    leadership: resume?.leadership || ['Technical Lead at Student Coding Club'],
+    certifications: resume?.certifications || [],
+    achievements: resume?.achievements || [],
+    leadership: resume?.leadership || [],
     clubsVolunteering: resume?.clubsVolunteering || [],
     extracurriculars: resume?.extracurriculars || [],
-    languages: resume?.languages || [
-      { language: 'English', proficiency: 'Full Professional' },
-      { language: 'Tamil', proficiency: 'Native / Bilingual' }
-    ],
-    additionalLinks: resume?.additionalLinks || [
-      { platform: 'LeetCode', url: 'https://leetcode.com/u/candidate' }
-    ],
+    languages: resume?.languages || [],
+    additionalLinks: resume?.additionalLinks || [],
     selectedTemplate: resume?.selectedTemplate || 'modern'
   }));
 
@@ -126,6 +115,68 @@ export const ResumeBuilderWizard: React.FC<ResumeBuilderWizardProps> = ({ onBack
   // Helper validation routines
   const validateEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   const validateUrl = (url: string) => !url || /^(https?:\/\/)?([\w-]+\.)+[\w-]+(\/.*)?$/i.test(url);
+
+  const isSectionCompleted = (stepNum: number): boolean => {
+    switch (stepNum) {
+      case 1:
+        return Boolean(formData.selectedTemplate);
+      case 2:
+        return Boolean(
+          formData.fullName?.trim() &&
+          formData.email?.trim() &&
+          formData.phone?.trim() &&
+          formData.location?.trim()
+        );
+      case 3:
+        return Boolean(formData.summary?.trim() && formData.summary.trim().length >= 10);
+      case 4:
+        return Boolean(
+          formData.education &&
+          formData.education.length > 0 &&
+          formData.education[0]?.degree?.trim() &&
+          formData.education[0]?.institution?.trim()
+        );
+      case 5:
+        return Boolean(
+          (formData.programmingLanguages && formData.programmingLanguages.length > 0) ||
+          (formData.webTechnologies && formData.webTechnologies.length > 0) ||
+          (formData.technicalSkills && formData.technicalSkills.length > 0) ||
+          (formData.skills && formData.skills.length > 0) ||
+          (formData.databases && formData.databases.length > 0) ||
+          (formData.toolsAndTech && formData.toolsAndTech.length > 0)
+        );
+      case 6:
+        return Boolean(
+          formData.projects &&
+          formData.projects.length > 0 &&
+          formData.projects[0]?.title?.trim() &&
+          formData.projects[0]?.description?.trim()
+        );
+      case 7:
+        // Experience is optional: complete if empty OR if filled properly
+        return (formData.experience || []).length === 0 || Boolean(formData.experience?.[0]?.role?.trim() && formData.experience?.[0]?.company?.trim());
+      case 8:
+        // Certifications are optional
+        return (formData.certifications || []).length === 0 || Boolean(formData.certifications?.[0]?.title?.trim());
+      case 9:
+        // Activities are optional
+        return true;
+      case 10:
+        return Boolean(formData.languages && formData.languages.length > 0 && formData.languages[0]?.language?.trim());
+      case 11:
+        return Boolean(
+          formData.fullName?.trim() &&
+          formData.email?.trim() &&
+          formData.phone?.trim() &&
+          formData.education?.length > 0 &&
+          formData.education[0]?.degree?.trim()
+        );
+      case 12:
+        return Boolean(atsAnalysis || (formData.atsScore && formData.atsScore > 0));
+      default:
+        return false;
+    }
+  };
 
   const validateCurrentStep = (): boolean => {
     const errors: Record<string, string> = {};
@@ -382,89 +433,151 @@ Return ONLY the improved bullet points without introductory text or markdown pro
       )}
 
       {/* STEP PROGRESS WIZARD INDICATOR */}
-      <div className="overflow-x-auto pb-2 scrollbar-none print:hidden">
-        <div className="flex items-center min-w-max gap-1 bg-slate-100 dark:bg-slate-900/80 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-800">
+      <div className="print:hidden">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 lg:grid-cols-12 gap-1.5 bg-slate-100 dark:bg-slate-900/80 p-2 rounded-2xl border border-slate-200 dark:border-slate-800">
           {steps.map((s) => {
             const isActive = currentStep === s.num;
-            const isCompleted = currentStep > s.num;
+            const isCompleted = isSectionCompleted(s.num);
             return (
               <button
                 key={s.num}
                 onClick={() => setCurrentStep(s.num)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
+                title={`${s.num}. ${s.label}`}
+                className={`px-2 py-2 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer truncate ${
                   isActive
-                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md'
+                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md scale-[1.02] ring-2 ring-indigo-500/30 font-extrabold'
                     : isCompleted
-                    ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400'
-                    : 'text-slate-500 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-800'
+                    ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-300/40 dark:border-emerald-800/40'
+                    : 'bg-white/40 dark:bg-slate-800/40 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'
                 }`}
               >
-                <span className="p-1 rounded-lg bg-white/10">{s.icon}</span>
-                <span>{s.label}</span>
-                {isCompleted && <Check className="w-3 h-3 text-indigo-500" />}
+                <span className={`p-0.5 rounded ${isActive ? 'bg-white/20' : ''}`}>{s.icon}</span>
+                <span className="truncate">{s.num}. {s.label}</span>
+                {isCompleted && <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0 font-black" />}
               </button>
             );
           })}
         </div>
       </div>
 
-      {/* MAIN TWO-COLUMN LAYOUT (DESKTOP SIDE-BY-SIDE / MOBILE TOGGLE) */}
-      <div className="flex flex-col lg:flex-row gap-6 items-start relative">
-        {/* LEFT COLUMN: WIZARD FORM INPUTS */}
-        <div className={`w-full lg:w-7/12 space-y-6 ${mobileViewMode === 'preview' ? 'hidden lg:block' : 'block'} print:hidden`}>
-          {/* STEP 1: CHOOSE TEMPLATE */}
+      {/* MAIN TWO-COLUMN 12-COLUMN GRID LAYOUT */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start relative">
+        {/* LEFT COLUMN: WIZARD FORM INPUTS (7 COLS) */}
+        <div className={`lg:col-span-7 space-y-6 w-full min-w-0 ${mobileViewMode === 'preview' ? 'hidden lg:block' : 'block'} print:hidden`}>
+          {/* STEP 1: CHOOSE TEMPLATE GALLERY */}
           {currentStep === 1 && (
-            <div className="glass-card rounded-3xl p-6 border border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-900/80 space-y-5">
-              <div>
-                <h2 className="text-xl font-extrabold text-slate-900 dark:text-white font-['Space_Grotesk']">
-                  Choose Your Resume Template
-                </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  Select a professional, ATS-optimized layout tailored for college placements
-                </p>
+            <div className="glass-card rounded-3xl p-6 border border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-900/80 space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-xl font-extrabold text-slate-900 dark:text-white font-['Space_Grotesk'] flex items-center gap-2">
+                    <Layout className="w-5 h-5 text-indigo-500" />
+                    <span>Resume Template Gallery</span>
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Select a high-impact layout optimized for automated ATS parsers and technical recruiter reviews. Selecting a template instantly updates the Live Resume Preview.
+                  </p>
+                </div>
+                <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 px-3 py-1 rounded-full border border-indigo-500/20 shrink-0">
+                  Active: {formData.selectedTemplate?.toUpperCase() || 'MODERN'}
+                </span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-1">
                 {[
-                  { id: 'modern', name: 'Modern Professional', desc: 'Indigo accent header, modern typography, structured layout.', badge: 'Popular' },
-                  { id: 'ats-friendly', name: 'ATS Friendly', desc: 'Clean single column, standard headers, high parser score.', badge: 'Recommended for ATS' },
-                  { id: 'classic', name: 'Classic Professional', desc: 'Traditional corporate layout, serif typography, top header line.', badge: 'Standard' },
-                  { id: 'minimal', name: 'Minimal Clean', desc: 'Ultra-clean layout, border dividers, compact spacing.', badge: 'Fresher Choice' }
+                  {
+                    id: 'modern',
+                    name: 'Modern Professional',
+                    badge: 'Popular',
+                    desc: 'Indigo accent header bar, clean modern typography, structured section dividers.',
+                    previewHeader: 'bg-indigo-600 text-white p-3 rounded-t-lg',
+                    previewLines: ['w-1/2 h-2.5 bg-white/80 rounded', 'w-1/3 h-2 bg-indigo-200/80 rounded mt-1']
+                  },
+                  {
+                    id: 'ats-friendly',
+                    name: 'ATS Maximum Parser',
+                    badge: 'Recommended for ATS',
+                    desc: 'Clean single-column structure, standard text headings, maximum parser compatibility.',
+                    previewHeader: 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white p-3 rounded-t-lg border-b-2 border-slate-900 dark:border-slate-400',
+                    previewLines: ['w-2/3 h-2.5 bg-slate-800 dark:bg-slate-200 rounded', 'w-1/2 h-2 bg-slate-500 dark:bg-slate-400 rounded mt-1']
+                  },
+                  {
+                    id: 'classic',
+                    name: 'Classic Corporate',
+                    badge: 'Standard Serif',
+                    desc: 'Traditional corporate layout, serif headings, elegant top rule divider.',
+                    previewHeader: 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white p-3 rounded-t-lg border-b-2 border-indigo-900 dark:border-indigo-400 text-center',
+                    previewLines: ['w-1/2 h-2.5 bg-slate-900 dark:bg-slate-100 rounded mx-auto', 'w-1/3 h-2 bg-slate-600 dark:bg-slate-400 rounded mx-auto mt-1']
+                  },
+                  {
+                    id: 'minimal',
+                    name: 'Minimal Clean',
+                    badge: 'Fresher Choice',
+                    desc: 'Ultra-clean layout, border dividers, compact line spacing.',
+                    previewHeader: 'bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white p-3 rounded-t-lg border-l-4 border-slate-600',
+                    previewLines: ['w-1/2 h-2.5 bg-slate-800 dark:bg-slate-200 rounded', 'w-1/3 h-2 bg-slate-400 rounded mt-1']
+                  }
                 ].map((t) => {
                   const isSelected = formData.selectedTemplate === t.id;
                   return (
                     <div
                       key={t.id}
                       onClick={() => setFormData({ ...formData, selectedTemplate: t.id as any })}
-                      className={`p-5 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between space-y-4 ${
+                      className={`group p-4 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between space-y-4 ${
                         isSelected
-                          ? 'border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/30 ring-2 ring-indigo-500/20 shadow-lg'
-                          : 'border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-700 bg-slate-50/50 dark:bg-slate-950/40'
+                          ? 'border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/40 ring-2 ring-indigo-500/30 shadow-xl scale-[1.01]'
+                          : 'border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-700 bg-slate-50/50 dark:bg-slate-950/40 hover:shadow-md'
                       }`}
                     >
+                      {/* Mini Mockup Visual Preview */}
+                      <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 overflow-hidden shadow-sm group-hover:border-indigo-400/60 transition-colors">
+                        <div className={t.previewHeader}>
+                          <div className={t.previewLines[0]}></div>
+                          <div className={t.previewLines[1]}></div>
+                        </div>
+                        <div className="p-3 space-y-2">
+                          <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded"></div>
+                          <div className="w-5/6 h-1.5 bg-slate-200 dark:bg-slate-800 rounded"></div>
+                          <div className="flex gap-1 pt-1">
+                            <div className="w-1/3 h-1 bg-indigo-500/40 rounded"></div>
+                            <div className="w-1/3 h-1 bg-indigo-500/40 rounded"></div>
+                            <div className="w-1/3 h-1 bg-indigo-500/40 rounded"></div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Info & Badges */}
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-black text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 px-2.5 py-0.5 rounded-full border border-indigo-500/20">
+                          <span className="text-[11px] font-extrabold text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 px-2.5 py-0.5 rounded-full border border-indigo-500/20">
                             {t.badge}
                           </span>
                           {isSelected && <CheckCircle2 className="w-5 h-5 text-indigo-600" />}
                         </div>
-                        <h3 className="text-base font-extrabold text-slate-900 dark:text-white">{t.name}</h3>
+                        <h3 className="text-sm font-extrabold text-slate-900 dark:text-white">{t.name}</h3>
                         <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">{t.desc}</p>
                       </div>
 
+                      {/* Select Action Button */}
                       <button
+                        type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           setFormData({ ...formData, selectedTemplate: t.id as any });
                         }}
-                        className={`w-full py-2 px-3 rounded-xl text-xs font-bold transition-all ${
+                        className={`w-full py-2 px-3 rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                           isSelected
-                            ? 'bg-indigo-600 text-white shadow'
+                            ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md'
                             : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-indigo-600 hover:text-white'
                         }`}
                       >
-                        {isSelected ? 'Selected' : 'Use Template'}
+                        {isSelected ? (
+                          <>
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>Currently Active</span>
+                          </>
+                        ) : (
+                          <span>Use This Template →</span>
+                        )}
                       </button>
                     </div>
                   );
@@ -1520,73 +1633,150 @@ Return ONLY the improved bullet points without introductory text or markdown pro
           {currentStep === 12 && (
             <div className="glass-card rounded-3xl p-6 border border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-900/80 space-y-6">
               <div>
-                <h2 className="text-xl font-extrabold text-slate-900 dark:text-white font-['Space_Grotesk']">
-                  ATS Score Analysis & Finish
+                <h2 className="text-xl font-extrabold text-slate-900 dark:text-white font-['Space_Grotesk'] flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-indigo-500" />
+                  <span>ATS Score Audit & Finalize</span>
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  Run an instant AI ATS audit or finalize your resume for application
+                  Run an instant AI ATS parser audit on your completed resume data to optimize keywords and formatting before exporting.
                 </p>
               </div>
 
-              {/* ATS Check Button */}
-              <div className="p-5 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 flex flex-wrap items-center justify-between gap-4">
-                <div className="space-y-1">
-                  <span className="text-xs font-extrabold text-indigo-700 dark:text-indigo-300 block">AI Resume Parser Compatibility</span>
-                  <p className="text-xs text-slate-600 dark:text-slate-400">Evaluate formatting, section coverage, and skill density</p>
+              {/* ATS Check Action Card */}
+              <div className="p-5 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/80 flex flex-wrap items-center justify-between gap-4">
+                <div className="space-y-1 max-w-md">
+                  <span className="text-xs font-extrabold text-indigo-700 dark:text-indigo-300 block flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-cyan-400" />
+                    <span>AI Resume Parser Audit</span>
+                  </span>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                    Evaluates candidate contact details, technical skill density, project action verbs, and structural parseability.
+                  </p>
                 </div>
                 <button
                   type="button"
                   onClick={handleRunAtsCheck}
                   disabled={isAtsAnalyzing}
-                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-xs flex items-center gap-2 shadow hover:shadow-lg disabled:opacity-50"
+                  className="px-5 py-3 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white font-extrabold text-xs flex items-center gap-2 shadow-lg hover:shadow-indigo-500/25 transition-all cursor-pointer disabled:opacity-50"
                 >
-                  <BarChart3 className="w-4 h-4" />
-                  <span>{isAtsAnalyzing ? 'Analyzing Resume...' : 'Check ATS Score'}</span>
+                  <BarChart3 className="w-4 h-4 text-white" />
+                  <span>{isAtsAnalyzing ? 'Analyzing Real Data...' : 'Run ATS Audit Now →'}</span>
                 </button>
               </div>
 
-              {/* ATS Results View */}
+              {/* ATS Results Output View */}
               {atsAnalysis && (
-                <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 space-y-4 animate-in fade-in">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-extrabold text-slate-900 dark:text-white uppercase tracking-wider">
-                      ATS Score Metrics
-                    </span>
-                    <span className="text-xl font-black text-emerald-600 dark:text-emerald-400">
-                      {atsAnalysis.atsScore} / 100
+                <div className="p-6 rounded-2xl bg-slate-900 text-white border border-indigo-500/30 shadow-xl space-y-5 animate-in fade-in">
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-slate-800 pb-4">
+                    <div className="flex items-center gap-4">
+                      <div className="w-16 h-16 rounded-2xl bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center font-black text-2xl text-emerald-400 shrink-0">
+                        {atsAnalysis.atsScore}
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-black uppercase tracking-wider text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-full border border-cyan-500/20">
+                          {atsAnalysis.atsScore >= 80 ? 'Placement Ready' : atsAnalysis.atsScore >= 60 ? 'Moderate Compatibility' : 'Action Required'}
+                        </span>
+                        <h3 className="text-base font-extrabold text-white font-['Space_Grotesk'] mt-1">
+                          ATS Parser Compatibility Score
+                        </h3>
+                      </div>
+                    </div>
+                    <span className="text-xs text-slate-400 font-medium">
+                      Based on user-entered content
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                    <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1">
-                      <span className="font-bold text-slate-900 dark:text-white block">Matched Skills ({atsAnalysis.matchedSkills.length})</span>
-                      <p className="text-slate-600 dark:text-slate-400">{atsAnalysis.matchedSkills.join(', ') || 'High coverage'}</p>
+                  {/* Skills Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                    <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                      <span className="font-extrabold text-emerald-400 block flex items-center gap-1.5">
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Matched Keywords ({atsAnalysis.matchedSkills.length})</span>
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {atsAnalysis.matchedSkills.length > 0 ? (
+                          atsAnalysis.matchedSkills.map((sk, idx) => (
+                            <span key={idx} className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 text-[11px] font-semibold">
+                              {sk}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-slate-400 italic">No matched skills detected yet. Add skills in Step 5.</span>
+                        )}
+                      </div>
                     </div>
-                    <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1">
-                      <span className="font-bold text-amber-600 block">Suggested Keyword Adds</span>
-                      <p className="text-slate-600 dark:text-slate-400">{atsAnalysis.missingSkills.join(', ') || 'Good keyword density'}</p>
+
+                    <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                      <span className="font-extrabold text-amber-400 block flex items-center gap-1.5">
+                        <AlertCircle className="w-4 h-4" />
+                        <span>Recommended Keyword Additions</span>
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {atsAnalysis.missingSkills.length > 0 ? (
+                          atsAnalysis.missingSkills.map((sk, idx) => (
+                            <span key={idx} className="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/20 text-[11px] font-semibold">
+                              + {sk}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-slate-400 italic">Great coverage! Essential placement keywords are present.</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section Readiness Breakdown */}
+                  <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2">
+                    <span className="text-xs font-extrabold text-slate-300 uppercase tracking-wider block">
+                      Section Readiness Audit
+                    </span>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                      <div className="p-2 rounded-lg bg-slate-900 border border-slate-800">
+                        <span className="text-[10px] text-slate-400 block">Personal Info</span>
+                        <span className={`font-bold ${formData.fullName && formData.email ? 'text-emerald-400' : 'text-amber-400'}`}>
+                          {formData.fullName && formData.email ? '✓ Complete' : '⚠️ Pending'}
+                        </span>
+                      </div>
+                      <div className="p-2 rounded-lg bg-slate-900 border border-slate-800">
+                        <span className="text-[10px] text-slate-400 block">Education</span>
+                        <span className={`font-bold ${(formData.education || []).length > 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                          {(formData.education || []).length > 0 ? '✓ Complete' : '⚠️ Missing'}
+                        </span>
+                      </div>
+                      <div className="p-2 rounded-lg bg-slate-900 border border-slate-800">
+                        <span className="text-[10px] text-slate-400 block">Tech Skills</span>
+                        <span className={`font-bold ${(formData.programmingLanguages || []).length > 0 || (formData.skills || []).length > 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                          {(formData.programmingLanguages || []).length > 0 || (formData.skills || []).length > 0 ? '✓ Added' : '⚠️ Add Skills'}
+                        </span>
+                      </div>
+                      <div className="p-2 rounded-lg bg-slate-900 border border-slate-800">
+                        <span className="text-[10px] text-slate-400 block">Projects</span>
+                        <span className={`font-bold ${(formData.projects || []).length > 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                          {(formData.projects || []).length > 0 ? '✓ Added' : '⚠️ Add Project'}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* Action Buttons */}
+              {/* Final Export Action Buttons */}
               <div className="flex flex-wrap items-center gap-3 pt-2">
                 <button
                   type="button"
                   onClick={handleSaveResume}
-                  className="flex-1 py-3 px-4 rounded-xl bg-slate-900 dark:bg-white/10 text-white font-bold text-xs flex items-center justify-center gap-2 hover:bg-slate-800 transition-colors"
+                  className="flex-1 py-3 px-4 rounded-xl bg-slate-900 dark:bg-slate-800 text-white font-extrabold text-xs flex items-center justify-center gap-2 hover:bg-slate-800 transition-colors shadow"
                 >
-                  <Save className="w-4 h-4" />
-                  <span>Save Resume</span>
+                  <Save className="w-4 h-4 text-emerald-400" />
+                  <span>Save Resume Profile</span>
                 </button>
                 <button
                   type="button"
                   onClick={handlePrintPDF}
-                  className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-xs flex items-center justify-center gap-2 shadow hover:shadow-lg transition-all"
+                  className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg hover:shadow-indigo-500/25 transition-all"
                 >
                   <Download className="w-4 h-4" />
-                  <span>Download PDF</span>
+                  <span>Download Resume PDF</span>
                 </button>
               </div>
             </div>
@@ -1604,39 +1794,51 @@ Return ONLY the improved bullet points without introductory text or markdown pro
               <span>Back</span>
             </button>
 
-            <button
-              type="button"
-              onClick={handleNextStep}
-              disabled={currentStep === 12}
-              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-xs flex items-center gap-1.5 shadow hover:shadow-lg disabled:opacity-40"
-            >
-              <span>{currentStep === 11 ? 'Continue to ATS' : 'Next Step'}</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
+            {currentStep === 12 ? (
+              <button
+                type="button"
+                onClick={handleSaveResume}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold text-xs flex items-center gap-1.5 shadow-md hover:shadow-lg transition-all"
+              >
+                <Save className="w-4 h-4" />
+                <span>Finish & Save Resume</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleNextStep}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-xs flex items-center gap-1.5 shadow hover:shadow-lg"
+              >
+                <span>{currentStep === 11 ? 'Continue to ATS' : 'Next Step'}</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
 
-        {/* RIGHT COLUMN: STICKY LIVE RESUME PREVIEW (DESKTOP) */}
+        {/* RIGHT COLUMN: STICKY LIVE RESUME PREVIEW (5 COLS) */}
         <div
           id="printable-resume-preview"
-          className={`w-full lg:w-5/12 lg:sticky lg:top-4 ${
+          className={`lg:col-span-5 lg:sticky lg:top-4 w-full min-w-0 ${
             mobileViewMode === 'edit' ? 'hidden lg:block' : 'block'
           }`}
         >
-          <div className="glass-card rounded-3xl p-4 sm:p-5 border border-slate-200 dark:border-slate-800 bg-slate-900/90 dark:bg-slate-950/90 text-white shadow-2xl space-y-4 print:bg-white print:p-0 print:border-none">
+          <div className="glass-card rounded-3xl p-5 sm:p-6 border border-slate-200 dark:border-slate-800 bg-slate-900/95 dark:bg-slate-950/95 text-white shadow-xl space-y-4 print:bg-white print:p-0 print:border-none overflow-hidden w-full box-border">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3 print:hidden">
               <div className="flex items-center gap-2">
                 <Eye className="w-4 h-4 text-cyan-400 animate-pulse" />
                 <span className="text-xs font-bold font-['Space_Grotesk'] text-white">Live Resume Preview</span>
               </div>
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-500/20">
-                {formData.selectedTemplate || 'modern'}
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-400 bg-indigo-500/10 px-2.5 py-0.5 rounded-full border border-indigo-500/20">
+                {formData.selectedTemplate?.toUpperCase() || 'MODERN'}
               </span>
             </div>
 
-            {/* LIVE RENDERER */}
-            <div className="max-h-[80vh] overflow-y-auto rounded-xl scrollbar-thin scrollbar-thumb-slate-700 print:max-h-none print:overflow-visible">
-              <ResumePreviewTemplates data={formData} template={formData.selectedTemplate || 'modern'} />
+            {/* LIVE RENDERER: Authentic A4 Paper Canvas */}
+            <div className="max-h-[calc(100vh-160px)] overflow-y-auto overflow-x-hidden w-full min-w-0 rounded-2xl p-3 sm:p-4 bg-slate-950/60 border border-slate-800/80 scrollbar-thin scrollbar-thumb-slate-700 print:max-h-none print:p-0 print:bg-transparent print:border-none print:overflow-visible flex justify-center">
+              <div className="w-full max-w-[794px] bg-white text-slate-900 rounded shadow-2xl overflow-hidden border border-slate-200/80 transition-all duration-300 transform-gpu">
+                <ResumePreviewTemplates data={formData} template={formData.selectedTemplate || 'modern'} />
+              </div>
             </div>
           </div>
         </div>

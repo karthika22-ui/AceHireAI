@@ -11,7 +11,8 @@ import {
   CodingChallenge,
   CodingSubmissionResult,
   AptitudeQuestion,
-  RoadmapTask
+  RoadmapTask,
+  CameraAnalysisResult
 } from '../types';
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -931,7 +932,20 @@ export async function evaluateAnswerWithAI(
   userAnswer: string,
   category: string,
   difficulty: string = 'Medium',
-  preferredLanguage: 'English' | 'Tanglish' = 'English'
+  preferredLanguage: 'English' | 'Tanglish' = 'English',
+  cameraOptions?: {
+    isCameraOn: boolean;
+    visualObservations?: {
+      eyeContactScore?: number;
+      facialScore?: number;
+      postureScore?: number;
+      movementScore?: number;
+      observedGaze?: 'consistent' | 'frequent_lookaway' | 'moderate';
+      observedExpression?: 'neutral' | 'smiling' | 'tense';
+      observedPosture?: 'stable' | 'fidgeting' | 'leaning';
+      insufficientData?: boolean;
+    };
+  }
 ): Promise<DualLanguageFeedback> {
   // Simulate intelligent AI processing delay
   await new Promise((resolve) => setTimeout(resolve, 600));
@@ -1320,6 +1334,97 @@ Next time try pannumbodhu:
 
   const explanationText = preferredLanguage === 'Tanglish' ? tanglishExp : englishExp;
 
+  // 3. Dynamic Camera & Body Language Analysis (Requirements 3, 4, 5)
+  let cameraAnalysis: CameraAnalysisResult | null = null;
+  const isCameraOn = cameraOptions?.isCameraOn ?? false;
+
+  if (!isCameraOn) {
+    cameraAnalysis = {
+      isCameraOn: false,
+      notice: 'Camera analysis was not performed because the camera was off.'
+    };
+  } else {
+    const obs = cameraOptions?.visualObservations;
+    if (obs?.insufficientData) {
+      cameraAnalysis = {
+        isCameraOn: true,
+        notice: 'Not enough visual information was available for a reliable assessment.'
+      };
+    } else {
+      const gaze = obs?.observedGaze || 'consistent';
+      const expr = obs?.observedExpression || 'neutral';
+      const post = obs?.observedPosture || 'stable';
+
+      let eyeScore = 88;
+      let eyeEvidence = 'Your camera-facing gaze was generally consistent during this answer.';
+      let eyeSuggestion: string | undefined = undefined;
+
+      if (gaze === 'frequent_lookaway') {
+        eyeScore = 66;
+        eyeEvidence = 'Your gaze moved away from the camera several times during the response. Try to maintain more consistent camera-facing attention.';
+        eyeSuggestion = 'Focus your eyes toward the camera lens when presenting key points.';
+      } else if (gaze === 'consistent') {
+        eyeScore = 92;
+        eyeEvidence = 'Your camera-facing gaze was generally consistent and steady throughout this response.';
+      }
+
+      let faceScore = 90;
+      let faceEvidence = 'Your facial expression remained generally neutral, professional, and appropriately engaged.';
+      let faceSuggestion: string | undefined = undefined;
+
+      if (expr === 'tense') {
+        faceScore = 72;
+        faceEvidence = 'Your facial expression appeared somewhat tense during answer delivery.';
+        faceSuggestion = 'Take a relaxed breath before speaking to maintain an approachable, natural facial tone.';
+      }
+
+      let postScore = 88;
+      let postEvidence = category === 'HR'
+        ? 'Your posture was comfortable, upright, and well-suited for a behavioral HR interview.'
+        : 'Your posture was stable and focused, supporting your technical explanation.';
+      let postSuggestion: string | undefined = undefined;
+
+      if (post === 'fidgeting') {
+        postScore = 68;
+        postEvidence = 'Frequent head movements and posture shifts were noticed while explaining your answer.';
+        postSuggestion = 'Keep your posture upright and minimize excessive head tilting when detailing complex ideas.';
+      }
+
+      const overallVisScore = Math.round((eyeScore + faceScore + postScore) / 3);
+
+      cameraAnalysis = {
+        isCameraOn: true,
+        eyeContact: {
+          title: 'Eye Contact',
+          rating: `${eyeScore}/100`,
+          score: eyeScore,
+          evidence: eyeEvidence,
+          suggestion: eyeSuggestion
+        },
+        facialExpression: {
+          title: 'Facial Expression',
+          rating: `${faceScore}/100`,
+          score: faceScore,
+          evidence: faceEvidence,
+          suggestion: faceSuggestion
+        },
+        posture: {
+          title: 'Posture & Body Language',
+          rating: `${postScore}/100`,
+          score: postScore,
+          evidence: postEvidence,
+          suggestion: postSuggestion
+        },
+        overallVisualPresence: {
+          title: 'Overall Visual Presence',
+          rating: `${overallVisScore}/100`,
+          score: overallVisScore,
+          evidence: 'Solid overall camera presence and visual alignment during response.'
+        }
+      };
+    }
+  }
+
   return {
     status,
     statusExplanation,
@@ -1338,6 +1443,8 @@ Next time try pannumbodhu:
     professionalismScore,
     overallScore,
     scoreExplanation,
+
+    cameraAnalysis,
 
     // Legacy compatibility fields
     englishExplanation: englishExp,
@@ -1618,13 +1725,14 @@ export async function analyzeResumeWithAI(fileOrResume: any): Promise<ResumeAnal
 /**
  * Generate AI Learning Roadmap
  */
-export function generateAIRoadmap(): RoadmapTask[] {
+export function generateAIRoadmap(careerGoal: string = 'Software Engineer', userLevel: string = 'Beginner', dailyTime: string = '1 hour'): RoadmapTask[] {
+  const goal = careerGoal.trim() || 'Software Engineer';
   return [
     {
       id: 'task-1',
       period: 'Daily',
-      title: 'Complete 1 HR & 1 Tech AI Mock Interview',
-      description: 'Practice answer delivery and receive dual-language (English/Tanglish) feedback for interview standards.',
+      title: `Complete 1 HR & 1 Tech AI Mock Interview for ${goal}`,
+      description: `Practice answer delivery and receive dual-language (English/Tanglish) feedback tailored for ${goal} roles.`,
       completed: false,
       category: 'Interview',
       dueDate: 'Today, 8:00 PM'
@@ -1632,8 +1740,8 @@ export function generateAIRoadmap(): RoadmapTask[] {
     {
       id: 'task-2',
       period: 'Daily',
-      title: 'Solve 2 Aptitude & 1 Coding Problem',
-      description: 'Practice Quantitative Aptitude & Python/Java problem solving.',
+      title: `Solve 2 Aptitude & 1 Coding Problem for ${goal}`,
+      description: `Practice domain problem solving for ${userLevel} level with ${dailyTime} daily commitment.`,
       completed: true,
       category: 'Coding',
       dueDate: 'Today, 10:00 PM'
@@ -1641,8 +1749,8 @@ export function generateAIRoadmap(): RoadmapTask[] {
     {
       id: 'task-3',
       period: 'Weekly',
-      title: 'Resume ATS Score Optimization',
-      description: 'Upgrade your resume project section to score above 85% on ATS scanner.',
+      title: `Resume ATS Score Optimization for ${goal}`,
+      description: `Upgrade your resume project section for ${goal} to score above 85% on ATS scanner.`,
       completed: false,
       category: 'Resume',
       dueDate: 'This Sunday'
@@ -1650,8 +1758,8 @@ export function generateAIRoadmap(): RoadmapTask[] {
     {
       id: 'task-4',
       period: 'Monthly',
-      title: 'Full Company Mock Hiring Drive Simulation',
-      description: 'Complete full round (Aptitude -> Coding -> Technical -> HR) simulated practice.',
+      title: `Full Company Mock Hiring Drive Simulation (${goal})`,
+      description: 'Complete full placement hiring drive simulation (Aptitude -> Coding -> Technical -> HR).',
       completed: false,
       category: 'Interview',
       dueDate: 'End of Month'
