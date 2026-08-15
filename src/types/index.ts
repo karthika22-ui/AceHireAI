@@ -41,6 +41,9 @@ export interface UserProfile {
   skills?: string[];
 
   avatarUrl?: string;
+  loginCount?: number;
+  isFirstLogin?: boolean;
+  lastLoginAt?: string;
   createdAt: string;
 }
 

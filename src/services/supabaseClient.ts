@@ -244,6 +244,9 @@ export class SupabaseService {
         targetJobRole: remoteExtra.targetJobRole || fallback.targetJobRole,
         skills: remoteExtra.skills || fallback.skills,
         avatarUrl: data.avatar_url || fallback.avatarUrl,
+        loginCount: remoteExtra.loginCount !== undefined ? remoteExtra.loginCount : fallback.loginCount,
+        isFirstLogin: remoteExtra.isFirstLogin !== undefined ? remoteExtra.isFirstLogin : fallback.isFirstLogin,
+        lastLoginAt: remoteExtra.lastLoginAt || fallback.lastLoginAt,
         createdAt: data.created_at || fallback.createdAt
       };
 
