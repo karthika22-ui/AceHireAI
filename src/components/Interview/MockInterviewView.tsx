@@ -89,16 +89,14 @@ export const MockInterviewView: React.FC = () => {
   const hardwareVideoRef = useRef<HTMLVideoElement | null>(null);
   const interviewVideoRef = useRef<HTMLVideoElement | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
+  const mainContainerRef = useRef<HTMLDivElement | null>(null);
 
-  // Speech Recognition & Camera Sampling Refs (Requirements 1, 4, 8)
+  // Speech Recognition & Multimodal Camera Sampling Refs (Requirements 1-9)
   const recognitionRef = useRef<any>(null);
   const isListeningRef = useRef<boolean>(false);
   const baseAnswerRef = useRef<string>('');
-  const cameraSampleStatsRef = useRef<{ totalFramesSampled: number; movementSum: number; centerFaceSum: number }>({
-    totalFramesSampled: 0,
-    movementSum: 0,
-    centerFaceSum: 0
-  });
+  const capturedFramesRef = useRef<string[]>([]);
+  const silenceTimerRef = useRef<any>(null);
 
   // Configured Interview Duration Helper (Requirement STEP 1)
   // HR Interview → Exactly 20:00 (1200s)
@@ -112,6 +110,21 @@ export const MockInterviewView: React.FC = () => {
   const [sessionCompleted, setSessionCompleted] = useState<boolean>(false);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(() => (initialSaved ? (initialSaved.currentQuestionIndex || 0) : 0));
   const [userAnswer, setUserAnswer] = useState<string>(() => (initialSaved ? (initialSaved.userAnswer || '') : ''));
+
+  // Automatically scroll to the top of the interview screen when session becomes active or question changes
+  useEffect(() => {
+    if (sessionActive && !sessionCompleted) {
+      if (mainContainerRef.current) {
+        mainContainerRef.current.scrollTop = 0;
+      }
+      window.scrollTo({ top: 0, behavior: 'instant' });
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+      const mainEl = document.querySelector('main');
+      if (mainEl) mainEl.scrollTop = 0;
+    }
+  }, [sessionActive, sessionCompleted, currentQuestionIndex]);
+
   const [isListening, setIsListening] = useState<boolean>(false);
 
   const [timerSeconds, setTimerSeconds] = useState<number>(() => {
@@ -308,61 +321,35 @@ export const MockInterviewView: React.FC = () => {
     };
   }, []);
 
-  // In-memory camera frame sampling for real-time visual presence & body language (Requirements 4, 8)
+  // Real-time camera frame snapshot capture for Multimodal AI Vision Analysis (Requirements 1-9)
   useEffect(() => {
     if (!cameraActive || !sessionActive || sessionCompleted) {
-      cameraSampleStatsRef.current = { totalFramesSampled: 0, movementSum: 0, centerFaceSum: 0 };
+      capturedFramesRef.current = [];
       return;
     }
     const canvas = document.createElement('canvas');
-    canvas.width = 160;
-    canvas.height = 120;
+    canvas.width = 320;
+    canvas.height = 240;
     const ctx = canvas.getContext('2d');
-    let prevPixels: Uint8ClampedArray | null = null;
 
     const interval = setInterval(() => {
       const video = interviewVideoRef.current || hardwareVideoRef.current;
       if (video && video.readyState >= 2 && ctx) {
-        ctx.drawImage(video, 0, 0, 160, 120);
-        const imgData = ctx.getImageData(0, 0, 160, 120);
-        const pixels = imgData.data;
-
-        let frameDiff = 0;
-        if (prevPixels) {
-          for (let i = 0; i < pixels.length; i += 16) {
-            frameDiff += Math.abs(pixels[i] - prevPixels[i]);
-          }
-        }
-        prevPixels = pixels;
-
-        let centerLuma = 0;
-        let edgeLuma = 0;
-        let centerCount = 0;
-        let edgeCount = 0;
-
-        for (let y = 0; y < 120; y += 4) {
-          for (let x = 0; x < 160; x += 4) {
-            const idx = (y * 160 + x) * 4;
-            const luma = (pixels[idx] + pixels[idx + 1] + pixels[idx + 2]) / 3;
-            if (x > 48 && x < 112 && y > 36 && y < 84) {
-              centerLuma += luma;
-              centerCount++;
+        try {
+          ctx.drawImage(video, 0, 0, 320, 240);
+          const frameDataUrl = canvas.toDataURL('image/jpeg', 0.6);
+          if (frameDataUrl && frameDataUrl.length > 500) {
+            if (capturedFramesRef.current.length < 4) {
+              capturedFramesRef.current.push(frameDataUrl);
             } else {
-              edgeLuma += luma;
-              edgeCount++;
+              capturedFramesRef.current[capturedFramesRef.current.length - 1] = frameDataUrl;
             }
           }
+        } catch (e) {
+          console.warn('Webcam frame capture failed:', e);
         }
-
-        const avgCenter = centerCount > 0 ? centerLuma / centerCount : 0;
-        const avgEdge = edgeCount > 0 ? edgeLuma / edgeCount : 0;
-        const ratio = avgEdge > 0 ? avgCenter / avgEdge : 1;
-
-        cameraSampleStatsRef.current.totalFramesSampled++;
-        cameraSampleStatsRef.current.movementSum += Math.min(50, frameDiff / 500);
-        cameraSampleStatsRef.current.centerFaceSum += ratio;
       }
-    }, 800);
+    }, 1500);
 
     return () => clearInterval(interval);
   }, [cameraActive, sessionActive, sessionCompleted]);
@@ -428,13 +415,30 @@ export const MockInterviewView: React.FC = () => {
   };
 
   // Speech Recognition with Non-Duplicating Stream Processing (Requirement 1)
+  const resetSilenceAutoStopTimer = () => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+    }
+    silenceTimerRef.current = setTimeout(() => {
+      if (isListeningRef.current) {
+        isListeningRef.current = false;
+        setIsListening(false);
+        if (recognitionRef.current) {
+          try {
+            recognitionRef.current.stop();
+          } catch (e) {}
+        }
+      }
+    }, 3000);
+  };
+
   const toggleSpeechRecognition = () => {
-    if (micMuted) {
-      alert('Microphone is currently muted. Please unmute your microphone to start speaking.');
+    if (!('SpeechRecognition' in window) && !('webkitSpeechRecognition' in window)) {
+      alert('Speech Recognition is not supported in this browser. Please use Chrome/Edge.');
       return;
     }
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      alert('Speech recognition is not supported in this browser. Please type your answer.');
+    if (micMuted) {
+      alert('Microphone is currently muted. Please unmute your microphone to start speaking.');
       return;
     }
 
@@ -447,12 +451,15 @@ export const MockInterviewView: React.FC = () => {
       recognition.lang = 'en-US';
 
       baseAnswerRef.current = userAnswer.trim();
+      capturedFramesRef.current = [];
       isListeningRef.current = true;
       setIsListening(true);
 
       let sessionFinalText = '';
+      resetSilenceAutoStopTimer();
 
       recognition.onresult = (event: any) => {
+        resetSilenceAutoStopTimer();
         let currentFinal = '';
         let currentInterim = '';
 
@@ -482,6 +489,7 @@ export const MockInterviewView: React.FC = () => {
         if (err.error === 'not-allowed' || err.error === 'service-not-allowed') {
           setIsListening(false);
           isListeningRef.current = false;
+          if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
           alert('Microphone access denied. Please check browser permissions.');
         }
       };
@@ -499,6 +507,7 @@ export const MockInterviewView: React.FC = () => {
           }
         } else {
           setIsListening(false);
+          if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
         }
       };
 
@@ -507,11 +516,13 @@ export const MockInterviewView: React.FC = () => {
       } catch (e) {
         setIsListening(false);
         isListeningRef.current = false;
+        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
         console.error('Speech recognition start error', e);
       }
     } else {
       isListeningRef.current = false;
       setIsListening(false);
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
       if (recognitionRef.current) {
         try {
           recognitionRef.current.stop();
@@ -618,6 +629,17 @@ export const MockInterviewView: React.FC = () => {
     setUserAnswer('');
   };
 
+  // Automatically scroll to the top of the interview screen when session becomes active
+  useEffect(() => {
+    if (sessionActive && !sessionCompleted) {
+      window.scrollTo({ top: 0, behavior: 'instant' });
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+      const mainEl = document.querySelector('main');
+      if (mainEl) mainEl.scrollTop = 0;
+    }
+  }, [sessionActive, sessionCompleted]);
+
   // Session Handlers
   const handleStartSession = () => {
     clearSessionStorage();
@@ -632,6 +654,13 @@ export const MockInterviewView: React.FC = () => {
     setTimerSeconds(getConfiguredDuration(selectedType));
     setRecSeconds(0);
     setShowModelAnswer(false);
+
+    // Immediate Scroll to Top
+    window.scrollTo({ top: 0, behavior: 'instant' });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    const mainEl = document.querySelector('main');
+    if (mainEl) mainEl.scrollTop = 0;
   };
 
   const handleResumeSession = () => {
@@ -651,6 +680,20 @@ export const MockInterviewView: React.FC = () => {
 
   const handleSubmitAnswer = async () => {
     if (!userAnswer.trim()) return;
+
+    // Immediately stop speech recognition & clear silence timer on submit
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+    isListeningRef.current = false;
+    setIsListening(false);
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {}
+    }
+
     setIsEvaluating(true);
     setLoadingStep(1);
 
@@ -659,24 +702,46 @@ export const MockInterviewView: React.FC = () => {
     }, 400);
 
     try {
-      let cameraOpts: any = { isCameraOn: false };
-
-      if (cameraActive && mediaStreamRef.current && mediaStreamRef.current.active) {
-        const samples = cameraSampleStatsRef.current.totalFramesSampled;
-        const avgMove = samples > 0 ? cameraSampleStatsRef.current.movementSum / samples : 8;
-        const avgRatio = samples > 0 ? cameraSampleStatsRef.current.centerFaceSum / samples : 1;
-
-        cameraOpts = {
-          isCameraOn: true,
-          visualObservations: {
-            eyeContactScore: avgRatio > 0.6 ? 90 : 68,
-            postureScore: avgMove < 25 ? 88 : 68,
-            observedGaze: avgRatio < 0.6 ? 'frequent_lookaway' : 'consistent',
-            observedPosture: avgMove > 25 ? 'fidgeting' : 'stable',
-            observedExpression: 'neutral',
-            insufficientData: samples < 1
+      const activeVideo = interviewVideoRef.current || hardwareVideoRef.current;
+      if (activeVideo && activeVideo.readyState >= 2) {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = 320;
+          canvas.height = 240;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(activeVideo, 0, 0, 320, 240);
+            const finalSnap = canvas.toDataURL('image/jpeg', 0.6);
+            if (finalSnap && finalSnap.length > 500) {
+              capturedFramesRef.current.push(finalSnap);
+            }
           }
-        };
+        } catch (e) {
+          console.warn('Final frame capture failed:', e);
+        }
+      }
+
+      const frames = capturedFramesRef.current.filter((f) => f && f.length > 500);
+
+      // Preserve frames captured while camera was ON during the answer,
+      // even if cameraActive was toggled OFF right before clicking submit!
+      let cameraOpts: any = { isCameraOn: false };
+      if (frames.length > 0 || cameraActive) {
+        if (frames.length > 0) {
+          cameraOpts = {
+            isCameraOn: true,
+            capturedFrames: frames
+          };
+        } else {
+          cameraOpts = {
+            isCameraOn: true,
+            capturedFrames: [],
+            visualObservations: {
+              insufficientData: true,
+              errorNotice: 'Insufficient visual data captured from camera feed.'
+            }
+          };
+        }
       }
 
       const res = await evaluateAnswerWithAI(
@@ -720,12 +785,26 @@ export const MockInterviewView: React.FC = () => {
   };
 
   const handleNextQuestion = () => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+    isListeningRef.current = false;
+    setIsListening(false);
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {}
+    }
+
     if (currentQuestionIndex + 1 < activeQuestions.length) {
       const nextIndex = currentQuestionIndex + 1;
       setCurrentQuestionIndex(nextIndex);
       setUserAnswer('');
+      baseAnswerRef.current = '';
       setFeedback(null);
       setShowModelAnswer(false);
+      capturedFramesRef.current = [];
       saveSessionToStorage(answersHistory, nextIndex, activeQuestions, '');
     } else {
       setSessionCompleted(true);
@@ -767,7 +846,7 @@ export const MockInterviewView: React.FC = () => {
   );
 
   return (
-    <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 flex-1 overflow-y-auto space-y-7 pb-12 animate-in fade-in duration-300 relative">
+    <div ref={mainContainerRef} className="w-full max-w-6xl mx-auto px-4 sm:px-6 flex-1 overflow-y-auto space-y-7 pb-12 animate-in fade-in duration-300 relative">
       
       {/* Global Session Continuation Modal */}
       <SessionResumeModal
@@ -1324,101 +1403,77 @@ export const MockInterviewView: React.FC = () => {
             </div>
           </div>
 
-          {/* CENTERED TIGHT SQUARE CAMERA PREVIEW CARD & STATUS CHIPS (STEP 3) */}
-          <div className="flex flex-col items-center justify-center w-full max-w-md mx-auto space-y-3.5 animate-in fade-in duration-300">
-            <div className="glass-card rounded-3xl p-3.5 sm:p-4 border border-blue-500/40 bg-slate-900/90 backdrop-blur-xl shadow-[0_0_30px_rgba(59,130,246,0.2)] relative overflow-hidden w-full flex flex-col justify-between items-center">
-              <div className="flex items-center justify-between mb-2 z-10 w-full">
-                <div className="flex items-center gap-1.5">
-                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold flex items-center gap-1 shadow-md ${
-                    cameraActive ? 'bg-red-500 text-white' : 'bg-slate-800 text-slate-400 border border-slate-700'
-                  }`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${cameraActive ? 'bg-white animate-pulse' : 'bg-slate-500'}`} />
-                    {cameraActive ? 'Live Stream' : 'Camera Standby'}
-                  </span>
-                  <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/40 text-[10px] font-bold">
-                    HD
+          {/* COMBINED QUESTION CARD & INTEGRATED BALANCED CAMERA PREVIEW */}
+          <div className="glass-card rounded-3xl p-5 sm:p-7 border border-blue-500/30 bg-slate-900/80 backdrop-blur-2xl shadow-2xl space-y-4 relative overflow-hidden">
+            <Quote className="w-12 h-12 text-blue-500/15 absolute top-6 right-6 pointer-events-none z-0" />
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-center relative z-10">
+              
+              {/* LEFT COLUMN: QUESTION DETAILS & HINT */}
+              <div className="lg:col-span-7 space-y-3 flex flex-col justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs font-extrabold uppercase tracking-wider">
+                    <Sparkles className="w-3.5 h-3.5 text-blue-400" />
+                    <span>{selectedType} Interview Question</span>
                   </span>
                 </div>
-                {cameraActive && (
-                  <span className="px-2.5 py-0.5 rounded-full bg-slate-950/80 text-amber-400 border border-amber-500/30 text-[10px] font-mono font-bold animate-pulse">
-                    {formatRecTime(recSeconds)}
-                  </span>
-                )}
-              </div>
 
-              {/* Tight Square 1:1 Camera Preview (Requirement STEP 2 - Increased preview size by ~18%) */}
-              <div className="relative rounded-2xl overflow-hidden bg-slate-950 border border-slate-800 flex items-center justify-center w-72 h-72 sm:w-80 sm:h-80 aspect-square mx-auto my-1 shadow-inner">
-                {cameraActive ? (
-                  <video ref={interviewVideoRef} autoPlay playsInline muted className="w-full h-full object-cover rounded-2xl aspect-square" />
-                ) : (
-                  <div className="flex flex-col items-center justify-center space-y-2 text-slate-400">
-                    <div className="w-12 h-12 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-500 shadow-inner">
-                      <VideoOff className="w-6 h-6 text-slate-500" />
-                    </div>
-                    <span className="text-xs font-extrabold text-slate-400 tracking-wide">Camera is Off</span>
+                <h2 className="text-lg sm:text-xl font-extrabold text-white font-['Space_Grotesk'] leading-snug tracking-tight">
+                  "{currentQ.question}"
+                </h2>
+
+                {/* AI CONTEXT HINT */}
+                <div className="border-l-4 border-l-blue-500 bg-blue-950/30 border border-blue-900/50 p-3 sm:p-3.5 rounded-2xl flex items-start gap-2.5 text-xs text-blue-200">
+                  <Lightbulb className="w-4 h-4 text-blue-400 shrink-0 mt-0.5 brightness-110" />
+                  <div>
+                    <strong className="block font-bold text-blue-400 uppercase tracking-wider mb-0.5 text-[10px]">💡 AI Context Hint</strong>
+                    <p className="leading-relaxed font-medium text-slate-200 text-xs">{currentQ.contextHint}</p>
                   </div>
-                )}
+                </div>
               </div>
 
-              <div className="mt-2.5 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400 font-medium z-10 w-full">
-                <span className="flex items-center gap-1.5 text-emerald-400 font-bold">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                  {cameraActive ? 'Audio & Video Stream Active' : 'Audio Stream Ready'}
-                </span>
-                <span className="text-slate-400 text-[10px]">Position Face Centered</span>
-              </div>
-            </div>
+              {/* RIGHT COLUMN: HORIZONTALLY EXPANDED PROPORTIONAL CAMERA PREVIEW */}
+              <div className="lg:col-span-5 w-full flex flex-col items-center lg:items-end">
+                <div className="p-2.5 sm:p-3 rounded-2xl border border-blue-500/40 bg-slate-950/90 backdrop-blur-xl shadow-xl w-full max-w-[310px] sm:max-w-[330px] space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className={`px-2.5 py-0.5 rounded-full font-extrabold flex items-center gap-1 shadow-sm text-[10px] ${
+                      cameraActive ? 'bg-red-500 text-white' : 'bg-slate-800 text-slate-400 border border-slate-700'
+                    }`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${cameraActive ? 'bg-white animate-pulse' : 'bg-slate-500'}`} />
+                      {cameraActive ? 'Live Camera' : 'Camera Standby'}
+                    </span>
+                    {cameraActive && (
+                      <span className="font-mono text-amber-400 font-bold animate-pulse text-[10px]">
+                        {formatRecTime(recSeconds)}
+                      </span>
+                    )}
+                  </div>
 
-            {/* 4 SMALL STATUS CHIPS (Requirement 3) */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 w-full text-xs font-bold">
-              <div className="p-2.5 rounded-2xl bg-slate-900/80 border border-slate-800 flex items-center gap-2 shadow-sm text-slate-200">
-                <span className={`w-2 h-2 rounded-full ${cameraActive ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]' : 'bg-slate-500'}`} />
-                <span className="truncate">{cameraActive ? 'Camera Connected' : 'Camera Off'}</span>
-              </div>
+                  {/* Widescreen 16:10 Aspect Video Box (Expanded Horizontally, Compact Vertically) */}
+                  <div className="relative rounded-xl overflow-hidden bg-slate-900 border border-slate-800 w-full aspect-[16/10] flex items-center justify-center shadow-inner">
+                    {cameraActive ? (
+                      <video ref={interviewVideoRef} autoPlay playsInline muted className="w-full h-full object-cover rounded-xl" />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center space-y-1 text-slate-500 p-2 text-center">
+                        <VideoOff className="w-5 h-5 text-slate-500" />
+                        <span className="text-[11px] font-extrabold text-slate-400">Camera Off</span>
+                      </div>
+                    )}
+                  </div>
 
-              <div className="p-2.5 rounded-2xl bg-slate-900/80 border border-slate-800 flex items-center gap-2 shadow-sm text-slate-200">
-                <span className={`w-2 h-2 rounded-full ${!micMuted ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]' : 'bg-red-400'}`} />
-                <span className="truncate">{!micMuted ? 'Microphone Active' : 'Mic Muted'}</span>
-              </div>
-
-              <div className="p-2.5 rounded-2xl bg-slate-900/80 border border-slate-800 flex items-center gap-2 shadow-sm text-slate-200">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]" />
-                <span className="truncate">Network Stable</span>
-              </div>
-
-              <div className="p-2.5 rounded-2xl bg-slate-900/80 border border-slate-800 flex items-center gap-2 shadow-sm text-slate-200">
-                <span className={`w-2 h-2 rounded-full ${cameraActive ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)] animate-pulse' : 'bg-slate-500'}`} />
-                <span className="truncate">Recording Live</span>
-              </div>
-            </div>
-          </div>
-
-          {/* QUESTION CARD & CATEGORY BADGE */}
-          <div className="glass-card rounded-3xl p-6 sm:p-8 border border-blue-500/30 bg-slate-900/80 backdrop-blur-2xl shadow-2xl space-y-5 relative overflow-hidden">
-            <Quote className="w-12 h-12 text-blue-500/15 absolute top-6 right-6 pointer-events-none" />
-
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs font-extrabold uppercase tracking-wider">
-                <Sparkles className="w-3.5 h-3.5 text-blue-400" />
-                <span>{selectedType} Interview Question</span>
-              </span>
-            </div>
-
-            <h2 className="text-xl sm:text-2xl font-extrabold text-white font-['Space_Grotesk'] leading-snug tracking-tight relative z-10">
-              "{currentQ.question}"
-            </h2>
-
-            {/* AI CONTEXT HINT */}
-            <div className="border-l-4 border-l-blue-500 bg-blue-950/30 border border-blue-900/50 p-4 rounded-2xl flex items-start gap-3 text-xs text-blue-200">
-              <Lightbulb className="w-4 h-4 text-blue-400 shrink-0 mt-0.5 brightness-110" />
-              <div>
-                <strong className="block font-bold text-blue-400 uppercase tracking-wider mb-0.5 text-[10px]">💡 AI Context Hint</strong>
-                <p className="leading-relaxed font-medium text-slate-200">{currentQ.contextHint}</p>
+                  <div className="flex items-center justify-between text-[10px] text-slate-400 font-medium pt-1 border-t border-slate-800/80">
+                    <span className="flex items-center gap-1 text-emerald-400 font-bold truncate">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
+                      {cameraActive ? 'Video Active' : 'Mic Ready'}
+                    </span>
+                    <span className="text-slate-400 text-[9px]">Face Centered</span>
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* ANSWER INPUT AREA */}
-            <div className="space-y-3 pt-2">
+            {/* ANSWER INPUT AREA DIRECTLY BELOW WITH NO EXTRA GAPS */}
+            <div className="space-y-3 pt-3 border-t border-slate-800/80">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-2">
                 <label className="text-xs font-extrabold uppercase tracking-wider text-slate-200 flex items-center gap-2">
                   <span>Your Answer</span>

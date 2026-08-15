@@ -924,6 +924,75 @@ export function getRandomInterviewQuestions(
   return shuffled.slice(0, count);
 }
 
+export async function fetchMultimodalVisionFromOpenRouter(
+  prompt: string,
+  base64Images: string[],
+  apiKey: string = OPENROUTER_API_KEY
+): Promise<string> {
+  const visionModels = [
+    'google/gemini-2.0-flash-lite-001',
+    'google/gemini-flash-1.5-8b',
+    'openai/gpt-4o-mini'
+  ];
+
+  const imageContent = base64Images.filter(Boolean).map((img) => ({
+    type: 'image_url',
+    image_url: {
+      url: img.startsWith('data:') ? img : `data:image/jpeg;base64,${img}`
+    }
+  }));
+
+  const userContent: any[] = [
+    { type: 'text', text: prompt },
+    ...imageContent
+  ];
+
+  let lastErr: any = null;
+  for (const modelName of visionModels) {
+    try {
+      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey.trim()}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://acehire.ai',
+          'X-Title': 'AceHire AI'
+        },
+        body: JSON.stringify({
+          model: modelName,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an expert AI Video Interview Assessment Engine evaluating candidate webcam frame images. Return ONLY a valid JSON object without markdown formatting or conversational text.'
+            },
+            {
+              role: 'user',
+              content: userContent
+            }
+          ],
+          temperature: 0.2
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const content = data.choices?.[0]?.message?.content;
+        if (content && typeof content === 'string' && content.trim()) {
+          return content;
+        }
+      } else {
+        const errText = await res.text();
+        console.warn(`OpenRouter Vision model ${modelName} returned status ${res.status}: ${errText}`);
+        lastErr = new Error(`OpenRouter HTTP ${res.status}: ${errText}`);
+      }
+    } catch (e) {
+      console.warn(`OpenRouter Vision call failed for model ${modelName}:`, e);
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error('All OpenRouter Vision models failed.');
+}
+
 /**
  * Intelligent AI Answer Evaluator comparing Question, Answer & Expected Keypoints
  */
@@ -935,15 +1004,10 @@ export async function evaluateAnswerWithAI(
   preferredLanguage: 'English' | 'Tanglish' = 'English',
   cameraOptions?: {
     isCameraOn: boolean;
+    capturedFrames?: string[];
     visualObservations?: {
-      eyeContactScore?: number;
-      facialScore?: number;
-      postureScore?: number;
-      movementScore?: number;
-      observedGaze?: 'consistent' | 'frequent_lookaway' | 'moderate';
-      observedExpression?: 'neutral' | 'smiling' | 'tense';
-      observedPosture?: 'stable' | 'fidgeting' | 'leaning';
       insufficientData?: boolean;
+      errorNotice?: string;
     };
   }
 ): Promise<DualLanguageFeedback> {
@@ -1334,93 +1398,100 @@ Next time try pannumbodhu:
 
   const explanationText = preferredLanguage === 'Tanglish' ? tanglishExp : englishExp;
 
-  // 3. Dynamic Camera & Body Language Analysis (Requirements 3, 4, 5)
+  // 3. Dynamic Multimodal Vision AI Camera & Body Language Analysis (Requirements 1-9)
   let cameraAnalysis: CameraAnalysisResult | null = null;
   const isCameraOn = cameraOptions?.isCameraOn ?? false;
+  const frames = cameraOptions?.capturedFrames || [];
 
   if (!isCameraOn) {
     cameraAnalysis = {
       isCameraOn: false,
       notice: 'Camera analysis was not performed because the camera was off.'
     };
+  } else if (cameraOptions?.visualObservations?.insufficientData || frames.length === 0) {
+    cameraAnalysis = {
+      isCameraOn: true,
+      notice: cameraOptions?.visualObservations?.errorNotice || 'Insufficient visual data captured from camera feed.'
+    };
   } else {
-    const obs = cameraOptions?.visualObservations;
-    if (obs?.insufficientData) {
-      cameraAnalysis = {
-        isCameraOn: true,
-        notice: 'Not enough visual information was available for a reliable assessment.'
-      };
-    } else {
-      const gaze = obs?.observedGaze || 'consistent';
-      const expr = obs?.observedExpression || 'neutral';
-      const post = obs?.observedPosture || 'stable';
+    let visionResParsed: any = null;
+    try {
+      const visionPrompt = `
+Analyze the candidate's actual webcam frame snapshots captured during their interview response to the question: "${questionText}".
+Candidate's spoken response: "${userAnswer}".
+Interview Type: ${category}.
 
-      let eyeScore = 88;
-      let eyeEvidence = 'Your camera-facing gaze was generally consistent during this answer.';
-      let eyeSuggestion: string | undefined = undefined;
+Inspect the candidate's visual performance across these captured frames and evaluate:
+1. Eye Contact / Gaze Direction: Is candidate looking directly into the camera lens, looking down at notes/desk, or looking away to the side? Estimate camera-facing gaze %.
+2. Facial Expression: Is the expression attentive, neutral, engaged, smiling, or tense/distracted?
+3. Posture & Body Language: Is posture upright and centered, or slouching, leaning, or moving excessively?
+4. Overall Visual Presence: Overall visual presentation.
 
-      if (gaze === 'frequent_lookaway') {
-        eyeScore = 66;
-        eyeEvidence = 'Your gaze moved away from the camera several times during the response. Try to maintain more consistent camera-facing attention.';
-        eyeSuggestion = 'Focus your eyes toward the camera lens when presenting key points.';
-      } else if (gaze === 'consistent') {
-        eyeScore = 92;
-        eyeEvidence = 'Your camera-facing gaze was generally consistent and steady throughout this response.';
+Return ONLY a JSON object with this exact structure (no markdown tags, no prose):
+{
+  "eyeContactScore": number (0-100),
+  "eyeContactEvidence": "specific sentence describing observed gaze in these frames",
+  "eyeContactSuggestion": "optional advice if score < 85",
+  "facialScore": number (0-100),
+  "facialEvidence": "specific sentence describing observed facial expression in these frames",
+  "facialSuggestion": "optional advice if score < 85",
+  "postureScore": number (0-100),
+  "postureEvidence": "specific sentence describing observed posture/position in these frames",
+  "postureSuggestion": "optional advice if score < 85",
+  "overallVisualScore": number (0-100),
+  "overallVisualEvidence": "summary sentence of overall visual performance"
+}
+      `.trim();
+
+      const rawAiVisionText = await fetchMultimodalVisionFromOpenRouter(visionPrompt, frames);
+      const jsonMatch = rawAiVisionText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        visionResParsed = JSON.parse(jsonMatch[0]);
       }
+    } catch (e) {
+      console.warn('Multimodal Vision AI call failed, falling back to frame visual analyzer:', e);
+    }
 
-      let faceScore = 90;
-      let faceEvidence = 'Your facial expression remained generally neutral, professional, and appropriately engaged.';
-      let faceSuggestion: string | undefined = undefined;
-
-      if (expr === 'tense') {
-        faceScore = 72;
-        faceEvidence = 'Your facial expression appeared somewhat tense during answer delivery.';
-        faceSuggestion = 'Take a relaxed breath before speaking to maintain an approachable, natural facial tone.';
-      }
-
-      let postScore = 88;
-      let postEvidence = category === 'HR'
-        ? 'Your posture was comfortable, upright, and well-suited for a behavioral HR interview.'
-        : 'Your posture was stable and focused, supporting your technical explanation.';
-      let postSuggestion: string | undefined = undefined;
-
-      if (post === 'fidgeting') {
-        postScore = 68;
-        postEvidence = 'Frequent head movements and posture shifts were noticed while explaining your answer.';
-        postSuggestion = 'Keep your posture upright and minimize excessive head tilting when detailing complex ideas.';
-      }
-
-      const overallVisScore = Math.round((eyeScore + faceScore + postScore) / 3);
+    if (visionResParsed && typeof visionResParsed.eyeContactScore === 'number') {
+      const eScore = Math.max(10, Math.min(100, Math.round(visionResParsed.eyeContactScore)));
+      const fScore = Math.max(10, Math.min(100, Math.round(visionResParsed.facialScore || 85)));
+      const pScore = Math.max(10, Math.min(100, Math.round(visionResParsed.postureScore || 85)));
+      const oScore = Math.max(10, Math.min(100, Math.round(visionResParsed.overallVisualScore || Math.round((eScore + fScore + pScore) / 3))));
 
       cameraAnalysis = {
         isCameraOn: true,
         eyeContact: {
           title: 'Eye Contact',
-          rating: `${eyeScore}/100`,
-          score: eyeScore,
-          evidence: eyeEvidence,
-          suggestion: eyeSuggestion
+          rating: `${eScore}/100`,
+          score: eScore,
+          evidence: visionResParsed.eyeContactEvidence || 'Eye contact evaluated directly from captured camera frames.',
+          suggestion: visionResParsed.eyeContactSuggestion
         },
         facialExpression: {
           title: 'Facial Expression',
-          rating: `${faceScore}/100`,
-          score: faceScore,
-          evidence: faceEvidence,
-          suggestion: faceSuggestion
+          rating: `${fScore}/100`,
+          score: fScore,
+          evidence: visionResParsed.facialEvidence || 'Facial expression evaluated directly from captured camera frames.',
+          suggestion: visionResParsed.facialSuggestion
         },
         posture: {
           title: 'Posture & Body Language',
-          rating: `${postScore}/100`,
-          score: postScore,
-          evidence: postEvidence,
-          suggestion: postSuggestion
+          rating: `${pScore}/100`,
+          score: pScore,
+          evidence: visionResParsed.postureEvidence || 'Posture evaluated directly from captured camera frames.',
+          suggestion: visionResParsed.postureSuggestion
         },
         overallVisualPresence: {
           title: 'Overall Visual Presence',
-          rating: `${overallVisScore}/100`,
-          score: overallVisScore,
-          evidence: 'Solid overall camera presence and visual alignment during response.'
+          rating: `${oScore}/100`,
+          score: oScore,
+          evidence: visionResParsed.overallVisualEvidence || 'Overall visual presence evaluated by AI Vision from webcam frames.'
         }
+      };
+    } else {
+      cameraAnalysis = {
+        isCameraOn: true,
+        notice: 'Visual analysis unavailable. Could not process camera feed with Vision AI.'
       };
     }
   }
