@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { analyzeResumeWithAI } from '../../services/aiEngine';
+import { SupabaseService } from '../../services/supabaseClient';
 import { ResumeData, ResumeAnalysis } from '../../types';
 import { SessionResumeModal } from '../Common/SessionResumeModal';
 
@@ -36,7 +37,7 @@ interface ATSAnalyzerViewProps {
 }
 
 export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelection, initialResumeData }) => {
-  const { resume, recordUserActivity, setActiveTab } = useApp();
+  const { user, resume, recordUserActivity, setActiveTab, registerWorkflowGuard, clearWorkflowGuard } = useApp();
 
   const [uploadedFile, setUploadedFile] = useState<{ name: string; size: string; type: string } | null>(
     initialResumeData
@@ -54,6 +55,15 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [loadingStep, setLoadingStep] = useState<number>(1);
   const [analysisResult, setAnalysisResult] = useState<ResumeAnalysis | null>(null);
+
+  // REGISTER GLOBAL EXIT GUARD FOR ATS ANALYSIS
+  useEffect(() => {
+    const isDirty = isAnalyzing || (!!uploadedFile && !analysisResult);
+    registerWorkflowGuard('ATS Analysis', isDirty);
+    return () => {
+      clearWorkflowGuard('ATS Analysis');
+    };
+  }, [isAnalyzing, uploadedFile, analysisResult, registerWorkflowGuard, clearWorkflowGuard]);
   const [openSuggestions, setOpenSuggestions] = useState<boolean>(true);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -125,6 +135,9 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
       setLoadingStep(5);
       await new Promise((resolve) => setTimeout(resolve, 300));
       setAnalysisResult(result);
+      if (user?.id) {
+        SupabaseService.saveAtsAnalysis(user.id, result);
+      }
       recordUserActivity('resume', 'AI ATS Resume Scan Completed', result.atsScore, 'Resume');
     } catch (err) {
       console.error(err);

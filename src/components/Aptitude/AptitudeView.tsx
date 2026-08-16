@@ -17,9 +17,11 @@ import { useApp } from '../../context/AppContext';
 import { APTITUDE_BANK } from '../../services/aiEngine';
 import { AptitudeCategory, AptitudeQuestion, DifficultyLevel } from '../../types';
 import { SessionResumeModal } from '../Common/SessionResumeModal';
+import { formatTanglishAddressing } from '../../utils/addressing';
+import { SupabaseService } from '../../services/supabaseClient';
 
 export const AptitudeView: React.FC = () => {
-  const { user, recordUserActivity, setActiveTab } = useApp();
+  const { user, recordUserActivity, setActiveTab, registerWorkflowGuard, clearWorkflowGuard } = useApp();
 
   const [category, setCategory] = useState<AptitudeCategory>('Quantitative');
   const [difficulty, setDifficulty] = useState<DifficultyLevel>('Easy');
@@ -71,6 +73,16 @@ export const AptitudeView: React.FC = () => {
   // Track Answers & Quiz Results
   const [userAnswers, setUserAnswers] = useState<Array<{ isCorrect: boolean; selectedIdx: number | null }>>([]);
   const [isQuizCompleted, setIsQuizCompleted] = useState<boolean>(false);
+
+  // REGISTER GLOBAL EXIT GUARD FOR APTITUDE PRACTICE
+  useEffect(() => {
+    const isDirty = isQuizStarted && !isQuizCompleted;
+    registerWorkflowGuard('Aptitude Practice', isDirty);
+    return () => {
+      clearWorkflowGuard('Aptitude Practice');
+    };
+  }, [isQuizStarted, isQuizCompleted, registerWorkflowGuard, clearWorkflowGuard]);
+
   const [quizStartTime, setQuizStartTime] = useState<number>(() => Date.now());
 
   // Session Persistence States
@@ -234,6 +246,10 @@ export const AptitudeView: React.FC = () => {
 
   const handleSubmitQuiz = () => {
     setIsQuizCompleted(true);
+    if (user?.id) {
+      SupabaseService.saveAptitudeProgress(user.id, category, scorePercent);
+    }
+    recordUserActivity('aptitude', `${category} Aptitude Test Completed`, scorePercent, 'Aptitude');
   };
 
   // Helper to format remaining timer in MM:SS
@@ -563,7 +579,9 @@ export const AptitudeView: React.FC = () => {
                   AI Explanation ({langView}):
                 </span>
                 <p className="text-xs sm:text-sm font-medium text-slate-200 leading-relaxed">
-                  {langView === 'Tanglish' ? q.explanationTanglish : q.explanationEnglish}
+                  {langView === 'Tanglish' 
+                    ? formatTanglishAddressing(q.explanationTanglish, user, 'Tanglish') 
+                    : q.explanationEnglish}
                 </p>
                 <div className="pt-2 text-xs text-amber-400/90 italic flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5" />

@@ -23,9 +23,10 @@ import { generateQuestions, STARTER_TEMPLATES, generateAICodeReview, DynamicAICo
 import { CodingLanguage, DifficultyLevel, CodingSubmissionResult, CodingChallenge } from '../../types';
 import { SessionResumeModal } from '../Common/SessionResumeModal';
 import { SupabaseService } from '../../services/supabaseClient';
+import { formatTanglishAddressing } from '../../utils/addressing';
 
 export const CodingView: React.FC = () => {
-  const { recordUserActivity, user, setActiveTab } = useApp();
+  const { recordUserActivity, user, setActiveTab, registerWorkflowGuard, clearWorkflowGuard } = useApp();
 
   const [hasStartedChallenge, setHasStartedChallenge] = useState<boolean>(false);
   const [selectedLang, setSelectedLang] = useState<CodingLanguage>('Python');
@@ -46,6 +47,15 @@ export const CodingView: React.FC = () => {
   const [executionResult, setExecutionResult] = useState<CodingSubmissionResult | null>(null);
   const [dynamicAiFeedback, setDynamicAiFeedback] = useState<DynamicAICodeReview | null>(null);
   const [adviceLanguage, setAdviceLanguage] = useState<'Tanglish' | 'English'>(user.preferredLanguage);
+
+  // REGISTER GLOBAL EXIT GUARD FOR CODING PRACTICE
+  useEffect(() => {
+    const isDirty = hasStartedChallenge && userCode.trim().length > 0;
+    registerWorkflowGuard('Coding Practice', isDirty);
+    return () => {
+      clearWorkflowGuard('Coding Practice');
+    };
+  }, [hasStartedChallenge, userCode, registerWorkflowGuard, clearWorkflowGuard]);
 
   // Session Persistence States
   const [showCodingModal, setShowCodingModal] = useState<boolean>(false);
@@ -309,9 +319,10 @@ export const CodingView: React.FC = () => {
     const isCodeValid = validateCodeSyntax(trimmedCode, selectedLang);
     if (!isCodeValid) {
       const invalidErrorMsg = `Invalid code. Please enter valid ${selectedLang} code.`;
-      const tanglishInvalidMsg = selectedLang === 'Python' 
+      const rawTanglishInvalidMsg = selectedLang === 'Python' 
         ? 'Idhu valid Python code illa. Proper function or logic write pannunga.' 
         : `Idhu valid ${selectedLang} code illa. Proper logic write pannunga.`;
+      const tanglishInvalidMsg = formatTanglishAddressing(rawTanglishInvalidMsg, user, 'Tanglish');
 
       const syntaxErrorResult: CodingSubmissionResult = {
         status: 'Compilation Error',
@@ -366,7 +377,7 @@ export const CodingView: React.FC = () => {
       code: trimmedCode,
       language: selectedLang,
       validationStatus: 'Success'
-    });
+    }, user);
 
     const successResult: CodingSubmissionResult = {
       status: 'Success',

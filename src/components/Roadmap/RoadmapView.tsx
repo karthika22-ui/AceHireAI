@@ -27,9 +27,11 @@ import {
   Rocket,
   Bell,
   BellOff,
+  AlertTriangle,
   ShieldAlert
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { SupabaseService } from '../../services/supabaseClient';
 import { SessionResumeModal } from '../Common/SessionResumeModal';
 
 export type UserLevel = 'Beginner' | 'Intermediate' | 'Advanced';
@@ -385,7 +387,7 @@ function generateDynamicRoadmapStages(
 }
 
 export const RoadmapView: React.FC = () => {
-  const { setActiveTab, recordActivity, settings, addNotification } = useApp();
+  const { user, setActiveTab, recordActivity, settings, addNotification, registerWorkflowGuard, clearWorkflowGuard } = useApp();
 
   // Screen modes: 'empty' | 'form' | 'loading' | 'generated'
   const [screenMode, setScreenMode] = useState<'empty' | 'form' | 'loading' | 'generated'>('form');
@@ -401,6 +403,15 @@ export const RoadmapView: React.FC = () => {
   // Generated Roadmap State
   const [stages, setStages] = useState<RoadmapStage[]>([]);
   const [selectedStage, setSelectedStage] = useState<RoadmapStage | null>(null);
+
+  // REGISTER GLOBAL EXIT GUARD FOR LEARNING ROADMAP
+  useEffect(() => {
+    const isDirty = (screenMode === 'form' && customGoalInput.trim().length > 0) || screenMode === 'loading';
+    registerWorkflowGuard('Learning Roadmap', isDirty);
+    return () => {
+      clearWorkflowGuard('Learning Roadmap');
+    };
+  }, [screenMode, customGoalInput, registerWorkflowGuard, clearWorkflowGuard]);
 
   // Session Resume Modal State
   const [showRoadmapModal, setShowRoadmapModal] = useState<boolean>(false);

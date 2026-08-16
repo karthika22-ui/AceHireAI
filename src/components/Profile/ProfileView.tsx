@@ -48,6 +48,7 @@ export const ProfileView: React.FC = () => {
   const [targetIndustry, setTargetIndustry] = useState(user.targetIndustry || '');
   const [passoutYear, setPassoutYear] = useState(user.passoutYear || '');
   const [preferredLanguage, setPreferredLanguage] = useState<LanguagePreference>(user.preferredLanguage || 'Tanglish');
+  const [gender, setGender] = useState<string>(user.gender || '');
 
   // Synchronize local form state whenever active user data changes
   useEffect(() => {
@@ -69,6 +70,7 @@ export const ProfileView: React.FC = () => {
     setTargetIndustry(user.targetIndustry || '');
     setPassoutYear(user.passoutYear || '');
     setPreferredLanguage(user.preferredLanguage || 'Tanglish');
+    setGender(user.gender || '');
   }, [user]);
 
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -105,7 +107,8 @@ export const ProfileView: React.FC = () => {
       experience,
       targetIndustry,
       passoutYear,
-      preferredLanguage
+      preferredLanguage,
+      gender
     };
 
     setUser(updatedUser);
@@ -283,35 +286,46 @@ export const ProfileView: React.FC = () => {
                 </h2>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="p-4 rounded-2xl bg-slate-100/90 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800/80 space-y-1">
-                  <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                <div className="p-3.5 rounded-2xl bg-slate-100/90 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800/80 space-y-1">
+                  <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 block truncate">
                     Full Name
                   </span>
-                  <p className="text-sm font-extrabold text-slate-900 dark:text-white truncate">
+                  <p className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-white truncate">
                     {user.name}
                   </p>
                 </div>
 
-                <div className="p-4 rounded-2xl bg-slate-100/90 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800/80 space-y-1">
-                  <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                <div className="p-3.5 rounded-2xl bg-slate-100/90 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800/80 space-y-1">
+                  <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 block truncate">
                     Email Address
                   </span>
-                  <p className="text-sm font-extrabold text-slate-900 dark:text-white truncate">
+                  <p className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-white truncate" title={user.email}>
                     {user.email}
                   </p>
                 </div>
 
-                {user.phone ? (
-                  <div className="p-4 rounded-2xl bg-slate-100/90 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800/80 space-y-1">
-                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
-                      Phone Number
-                    </span>
-                    <p className="text-sm font-extrabold text-slate-900 dark:text-white truncate">
-                      {user.phone}
-                    </p>
-                  </div>
-                ) : null}
+                <div className="p-3.5 rounded-2xl bg-slate-100/90 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800/80 space-y-1">
+                  <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 block truncate">
+                    Phone Number
+                  </span>
+                  <p className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-white truncate">
+                    {user.phone || 'Not provided'}
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-slate-100/90 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800/80 space-y-1">
+                  <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 block truncate">
+                    Gender / Addressing
+                  </span>
+                  <p className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-white truncate">
+                    {user.gender === 'Male'
+                      ? 'Male (Bro in Tanglish)'
+                      : user.gender === 'Female'
+                      ? 'Female (Sis in Tanglish)'
+                      : 'Not specified (Neutral)'}
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -541,9 +555,9 @@ export const ProfileView: React.FC = () => {
             </div>
 
             {/* Basic Info */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
               <div>
-                <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
+                <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5 truncate">
                   Full Name *
                 </label>
                 <input
@@ -551,12 +565,25 @@ export const ProfileView: React.FC = () => {
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white font-bold text-sm focus:border-purple-500 focus:outline-none"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white font-bold text-xs sm:text-sm focus:border-purple-500 focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
+                <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5 truncate">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  disabled
+                  value={user.email}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900 text-slate-500 dark:text-slate-400 font-bold text-xs sm:text-sm cursor-not-allowed"
+                  title="Email address cannot be changed"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5 truncate">
                   Phone Number
                 </label>
                 <input
@@ -564,8 +591,24 @@ export const ProfileView: React.FC = () => {
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="Enter phone number"
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white font-bold text-sm focus:border-purple-500 focus:outline-none"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white font-bold text-xs sm:text-sm focus:border-purple-500 focus:outline-none"
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5 truncate">
+                  Gender / Addressing
+                </label>
+                <select
+                  value={gender}
+                  onChange={(e) => setGender(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white font-bold text-xs sm:text-sm focus:border-purple-500 focus:outline-none cursor-pointer"
+                >
+                  <option value="">Prefer not to say (Neutral)</option>
+                  <option value="Male">Male (Bro in Tanglish)</option>
+                  <option value="Female">Female (Sis in Tanglish)</option>
+                  <option value="Other">Other (Neutral)</option>
+                </select>
               </div>
             </div>
 

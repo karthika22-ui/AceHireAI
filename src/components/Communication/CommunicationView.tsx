@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { evaluateAnswerWithAI } from '../../services/aiEngine';
+import { SupabaseService } from '../../services/supabaseClient';
 import { DualLanguageFeedback } from '../../types';
 import { SessionResumeModal } from '../Common/SessionResumeModal';
 
@@ -123,7 +124,7 @@ function generateQuestionSpecificBestAnswer(
 }
 
 export const CommunicationView: React.FC = () => {
-  const { recordUserActivity, setActiveTab } = useApp();
+  const { user, recordUserActivity, setActiveTab, registerWorkflowGuard, clearWorkflowGuard } = useApp();
 
   // Settings & View State
   const [difficulty, setDifficulty] = useState<DifficultyLevel>('Medium');
@@ -150,6 +151,15 @@ export const CommunicationView: React.FC = () => {
 
   // Analysis State & Result Feedback
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
+
+  // REGISTER GLOBAL EXIT GUARD FOR COMMUNICATION PRACTICE
+  useEffect(() => {
+    const isDirty = inputSentence.trim().length > 0 || isRecording || isAnalyzing;
+    registerWorkflowGuard('Communication Practice', isDirty);
+    return () => {
+      clearWorkflowGuard('Communication Practice');
+    };
+  }, [inputSentence, isRecording, isAnalyzing, registerWorkflowGuard, clearWorkflowGuard]);
   const [feedback, setFeedback] = useState<DualLanguageFeedback | null>(null);
 
   // Score comparison tracking for "Try Again"
@@ -271,7 +281,7 @@ export const CommunicationView: React.FC = () => {
 
     setIsAnalyzing(true);
     try {
-      const res = await evaluateAnswerWithAI(currentQuestion, textToEvaluate, 'HR');
+      const res = await evaluateAnswerWithAI(currentQuestion, textToEvaluate, 'HR', difficulty, feedbackLanguage, undefined, user);
 
       if (feedback && feedback.confidenceScore !== undefined) {
         setPreviousScore(feedback.confidenceScore);
@@ -285,6 +295,14 @@ export const CommunicationView: React.FC = () => {
 
       setFeedback(res);
       setViewState('result');
+
+      if (user?.id) {
+        SupabaseService.saveCommunicationProgress(user.id, {
+          topic: currentQuestion,
+          score: res.confidenceScore,
+          feedback: res
+        });
+      }
 
       recordUserActivity('communication', `AI Communication Practice (${difficulty})`, res.confidenceScore, 'Communication');
 

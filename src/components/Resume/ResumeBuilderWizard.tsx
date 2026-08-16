@@ -39,6 +39,14 @@ import { ResumePreviewTemplates } from './ResumePreviewTemplates';
 import { ATSAnalyzerView } from './ATSAnalyzerView';
 import { fetchFromOpenRouter } from '../../services/aiEngine';
 import { SupabaseService } from '../../services/supabaseClient';
+import {
+  getSavedResumesList,
+  saveResumeRecord,
+  deleteResumeRecord,
+  getActiveResumeId,
+  setActiveResumeId,
+  SavedResumeRecord
+} from '../../utils/resumeStorage';
 
 export interface TemplateInfo {
   id: string;
@@ -422,7 +430,7 @@ interface ResumeBuilderWizardProps {
 }
 
 export const ResumeBuilderWizard: React.FC<ResumeBuilderWizardProps> = ({ onBackToSelection }) => {
-  const { user, setResume } = useApp();
+  const { user, setResume, registerWorkflowGuard, clearWorkflowGuard } = useApp();
 
   // Wizard State — Restores from persistent draft if available (REQUIREMENT 3: CONTINUE SAVED RESUME)
   const [formData, setFormData] = useState<ResumeData>(() => {
@@ -473,6 +481,11 @@ export const ResumeBuilderWizard: React.FC<ResumeBuilderWizardProps> = ({ onBack
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState<boolean>(false);
   const [selectedNotificationId, setSelectedNotificationId] = useState<string | null>(null);
 
+  // Multi-Resume Storage & Start-Over Modal States
+  const [savedResumes, setSavedResumes] = useState<SavedResumeRecord[]>(() => getSavedResumesList());
+  const [activeResumeId, setActiveResumeIdState] = useState<string | null>(() => getActiveResumeId());
+  const [isStartOverModalOpen, setIsStartOverModalOpen] = useState<boolean>(false);
+
   // View mode switcher for embedded ATS scan view vs Resume Builder
   const [showEmbeddedAtsView, setShowEmbeddedAtsView] = useState<boolean>(false);
 
@@ -485,6 +498,41 @@ export const ResumeBuilderWizard: React.FC<ResumeBuilderWizardProps> = ({ onBack
   const [isDownloadingPdf, setIsDownloadingPdf] = useState<boolean>(false);
   const [saveSuccessToast, setSaveSuccessToast] = useState<boolean>(false);
 
+  // RESTORE SAVED RESUMES & DRAFT FROM SUPABASE ON MOUNT
+  useEffect(() => {
+    if (!user?.id) return;
+    SupabaseService.fetchResumesList(user.id).then((remoteResumes) => {
+      if (remoteResumes && remoteResumes.length > 0) {
+        const records: SavedResumeRecord[] = remoteResumes.map((r, i) => ({
+          id: `db-res-${i}`,
+          title: r.fullName ? `${r.fullName}'s Resume` : 'Resume',
+          templateId: r.selectedTemplate || 'modern',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          data: r
+        }));
+        setSavedResumes(records);
+      }
+    });
+
+    SupabaseService.fetchResumeDraft(user.id).then((draft) => {
+      if (draft && draft.draftData?.formData) {
+        setFormData(draft.draftData.formData);
+        setCurrentStep(draft.currentStep || 1);
+        setIsResumeCreated(!!draft.isResumeCreated);
+      }
+    });
+  }, [user?.id]);
+
+  // REGISTER GLOBAL EXIT GUARD FOR RESUME BUILDER
+  useEffect(() => {
+    const isDirty = !isResumeCreated && (currentStep > 1 || !!formData.fullName || !!formData.summary);
+    registerWorkflowGuard('Resume Builder', isDirty);
+    return () => {
+      clearWorkflowGuard('Resume Builder');
+    };
+  }, [currentStep, formData.fullName, formData.summary, isResumeCreated, registerWorkflowGuard, clearWorkflowGuard]);
+
   // AUTO-SAVE DRAFT TO PERSISTENT STORAGE WHENEVER FORM, STEP OR CREATED STATE CHANGES (REQUIREMENT 2 & 3)
   useEffect(() => {
     try {
@@ -495,10 +543,13 @@ export const ResumeBuilderWizard: React.FC<ResumeBuilderWizardProps> = ({ onBack
         savedAt: new Date().toISOString()
       };
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(draft));
+      if (user?.id) {
+        SupabaseService.saveResumeDraft(user.id, currentStep, isResumeCreated, draft);
+      }
     } catch (e) {
       console.error('Auto save draft failed:', e);
     }
-  }, [formData, currentStep, isResumeCreated]);
+  }, [formData, currentStep, isResumeCreated, user?.id]);
 
   // Filter Categories for Inside Template Selection Gallery Modal
   const categories = ['All', 'Photo Templates', 'ATS Standard', 'Modern', 'Minimal'];
@@ -553,22 +604,44 @@ export const ResumeBuilderWizard: React.FC<ResumeBuilderWizardProps> = ({ onBack
     }
   };
 
+  // Open a previously created resume
+  const handleOpenSavedResume = (record: SavedResumeRecord) => {
+    setFormData(record.data);
+    setActiveResumeIdState(record.id);
+    setActiveResumeId(record.id);
+    setIsResumeCreated(true);
+    setResume(record.data);
+  };
+
+  // Delete a saved resume
+  const handleDeleteSavedResume = (id: string) => {
+    const updated = deleteResumeRecord(id);
+    setSavedResumes(updated);
+    if (activeResumeId === id) {
+      setActiveResumeIdState(null);
+    }
+  };
+
   // Create Resume Action (Step 10)
   const handleCreateResume = () => {
     setIsResumeCreated(true);
+    const savedRecord = saveResumeRecord(formData, formData.selectedTemplate, activeResumeId || undefined);
+    setActiveResumeIdState(savedRecord.id);
+    setSavedResumes(getSavedResumesList());
+    setResume(formData);
+    if (user?.id) {
+      SupabaseService.saveResume(formData, user.id);
+      SupabaseService.clearResumeDraft(user.id);
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // REAL SAVE PROGRESS FLOW (REQUIREMENT 2: REAL SAVE PROGRESS PERSISTENCE)
+  // REAL SAVE PROGRESS FLOW
   const handleSaveResume = async () => {
     try {
-      const draft = {
-        formData,
-        currentStep,
-        isResumeCreated,
-        savedAt: new Date().toISOString()
-      };
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(draft));
+      const savedRecord = saveResumeRecord(formData, formData.selectedTemplate, activeResumeId || undefined);
+      setActiveResumeIdState(savedRecord.id);
+      setSavedResumes(getSavedResumesList());
       setResume(formData);
 
       if (user?.id) {
@@ -580,6 +653,31 @@ export const ResumeBuilderWizard: React.FC<ResumeBuilderWizardProps> = ({ onBack
     } catch (error) {
       console.error('Error saving resume progress:', error);
     }
+  };
+
+  // START FROM BEGINNING MODAL HANDLERS
+  const handleDeleteAndStartOver = () => {
+    if (activeResumeId) {
+      deleteResumeRecord(activeResumeId);
+    }
+    setSavedResumes(getSavedResumesList());
+    setActiveResumeIdState(null);
+    setActiveResumeId(null);
+    setFormData(defaultEmptyFormData);
+    setCurrentStep(1);
+    setIsResumeCreated(false);
+    setIsStartOverModalOpen(false);
+  };
+
+  const handleKeepAndStartOver = () => {
+    saveResumeRecord(formData, formData.selectedTemplate, activeResumeId || undefined);
+    setSavedResumes(getSavedResumesList());
+    setActiveResumeIdState(null);
+    setActiveResumeId(null);
+    setFormData(defaultEmptyFormData);
+    setCurrentStep(1);
+    setIsResumeCreated(false);
+    setIsStartOverModalOpen(false);
   };
 
   // Clear Saved Draft and Reset Form
@@ -760,7 +858,7 @@ export const ResumeBuilderWizard: React.FC<ResumeBuilderWizardProps> = ({ onBack
       {isResumeCreated ? (
         <div className="space-y-8 animate-in fade-in duration-300">
           
-          {/* Action Bar Sub-Header (REQUIREMENT 1: KEPT THE ONLY CHANGE TEMPLATE BUTTON HERE) */}
+          {/* Action Bar Sub-Header */}
           <div className="glass-card rounded-2xl p-4 border border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-900/80 flex flex-wrap items-center justify-between gap-4 print:hidden">
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
               <CheckCircle2 className="w-4 h-4 text-emerald-500" />
@@ -774,11 +872,26 @@ export const ResumeBuilderWizard: React.FC<ResumeBuilderWizardProps> = ({ onBack
               >
                 <ArrowLeft className="w-3.5 h-3.5" /> Back to Edit Form
               </button>
+
               <button
                 onClick={() => setIsTemplateModalOpen(true)}
                 className="px-3 py-1.5 rounded-xl bg-indigo-600 text-white font-bold text-xs flex items-center gap-1 shadow hover:bg-indigo-700 cursor-pointer"
               >
                 <Layout className="w-3.5 h-3.5" /> Change Template
+              </button>
+
+              <button
+                onClick={() => setIsStartOverModalOpen(true)}
+                className="px-3 py-1.5 rounded-xl bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 font-extrabold text-xs flex items-center gap-1 hover:bg-red-500/20 cursor-pointer transition-all"
+              >
+                <RotateCcw className="w-3.5 h-3.5" /> Start from Beginning
+              </button>
+
+              <button
+                onClick={handleSaveResume}
+                className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center gap-1.5 shadow hover:shadow-emerald-500/20 cursor-pointer transition-all"
+              >
+                <Save className="w-3.5 h-3.5" /> Save Changes
               </button>
             </div>
           </div>
@@ -793,6 +906,8 @@ export const ResumeBuilderWizard: React.FC<ResumeBuilderWizardProps> = ({ onBack
                 data={formData}
                 template={formData.selectedTemplate}
                 onPhotoUpload={(photoDataUrl) => setFormData((prev) => ({ ...prev, photoUrl: photoDataUrl }))}
+                isEditable={true}
+                onUpdateData={(updated) => setFormData(updated)}
               />
             </div>
           </div>
@@ -851,6 +966,60 @@ export const ResumeBuilderWizard: React.FC<ResumeBuilderWizardProps> = ({ onBack
             {/* STEP 1: TEMPLATE SELECTION SCREEN */}
             {currentStep === 1 && (
               <div className="glass-card rounded-3xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/90 space-y-6 shadow-xl">
+                
+                {/* PREVIOUSLY CREATED RESUMES SECTION */}
+                {savedResumes.length > 0 && (
+                  <div className="p-5 rounded-2xl bg-slate-100 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                        <h3 className="text-sm font-extrabold text-slate-900 dark:text-white font-['Space_Grotesk']">
+                          You already have created resumes
+                        </h3>
+                      </div>
+                      <span className="text-xs font-bold text-slate-500">
+                        {savedResumes.length} {savedResumes.length === 1 ? 'Saved Resume' : 'Saved Resumes'}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                      {savedResumes.map((rec) => (
+                        <div
+                          key={rec.id}
+                          onClick={() => handleOpenSavedResume(rec)}
+                          className="group p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-500 dark:hover:border-indigo-500 transition-all cursor-pointer flex items-center justify-between shadow-sm hover:shadow-md"
+                        >
+                          <div className="space-y-0.5 truncate pr-2">
+                            <div className="flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                              <h4 className="text-xs font-extrabold text-slate-900 dark:text-white truncate">{rec.title}</h4>
+                            </div>
+                            <p className="text-[10px] text-slate-500 font-medium truncate">
+                              Template: {rec.templateId.toUpperCase()} • {new Date(rec.updatedAt).toLocaleDateString()}
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteSavedResume(rec.id);
+                              }}
+                              className="p-1 rounded text-slate-400 hover:text-red-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                              title="Delete Resume"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                            <span className="text-xs font-extrabold text-indigo-600 dark:text-indigo-400 group-hover:translate-x-0.5 transition-transform">
+                              Open →
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div>
                     <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-xs font-bold border border-indigo-500/20 mb-2">
@@ -1786,6 +1955,56 @@ export const ResumeBuilderWizard: React.FC<ResumeBuilderWizardProps> = ({ onBack
                   </div>
                 );
               })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* START FROM BEGINNING CONFIRMATION MODAL */}
+      {isStartOverModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200 print:hidden">
+          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-5 relative">
+            <div className="flex items-center gap-3 border-b border-slate-800 pb-4">
+              <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                <AlertCircle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-extrabold text-white font-['Space_Grotesk']">
+                  Start from Beginning?
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Choose what to do with your current resume draft.
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 font-medium leading-relaxed">
+              Do you want to delete the resume you just created and start from the beginning?
+            </p>
+
+            <div className="space-y-2.5 pt-2">
+              <button
+                onClick={handleDeleteAndStartOver}
+                className="w-full py-3 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Delete & Start Over</span>
+              </button>
+
+              <button
+                onClick={handleKeepAndStartOver}
+                className="w-full py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer"
+              >
+                <Save className="w-4 h-4" />
+                <span>Keep Resume & Start Over</span>
+              </button>
+
+              <button
+                onClick={() => setIsStartOverModalOpen(false)}
+                className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-extrabold text-xs transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>

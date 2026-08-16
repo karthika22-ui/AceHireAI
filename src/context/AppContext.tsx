@@ -9,6 +9,7 @@ import {
   UserSettings,
   DEFAULT_SETTINGS
 } from '../types';
+import { AlertTriangle } from 'lucide-react';
 import {
   supabase,
   SupabaseService,
@@ -78,6 +79,12 @@ interface AppContextType {
   updateSettings: (newSettings: Partial<UserSettings>) => void;
   recalculatePlacementScore: () => void;
   resetAllProgress: () => void;
+  activeWorkflowGuard: { workflowName: string; isDirty: boolean } | null;
+  registerWorkflowGuard: (workflowName: string, isDirty: boolean) => void;
+  clearWorkflowGuard: (workflowName?: string) => void;
+  confirmExitWorkflow: () => void;
+  cancelExitWorkflow: () => void;
+  isExitModalOpen: boolean;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -105,8 +112,82 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [recentActivities, setRecentActivities] = useState<ActivityItem[]>([]);
   const [completedTasksCount, setCompletedTasksCount] = useState<number>(0);
 
-  const [activeTab, setActiveTab] = useState<ActiveTab>('home');
+  const [activeTab, setActiveTabDirectly] = useState<ActiveTab>('home');
   const [pendingTargetTab, setPendingTargetTab] = useState<ActiveTab | null>(null);
+
+  // Global Exit Confirmation Guard States
+  const [activeWorkflowGuard, setActiveWorkflowGuardState] = useState<{ workflowName: string; isDirty: boolean } | null>(null);
+  const [isExitModalOpen, setIsExitModalOpen] = useState<boolean>(false);
+  const [pendingTab, setPendingTab] = useState<ActiveTab | null>(null);
+
+  const registerWorkflowGuard = (workflowName: string, isDirty: boolean) => {
+    if (isDirty) {
+      setActiveWorkflowGuardState({ workflowName, isDirty: true });
+    } else {
+      setActiveWorkflowGuardState((prev) => {
+        if (prev?.workflowName === workflowName) {
+          return null;
+        }
+        return prev;
+      });
+    }
+  };
+
+  const clearWorkflowGuard = (workflowName?: string) => {
+    if (!workflowName || activeWorkflowGuard?.workflowName === workflowName) {
+      setActiveWorkflowGuardState(null);
+    }
+  };
+
+  const setActiveTab = (targetTab: ActiveTab) => {
+    if (targetTab === activeTab) return;
+
+    if (activeWorkflowGuard && activeWorkflowGuard.isDirty) {
+      setPendingTab(targetTab);
+      setIsExitModalOpen(true);
+    } else {
+      setActiveTabDirectly(targetTab);
+    }
+  };
+
+  const confirmExitWorkflow = () => {
+    const target = pendingTab;
+    setIsExitModalOpen(false);
+    setPendingTab(null);
+    setActiveWorkflowGuardState(null);
+    if (target) {
+      setActiveTabDirectly(target);
+    }
+  };
+
+  const cancelExitWorkflow = () => {
+    setIsExitModalOpen(false);
+    setPendingTab(null);
+  };
+
+  // Browser Back Button & Reload Interception
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (activeWorkflowGuard && activeWorkflowGuard.isDirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+
+    const handlePopState = (e: PopStateEvent) => {
+      if (activeWorkflowGuard && activeWorkflowGuard.isDirty) {
+        window.history.pushState(null, '', window.location.href);
+        setIsExitModalOpen(true);
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [activeWorkflowGuard]);
 
   // Splash / Welcome Page State
   const [showSplash, setShowSplash] = useState<boolean>(true);
@@ -257,11 +338,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setRecentActivities(fetchedActivities);
       setCompletedTasksCount(fetchedActivities.length);
     }
+    setShowSplash(false);
+    setActiveTabDirectly((prev) => (prev === 'login' ? 'home' : prev));
   };
 
   // 2. PER-EMAIL USER PROGRESS RESTORATION & ISOLATION SINK
   useEffect(() => {
-    if (!user?.email) return;
+    if (!user?.email || isSupabaseConfigured()) return;
     const cleanEmail = user.email.trim().toLowerCase();
 
     // Restore per-email readiness score
@@ -613,6 +696,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setSettingsState((prev) => {
       const updated = { ...prev, ...newSettingsPartial };
       localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(updated));
+      if (currentUserId) {
+        SupabaseService.saveUserSettings(currentUserId, updated);
+      }
       return updated;
     });
   };
@@ -659,60 +745,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  // GOOGLE OAUTH ACTION WITH INTEGRATION FIX & LOGIN COUNT TRACKING
+  // GOOGLE OAUTH ACTION WITH SUPABASE OAUTH FLOW
   const loginWithGoogle = async (): Promise<void> => {
-    if (isSupabaseConfigured()) {
-      try {
-        const { error } = await SupabaseService.signInWithGoogle();
-        if (!error) return;
-      } catch (err) {}
+    if (!isSupabaseConfigured()) {
+      throw new Error(
+        'Google Sign-In requires active Supabase configuration. Please configure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your environment.'
+      );
     }
 
-    // Fallback/Direct Google Sign In when provider is unconfigured or cloud error
-    const googleEmail = 'google.student@university.edu';
-    const googleName = 'Google Student';
-
-    const cleanEmail = googleEmail.toLowerCase();
-    let existingProfile = await SupabaseService.fetchProfile(cleanEmail);
-    const hasLoggedInBefore = Boolean(existingProfile && existingProfile.loginCount && existingProfile.loginCount > 0);
-
-    const prevCount = existingProfile?.loginCount || 0;
-    const newCount = hasLoggedInBefore ? prevCount + 1 : 1;
-    const isFirstTime = !hasLoggedInBefore;
-
-    const googleUserId = existingProfile?.id || `google-user-${Date.now()}`;
-
-    const googleProfile: UserProfile = {
-      ...existingProfile,
-      id: googleUserId,
-      name: existingProfile?.name || googleName,
-      email: cleanEmail,
-      userStatus: existingProfile?.userStatus || 'College Student',
-      college: existingProfile?.college || 'Anna University / Sri Sairam College',
-      department: existingProfile?.department || 'Computer Science & Engineering',
-      degree: existingProfile?.degree || 'B.E. Computer Science',
-      currentYear: existingProfile?.currentYear || '3rd Year',
-      graduationYear: existingProfile?.graduationYear || '2025',
-      preferredLanguage: existingProfile?.preferredLanguage || 'Tanglish',
-      avatarUrl:
-        existingProfile?.avatarUrl ||
-        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-      loginCount: newCount,
-      isFirstLogin: isFirstTime,
-      lastLoginAt: new Date().toISOString(),
-      createdAt: existingProfile?.createdAt || new Date().toISOString()
-    };
-
-    setIsLoggedIn(true);
-    setCurrentUserId(googleUserId);
-    setUser(googleProfile);
-
-    setShowSplash(false);
-    if (pendingTargetTab && pendingTargetTab !== 'login') {
-      setActiveTab(pendingTargetTab);
-      setPendingTargetTab(null);
-    } else {
-      setActiveTab('home');
+    const { error } = await SupabaseService.signInWithGoogle();
+    if (error) {
+      throw new Error(error.message || 'Failed to initiate Google Sign-In with Supabase.');
     }
   };
 
@@ -756,10 +799,57 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         settings,
         updateSettings,
         recalculatePlacementScore,
-        resetAllProgress
+        resetAllProgress,
+        activeWorkflowGuard,
+        registerWorkflowGuard,
+        clearWorkflowGuard,
+        confirmExitWorkflow,
+        cancelExitWorkflow,
+        isExitModalOpen
       }}
     >
       {children}
+
+      {/* GLOBAL EXIT CONFIRMATION MODAL */}
+      {isExitModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-5 relative text-left">
+            <div className="flex items-center gap-3 border-b border-slate-800 pb-4">
+              <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-500 border border-amber-500/20 shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-extrabold text-white font-['Space_Grotesk']">
+                  Exit {activeWorkflowGuard?.workflowName || 'Workflow'}?
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Unsaved or incomplete progress detected.
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs sm:text-sm text-slate-300 font-medium leading-relaxed">
+              Are you sure you want to exit {activeWorkflowGuard?.workflowName || 'this workflow'}? Your current progress may not be completed.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                onClick={cancelExitWorkflow}
+                className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-extrabold text-xs transition-all cursor-pointer"
+              >
+                No, Stay
+              </button>
+
+              <button
+                onClick={confirmExitWorkflow}
+                className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-extrabold text-xs shadow-lg transition-all cursor-pointer"
+              >
+                Yes, Exit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppContext.Provider>
   );
 };

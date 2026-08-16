@@ -13,6 +13,7 @@ export interface UserProfile {
   name: string;
   email: string;
   phone?: string;
+  gender?: 'Male' | 'Female' | 'Other' | string;
   userStatus?: UserStatus;
 
   // Plus Two Student Fields

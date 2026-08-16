@@ -12,8 +12,10 @@ import {
   CodingSubmissionResult,
   AptitudeQuestion,
   RoadmapTask,
-  CameraAnalysisResult
+  CameraAnalysisResult,
+  UserProfile
 } from '../types';
+import { getUserAddressTerm, formatTanglishAddressing } from '../utils/addressing';
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
@@ -1009,7 +1011,8 @@ export async function evaluateAnswerWithAI(
       insufficientData?: boolean;
       errorNotice?: string;
     };
-  }
+  },
+  userProfile?: UserProfile | null
 ): Promise<DualLanguageFeedback> {
   // Simulate intelligent AI processing delay
   await new Promise((resolve) => setTimeout(resolve, 600));
@@ -1396,6 +1399,7 @@ Next time try pannumbodhu:
     tanglishExp = `Super bro! Interviewer ketta "${questionText}" question-ku direct-a, rumba clear-a exact technical terminology (${expectedKeypoints.join(', ')}) matrum structured format-la answer pannikinga. Outstanding delivery!`;
   }
 
+  tanglishExp = formatTanglishAddressing(tanglishExp, userProfile, 'Tanglish');
   const explanationText = preferredLanguage === 'Tanglish' ? tanglishExp : englishExp;
 
   // 3. Dynamic Multimodal Vision AI Camera & Body Language Analysis (Requirements 1-9)
@@ -1850,13 +1854,16 @@ export interface DynamicAICodeReview {
   tanglishAdvice: string;
 }
 
-export async function generateAICodeReview(params: {
-  problemTitle: string;
-  description: string;
-  code: string;
-  language: string;
-  validationStatus: 'Success' | 'Compilation Error' | 'Failed Test Cases';
-}): Promise<DynamicAICodeReview> {
+export async function generateAICodeReview(
+  params: {
+    problemTitle: string;
+    description: string;
+    code: string;
+    language: string;
+    validationStatus: 'Success' | 'Compilation Error' | 'Failed Test Cases';
+  },
+  userProfile?: UserProfile | null
+): Promise<DynamicAICodeReview> {
   const prompt = `
 You are an expert senior technical interviewer and AI code reviewer for placement interviews.
 Analyze this code submitted by a student for a programming challenge:
@@ -1898,7 +1905,7 @@ Return a JSON object with these EXACT keys:
       spaceComplexity: parsed.spaceComplexity || 'O(1)',
       interviewTip: parsed.interviewTip || 'Always state your time complexity aloud before writing your code.',
       englishAdvice: parsed.englishAdvice || 'Good solution attempt. Verify edge constraints.',
-      tanglishAdvice: parsed.tanglishAdvice || 'Super bro! Code logic try pannirukinga. Test cases elam verify pannunga.'
+      tanglishAdvice: formatTanglishAddressing(parsed.tanglishAdvice || 'Super! Code logic try pannirukinga. Test cases elam verify pannunga.', userProfile, 'Tanglish')
     };
   } catch (err) {
     console.warn('Fallback dynamic AI code review generation:', err);
@@ -1911,7 +1918,7 @@ Return a JSON object with these EXACT keys:
       spaceComplexity: 'O(1)',
       interviewTip: 'Explain your algorithmic trade-offs clearly to the interviewer.',
       englishAdvice: 'Solution submitted and evaluated cleanly.',
-      tanglishAdvice: 'Super! Logic write pannirukinga. Optimization and edge cases check pannunga.'
+      tanglishAdvice: formatTanglishAddressing('Super! Logic write pannirukinga. Optimization and edge cases check pannunga.', userProfile, 'Tanglish')
     };
   }
 }

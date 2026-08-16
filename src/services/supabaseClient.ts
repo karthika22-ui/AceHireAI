@@ -225,24 +225,25 @@ export class SupabaseService {
         name: data.name || fallback.name,
         email: data.email || fallback.email,
         phone: data.phone || remoteExtra.phone || fallback.phone || '',
+        gender: data.gender || remoteExtra.gender || fallback.gender || '',
         userStatus: data.user_status || remoteExtra.userStatus || fallback.userStatus || 'College Student',
-        schoolName: remoteExtra.schoolName || fallback.schoolName,
-        stream: remoteExtra.stream || fallback.stream,
-        expectedCompletionYear: remoteExtra.expectedCompletionYear || fallback.expectedCompletionYear,
+        schoolName: data.school_name || remoteExtra.schoolName || fallback.schoolName,
+        stream: data.stream || remoteExtra.stream || fallback.stream,
+        expectedCompletionYear: data.expected_completion_year || remoteExtra.expectedCompletionYear || fallback.expectedCompletionYear,
         college: data.college || fallback.college || '',
-        degree: remoteExtra.degree || fallback.degree,
+        degree: data.degree || remoteExtra.degree || fallback.degree,
         department: data.department || fallback.department || '',
-        currentYear: remoteExtra.currentYear || fallback.currentYear,
-        graduationYear: remoteExtra.graduationYear || fallback.graduationYear,
-        highestQualification: remoteExtra.highestQualification || fallback.highestQualification,
-        currentRole: remoteExtra.currentRole || fallback.currentRole,
-        company: remoteExtra.company || fallback.company,
-        experience: remoteExtra.experience || fallback.experience,
-        targetIndustry: remoteExtra.targetIndustry || fallback.targetIndustry,
-        passoutYear: remoteExtra.passoutYear || fallback.passoutYear,
+        currentYear: data.current_year || remoteExtra.currentYear || fallback.currentYear,
+        graduationYear: data.graduation_year || remoteExtra.graduationYear || fallback.graduationYear,
+        highestQualification: data.highest_qualification || remoteExtra.highestQualification || fallback.highestQualification,
+        currentRole: data.current_role || remoteExtra.currentRole || fallback.currentRole,
+        company: data.company || remoteExtra.company || fallback.company,
+        experience: data.experience || remoteExtra.experience || fallback.experience,
+        targetIndustry: data.target_industry || remoteExtra.targetIndustry || fallback.targetIndustry,
+        passoutYear: data.passout_year || remoteExtra.passoutYear || fallback.passoutYear,
         preferredLanguage: data.preferred_language || fallback.preferredLanguage || 'Tanglish',
-        targetJobRole: remoteExtra.targetJobRole || fallback.targetJobRole,
-        skills: remoteExtra.skills || fallback.skills,
+        targetJobRole: data.target_job_role || remoteExtra.targetJobRole || fallback.targetJobRole,
+        skills: data.skills || remoteExtra.skills || fallback.skills,
         avatarUrl: data.avatar_url || fallback.avatarUrl,
         loginCount: remoteExtra.loginCount !== undefined ? remoteExtra.loginCount : fallback.loginCount,
         isFirstLogin: remoteExtra.isFirstLogin !== undefined ? remoteExtra.isFirstLogin : fallback.isFirstLogin,
@@ -283,9 +284,26 @@ export class SupabaseService {
         id: userId || profile.id,
         name: profile.name,
         email: profile.email,
+        phone: profile.phone || '',
+        gender: profile.gender || '',
+        user_status: profile.userStatus || 'College Student',
+        school_name: profile.schoolName || '',
+        stream: profile.stream || '',
+        expected_completion_year: profile.expectedCompletionYear || '',
         college: profile.college || '',
+        degree: profile.degree || '',
         department: profile.department || '',
-        preferred_language: profile.preferredLanguage,
+        current_year: profile.currentYear || '',
+        graduation_year: profile.graduationYear || '',
+        highest_qualification: profile.highestQualification || '',
+        current_role: profile.currentRole || '',
+        company: profile.company || '',
+        experience: profile.experience || '',
+        target_industry: profile.targetIndustry || '',
+        passout_year: profile.passoutYear || '',
+        preferred_language: profile.preferredLanguage || 'Tanglish',
+        target_job_role: profile.targetJobRole || '',
+        skills: profile.skills || [],
         avatar_url: profile.avatarUrl,
         custom_profile_data: profile
       };
@@ -470,26 +488,125 @@ export class SupabaseService {
         summary: resume.summary || '',
         skills: resume.skills || [],
         ats_score: resume.atsScore || 0,
+        selected_template: resume.selectedTemplate || 'modern',
         raw_data: resume
       };
 
-      const { error } = await supabase.from('resume_data').upsert(payload, { onConflict: 'user_id' });
-      if (error) {
-        await supabase.from('resumes').upsert({
-          user_id: userId,
-          full_name: resume.fullName,
-          email: resume.email,
-          phone: resume.phone || '',
-          location: resume.location || '',
-          summary: resume.summary || '',
-          skills: resume.skills || [],
-          ats_score: resume.atsScore || 0
-        });
-      }
-      return true;
+      const { error } = await supabase.from('resume_data').upsert(payload);
+      return !error;
     } catch (e) {
       console.warn('Supabase saveResume error:', e);
       return false;
+    }
+  }
+
+  static async fetchResumesList(userId: string): Promise<ResumeData[]> {
+    if (!isSupabaseConfigured() || !userId) return [];
+    try {
+      const { data } = await supabase
+        .from('resume_data')
+        .select('*')
+        .eq('user_id', userId)
+        .order('updated_at', { ascending: false });
+
+      if (data && data.length > 0) {
+        return data.map((item: any) => item.raw_data as ResumeData);
+      }
+      return [];
+    } catch (e) {
+      console.warn('Supabase fetchResumesList error:', e);
+      return [];
+    }
+  }
+
+  // 4b. RESUME DRAFTS OPERATIONS (MID-WAY PROGRESS RESTORATION)
+  static async fetchResumeDraft(userId: string) {
+    if (!isSupabaseConfigured() || !userId) return null;
+    try {
+      const { data } = await supabase
+        .from('resume_drafts')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (data && data.draft_data) {
+        return {
+          currentStep: data.current_step,
+          isResumeCreated: data.is_resume_created,
+          draftData: data.draft_data
+        };
+      }
+      return null;
+    } catch (e) {
+      console.warn('Supabase fetchResumeDraft error:', e);
+      return null;
+    }
+  }
+
+  static async saveResumeDraft(userId: string, currentStep: number, isResumeCreated: boolean, draftData: any) {
+    if (!isSupabaseConfigured() || !userId) return true;
+    try {
+      const payload = {
+        user_id: userId,
+        current_step: currentStep,
+        is_resume_created: isResumeCreated,
+        draft_data: draftData
+      };
+      await supabase.from('resume_drafts').upsert(payload, { onConflict: 'user_id' });
+      return true;
+    } catch (e) {
+      console.warn('Supabase saveResumeDraft error:', e);
+      return false;
+    }
+  }
+
+  static async clearResumeDraft(userId: string) {
+    if (!isSupabaseConfigured() || !userId) return true;
+    try {
+      await supabase.from('resume_drafts').delete().eq('user_id', userId);
+      return true;
+    } catch (e) {
+      console.warn('Supabase clearResumeDraft error:', e);
+      return false;
+    }
+  }
+
+  // 4c. ATS ANALYSES OPERATIONS
+  static async saveAtsAnalysis(userId: string, analysisResult: any, targetRole?: string, resumeId?: string) {
+    if (!isSupabaseConfigured() || !userId) return null;
+    try {
+      const payload = {
+        user_id: userId,
+        resume_id: resumeId || null,
+        target_role: targetRole || '',
+        ats_score: analysisResult.atsScore || 0,
+        matched_skills: analysisResult.matchedSkills || [],
+        missing_skills: analysisResult.missingSkills || [],
+        formatting_suggestions: analysisResult.formattingSuggestions || [],
+        actionable_improvements: analysisResult.actionableImprovements || [],
+        analysis_result: analysisResult
+      };
+
+      const { data } = await supabase.from('ats_analyses').insert(payload).select().single();
+      return data;
+    } catch (e) {
+      console.warn('Supabase saveAtsAnalysis error:', e);
+      return null;
+    }
+  }
+
+  static async fetchAtsAnalyses(userId: string) {
+    if (!isSupabaseConfigured() || !userId) return [];
+    try {
+      const { data } = await supabase
+        .from('ats_analyses')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+      return data || [];
+    } catch (e) {
+      console.warn('Supabase fetchAtsAnalyses error:', e);
+      return [];
     }
   }
 
@@ -925,6 +1042,36 @@ export class SupabaseService {
       return data;
     } catch (e) {
       return null;
+    }
+  }
+
+  static async fetchUserSettings(userId: string) {
+    if (!isSupabaseConfigured() || !userId) return null;
+    try {
+      const { data } = await supabase
+        .from('user_settings')
+        .select('settings')
+        .eq('user_id', userId)
+        .maybeSingle();
+      return data?.settings || null;
+    } catch (e) {
+      console.warn('Supabase fetchUserSettings error:', e);
+      return null;
+    }
+  }
+
+  static async saveUserSettings(userId: string, settings: any) {
+    if (!isSupabaseConfigured() || !userId) return false;
+    try {
+      const payload = {
+        user_id: userId,
+        settings: settings
+      };
+      await supabase.from('user_settings').upsert(payload, { onConflict: 'user_id' });
+      return true;
+    } catch (e) {
+      console.warn('Supabase saveUserSettings error:', e);
+      return false;
     }
   }
 

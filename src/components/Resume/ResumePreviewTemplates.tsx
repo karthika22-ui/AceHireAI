@@ -6,14 +6,90 @@ interface ResumePreviewTemplatesProps {
   data: ResumeData;
   template?: string;
   onPhotoUpload?: (photoDataUrl: string) => void;
+  isEditable?: boolean;
+  onUpdateData?: (updatedData: ResumeData) => void;
 }
+
+const EditableText: React.FC<{
+  value?: string;
+  onChange: (val: string) => void;
+  className?: string;
+  placeholder?: string;
+  isEditable?: boolean;
+  tagName?: 'span' | 'p' | 'h1' | 'h2' | 'h3' | 'div';
+}> = ({ value = '', onChange, className = '', placeholder = '', isEditable = false, tagName: Tag = 'span' }) => {
+  if (!isEditable) {
+    return <Tag className={className}>{value || placeholder}</Tag>;
+  }
+
+  return (
+    <Tag
+      contentEditable
+      suppressContentEditableWarning
+      onBlur={(e) => {
+        const text = e.currentTarget.textContent || '';
+        if (text !== value) {
+          onChange(text);
+        }
+      }}
+      className={`${className} outline-none focus:ring-1 focus:ring-indigo-400 focus:bg-indigo-50/40 rounded px-0.5 transition-all hover:bg-indigo-50/20 cursor-text`}
+      title="Click to edit directly"
+    >
+      {value || placeholder}
+    </Tag>
+  );
+};
 
 export const ResumePreviewTemplates: React.FC<ResumePreviewTemplatesProps> = ({
   data,
   template = 'modern',
-  onPhotoUpload
+  onPhotoUpload,
+  isEditable = false,
+  onUpdateData
 }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const updateField = (field: keyof ResumeData, value: any) => {
+    if (onUpdateData) {
+      onUpdateData({ ...data, [field]: value });
+    }
+  };
+
+  const updateEducation = (index: number, subField: keyof any, val: string) => {
+    if (!onUpdateData) return;
+    const updated = [...(data.education || [])];
+    if (updated[index]) {
+      updated[index] = { ...updated[index], [subField]: val };
+      onUpdateData({ ...data, education: updated });
+    }
+  };
+
+  const updateExperience = (index: number, subField: keyof any, val: string) => {
+    if (!onUpdateData) return;
+    const updated = [...(data.experience || [])];
+    if (updated[index]) {
+      updated[index] = { ...updated[index], [subField]: val };
+      onUpdateData({ ...data, experience: updated });
+    }
+  };
+
+  const updateProject = (index: number, subField: keyof any, val: any) => {
+    if (!onUpdateData) return;
+    const updated = [...(data.projects || [])];
+    if (updated[index]) {
+      updated[index] = { ...updated[index], [subField]: val };
+      onUpdateData({ ...data, projects: updated });
+    }
+  };
+
+  const updateCertification = (index: number, subField: keyof any, val: string) => {
+    if (!onUpdateData) return;
+    const updated = [...(data.certifications || [])];
+    if (updated[index]) {
+      updated[index] = { ...updated[index], [subField]: val };
+      onUpdateData({ ...data, certifications: updated });
+    }
+  };
 
   const handlePhotoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0] && onPhotoUpload) {
@@ -139,12 +215,41 @@ export const ResumePreviewTemplates: React.FC<ResumePreviewTemplatesProps> = ({
   // Helper for contact details line with bulletproof text wrapping
   const renderContactBar = (separator = '•') => (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600 font-medium leading-relaxed">
-      {email && <span className="whitespace-nowrap">{email}</span>}
-      {phone && <span className="whitespace-nowrap">{separator} {phone}</span>}
-      {location && <span className="whitespace-nowrap">{separator} {location}</span>}
-      {linkedIn && <span className="break-all">{separator} LinkedIn: {linkedIn}</span>}
-      {gitHub && <span className="break-all">{separator} GitHub: {gitHub}</span>}
-      {portfolio && <span className="break-all">{separator} Portfolio: {portfolio}</span>}
+      {(email || isEditable) && (
+        <span className="whitespace-nowrap">
+          <EditableText isEditable={isEditable} value={email} onChange={(val) => updateField('email', val)} placeholder="email@address.com" />
+        </span>
+      )}
+      {(phone || isEditable) && (
+        <span className="whitespace-nowrap">
+          {separator}{' '}
+          <EditableText isEditable={isEditable} value={phone} onChange={(val) => updateField('phone', val)} placeholder="+91 98765 43210" />
+        </span>
+      )}
+      {(location || isEditable) && (
+        <span className="whitespace-nowrap">
+          {separator}{' '}
+          <EditableText isEditable={isEditable} value={location} onChange={(val) => updateField('location', val)} placeholder="Location" />
+        </span>
+      )}
+      {(linkedIn || isEditable) && (
+        <span className="break-all">
+          {separator} LinkedIn:{' '}
+          <EditableText isEditable={isEditable} value={linkedIn} onChange={(val) => updateField('linkedIn', val)} placeholder="linkedin.com/in/username" />
+        </span>
+      )}
+      {(gitHub || isEditable) && (
+        <span className="break-all">
+          {separator} GitHub:{' '}
+          <EditableText isEditable={isEditable} value={gitHub} onChange={(val) => updateField('gitHub', val)} placeholder="github.com/username" />
+        </span>
+      )}
+      {(portfolio || isEditable) && (
+        <span className="break-all">
+          {separator} Portfolio:{' '}
+          <EditableText isEditable={isEditable} value={portfolio} onChange={(val) => updateField('portfolio', val)} placeholder="portfolio.com" />
+        </span>
+      )}
     </div>
   );
 
@@ -158,29 +263,50 @@ export const ResumePreviewTemplates: React.FC<ResumePreviewTemplatesProps> = ({
           </div>
         ))
       ) : (
-        <div>{allSkillsList.join(', ')}</div>
+        <div>
+          <EditableText
+            isEditable={isEditable}
+            value={allSkillsList.join(', ')}
+            onChange={(val) => updateField('skills', val.split(',').map((s) => s.trim()).filter(Boolean))}
+            placeholder="Add skills separated by commas..."
+          />
+        </div>
       )}
     </div>
   );
 
   // Helper for projects section
   const renderProjectsSection = (titleClass = 'text-xs font-bold uppercase tracking-wider text-slate-900 border-b border-slate-300 pb-0.5 mb-2') => (
-    projects.length > 0 && (
+    (projects.length > 0 || isEditable) && (
       <div className="space-y-2 mt-4 text-left">
         <h2 className={titleClass}>Projects</h2>
         <div className="space-y-2.5">
           {projects.map((proj, idx) => (
             <div key={idx} className="space-y-0.5">
               <div className="flex justify-between items-baseline">
-                <span className="font-bold text-xs text-slate-900">{proj.title}</span>
-                {proj.gitHubUrl && <span className="text-[10px] text-indigo-600 font-mono break-all">{proj.gitHubUrl}</span>}
+                <span className="font-bold text-xs text-slate-900">
+                  <EditableText isEditable={isEditable} value={proj.title} onChange={(val) => updateProject(idx, 'title', val)} placeholder="Project Title" />
+                </span>
+                {(proj.gitHubUrl || isEditable) && (
+                  <span className="text-[10px] text-indigo-600 font-mono break-all">
+                    <EditableText isEditable={isEditable} value={proj.gitHubUrl || ''} onChange={(val) => updateProject(idx, 'gitHubUrl', val)} placeholder="github.com/project" />
+                  </span>
+                )}
               </div>
-              {proj.techStack && proj.techStack.length > 0 && (
+              {(proj.techStack && proj.techStack.length > 0 || isEditable) && (
                 <div className="text-[11px] text-indigo-700 font-semibold">
-                  Tech Stack: {Array.isArray(proj.techStack) ? proj.techStack.join(', ') : proj.techStack}
+                  Tech Stack:{' '}
+                  <EditableText
+                    isEditable={isEditable}
+                    value={Array.isArray(proj.techStack) ? proj.techStack.join(', ') : proj.techStack || ''}
+                    onChange={(val) => updateProject(idx, 'techStack', val.split(',').map((s) => s.trim()).filter(Boolean))}
+                    placeholder="React, Node.js"
+                  />
                 </div>
               )}
-              <p className="text-xs text-slate-700 leading-relaxed">{proj.description}</p>
+              <p className="text-xs text-slate-700 leading-relaxed">
+                <EditableText isEditable={isEditable} value={proj.description} onChange={(val) => updateProject(idx, 'description', val)} placeholder="Project description..." tagName="span" />
+              </p>
             </div>
           ))}
         </div>
@@ -190,18 +316,31 @@ export const ResumePreviewTemplates: React.FC<ResumePreviewTemplatesProps> = ({
 
   // Helper for experience section
   const renderExperienceSection = (titleClass = 'text-xs font-bold uppercase tracking-wider text-slate-900 border-b border-slate-300 pb-0.5 mb-2') => (
-    experience.length > 0 && (
+    (experience.length > 0 || isEditable) && (
       <div className="space-y-2 mt-4 text-left">
         <h2 className={titleClass}>Experience & Internships</h2>
         <div className="space-y-2.5">
           {experience.map((exp, idx) => (
             <div key={idx} className="space-y-0.5">
               <div className="flex justify-between items-baseline">
-                <span className="font-bold text-xs text-slate-900">{exp.role} — <span className="italic">{exp.company}</span></span>
-                <span className="text-[11px] text-slate-500 font-medium whitespace-nowrap">{exp.duration}</span>
+                <span className="font-bold text-xs text-slate-900">
+                  <EditableText isEditable={isEditable} value={exp.role} onChange={(val) => updateExperience(idx, 'role', val)} placeholder="Job Role" /> —{' '}
+                  <span className="italic">
+                    <EditableText isEditable={isEditable} value={exp.company} onChange={(val) => updateExperience(idx, 'company', val)} placeholder="Company Name" />
+                  </span>
+                </span>
+                <span className="text-[11px] text-slate-500 font-medium whitespace-nowrap">
+                  <EditableText isEditable={isEditable} value={exp.duration} onChange={(val) => updateExperience(idx, 'duration', val)} placeholder="Jun 2024 - Aug 2024" />
+                </span>
               </div>
-              {exp.location && <div className="text-[10px] text-slate-500">{exp.location}</div>}
-              <p className="text-xs text-slate-700 leading-relaxed">{exp.description}</p>
+              {(exp.location || isEditable) && (
+                <div className="text-[10px] text-slate-500">
+                  <EditableText isEditable={isEditable} value={exp.location || ''} onChange={(val) => updateExperience(idx, 'location', val)} placeholder="City, State" />
+                </div>
+              )}
+              <p className="text-xs text-slate-700 leading-relaxed">
+                <EditableText isEditable={isEditable} value={exp.description} onChange={(val) => updateExperience(idx, 'description', val)} placeholder="Key responsibilities and achievements..." tagName="span" />
+              </p>
             </div>
           ))}
         </div>
@@ -211,19 +350,32 @@ export const ResumePreviewTemplates: React.FC<ResumePreviewTemplatesProps> = ({
 
   // Helper for education section
   const renderEducationSection = (titleClass = 'text-xs font-bold uppercase tracking-wider text-slate-900 border-b border-slate-300 pb-0.5 mb-2') => (
-    education.length > 0 && (
+    (education.length > 0 || isEditable) && (
       <div className="space-y-2 mt-4 text-left">
         <h2 className={titleClass}>Education</h2>
         <div className="space-y-2">
           {education.map((edu, idx) => (
             <div key={idx} className="flex justify-between items-start text-xs">
               <div>
-                <span className="font-bold text-slate-900 block">{edu.degree}</span>
-                <span className="text-slate-700 block">{edu.institution} {edu.location ? `• ${edu.location}` : ''}</span>
+                <span className="font-bold text-slate-900 block">
+                  <EditableText isEditable={isEditable} value={edu.degree} onChange={(val) => updateEducation(idx, 'degree', val)} placeholder="Degree / Qualification" />
+                </span>
+                <span className="text-slate-700 block">
+                  <EditableText isEditable={isEditable} value={edu.institution} onChange={(val) => updateEducation(idx, 'institution', val)} placeholder="College / Institution" />{' '}
+                  {(edu.location || isEditable) ? `• ` : ''}
+                  <EditableText isEditable={isEditable} value={edu.location || ''} onChange={(val) => updateEducation(idx, 'location', val)} placeholder="City" />
+                </span>
               </div>
               <div className="text-right shrink-0">
-                <span className="text-slate-600 block font-medium">{edu.endYear || edu.graduationYear}</span>
-                {edu.cgpa && <span className="text-indigo-700 font-bold block text-[11px]">CGPA: {edu.cgpa}</span>}
+                <span className="text-slate-600 block font-medium">
+                  <EditableText isEditable={isEditable} value={edu.endYear || edu.graduationYear || ''} onChange={(val) => updateEducation(idx, 'endYear', val)} placeholder="2025" />
+                </span>
+                {(edu.cgpa || isEditable) && (
+                  <span className="text-indigo-700 font-bold block text-[11px]">
+                    CGPA:{' '}
+                    <EditableText isEditable={isEditable} value={edu.cgpa} onChange={(val) => updateEducation(idx, 'cgpa', val)} placeholder="8.5 / 10" />
+                  </span>
+                )}
               </div>
             </div>
           ))}

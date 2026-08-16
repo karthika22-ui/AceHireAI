@@ -68,7 +68,7 @@ import { SessionResumeModal } from '../Common/SessionResumeModal';
 import { SupabaseService } from '../../services/supabaseClient';
 
 export const MockInterviewView: React.FC = () => {
-  const { user, recordUserActivity, setActiveTab } = useApp();
+  const { user, recordUserActivity, setActiveTab, registerWorkflowGuard, clearWorkflowGuard } = useApp();
 
   // Synchronous initial state helper
   const getInitialSavedSession = (): SavedInterviewState | null => {
@@ -110,6 +110,15 @@ export const MockInterviewView: React.FC = () => {
   const [sessionCompleted, setSessionCompleted] = useState<boolean>(false);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(() => (initialSaved ? (initialSaved.currentQuestionIndex || 0) : 0));
   const [userAnswer, setUserAnswer] = useState<string>(() => (initialSaved ? (initialSaved.userAnswer || '') : ''));
+
+  // REGISTER GLOBAL EXIT GUARD FOR MOCK INTERVIEW
+  useEffect(() => {
+    const isDirty = sessionActive && !sessionCompleted;
+    registerWorkflowGuard('Mock Interview', isDirty);
+    return () => {
+      clearWorkflowGuard('Mock Interview');
+    };
+  }, [sessionActive, sessionCompleted, registerWorkflowGuard, clearWorkflowGuard]);
 
   // Automatically scroll to the top of the interview screen when session becomes active or question changes
   useEffect(() => {
@@ -750,7 +759,8 @@ export const MockInterviewView: React.FC = () => {
         currentQ.category,
         difficulty,
         user.preferredLanguage,
-        cameraOpts
+        cameraOpts,
+        user
       );
       clearInterval(interval);
       setLoadingStep(5);
@@ -808,6 +818,16 @@ export const MockInterviewView: React.FC = () => {
       saveSessionToStorage(answersHistory, nextIndex, activeQuestions, '');
     } else {
       setSessionCompleted(true);
+      if (user?.id) {
+        SupabaseService.saveInterviewSession(user.id, {
+          type: selectedType,
+          difficulty,
+          score: finalReport.overallScore,
+          session_data: answersHistory,
+          final_report: finalReport,
+          status: 'completed'
+        });
+      }
       clearSessionStorage();
     }
   };
