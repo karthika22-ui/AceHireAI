@@ -478,11 +478,25 @@ export const RoadmapView: React.FC = () => {
     }
   };
 
-  // Load persisted state on mount
+  // Load persisted state on mount from Supabase or localStorage
   useEffect(() => {
+    let loaded = false;
+    if (user?.id) {
+      SupabaseService.fetchRoadmap(user.id).then((remoteItems) => {
+        if (remoteItems && remoteItems.length > 0) {
+          const first = remoteItems[0];
+          if (first && first.title) {
+            setCustomGoalInput(first.category || first.title);
+            setScreenMode('generated');
+            loaded = true;
+          }
+        }
+      });
+    }
+
     try {
       const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (saved) {
+      if (saved && !loaded) {
         const parsed = JSON.parse(saved);
         if (parsed && parsed.customGoalInput && parsed.stages && parsed.stages.length > 0) {
           setCustomGoalInput(parsed.customGoalInput);
@@ -493,14 +507,14 @@ export const RoadmapView: React.FC = () => {
           return;
         }
       }
-      setScreenMode('form');
+      if (!loaded) setScreenMode('form');
     } catch (e) {
       console.warn('Could not load saved roadmap state:', e);
-      setScreenMode('form');
+      if (!loaded) setScreenMode('form');
     }
-  }, []);
+  }, [user?.id]);
 
-  // Save state to localStorage whenever stages or inputs change in generated mode
+  // Save state to Supabase & localStorage whenever stages or inputs change in generated mode
   useEffect(() => {
     if (screenMode === 'generated' && stages.length > 0 && customGoalInput.trim()) {
       try {
@@ -512,11 +526,25 @@ export const RoadmapView: React.FC = () => {
           lastUpdated: new Date().toISOString()
         };
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(payload));
+        if (user?.id) {
+          stages.forEach((stg) => {
+            stg.tasks.forEach((tsk) => {
+              SupabaseService.saveRoadmapItem(user.id, {
+                period: tsk.period,
+                category: customGoalInput.trim(),
+                title: tsk.title,
+                description: stg.description,
+                completed: tsk.completed,
+                dueDate: tsk.duration
+              });
+            });
+          });
+        }
       } catch (e) {
         console.warn('Could not save roadmap state:', e);
       }
     }
-  }, [screenMode, stages, customGoalInput, userLevel, dailyTime]);
+  }, [screenMode, stages, customGoalInput, userLevel, dailyTime, user?.id]);
 
   const activeGoalName = customGoalInput.trim();
 

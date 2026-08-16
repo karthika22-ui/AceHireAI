@@ -299,6 +299,7 @@ export const CommunicationView: React.FC = () => {
       if (user?.id) {
         SupabaseService.saveCommunicationProgress(user.id, {
           topic: currentQuestion,
+          difficulty: difficulty,
           score: res.confidenceScore,
           feedback: res
         });

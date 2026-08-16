@@ -780,6 +780,17 @@ export const MockInterviewView: React.FC = () => {
       setAnswersHistory(updatedHistory);
       saveSessionToStorage(updatedHistory, currentQuestionIndex, activeQuestions);
 
+      if (user?.id) {
+        const sessionId = savedSession?.id || `session-${Date.now()}`;
+        SupabaseService.saveInterviewAnswer(user.id, sessionId, {
+          questionId: currentQ.id,
+          questionText: currentQ.question,
+          userAnswer,
+          score: res.overallScore,
+          feedback: res
+        });
+      }
+
       recordUserActivity(
         'interview',
         `${selectedType} Mock Interview (${difficulty})`,

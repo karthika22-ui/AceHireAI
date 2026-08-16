@@ -286,18 +286,63 @@ CREATE TRIGGER trigger_user_settings_updated_at
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO public.profiles (id, name, email, college, department, preferred_language)
+  INSERT INTO public.profiles (
+    id,
+    name,
+    email,
+    phone,
+    user_status,
+    school_name,
+    stream,
+    expected_completion_year,
+    college,
+    degree,
+    department,
+    current_year,
+    graduation_year,
+    highest_qualification,
+    current_role,
+    company,
+    experience,
+    target_industry,
+    passout_year,
+    preferred_language,
+    avatar_url,
+    custom_profile_data
+  )
   VALUES (
     NEW.id,
     COALESCE(NEW.raw_user_meta_data->>'name', SPLIT_PART(NEW.email, '@', 1)),
     NEW.email,
+    COALESCE(NEW.raw_user_meta_data->>'phone', ''),
+    COALESCE(NEW.raw_user_meta_data->>'user_status', 'College Student'),
+    COALESCE(NEW.raw_user_meta_data->>'school_name', ''),
+    COALESCE(NEW.raw_user_meta_data->>'stream', ''),
+    COALESCE(NEW.raw_user_meta_data->>'expected_completion_year', ''),
     COALESCE(NEW.raw_user_meta_data->>'college', ''),
+    COALESCE(NEW.raw_user_meta_data->>'degree', ''),
     COALESCE(NEW.raw_user_meta_data->>'department', ''),
-    COALESCE(NEW.raw_user_meta_data->>'preferred_language', 'Tanglish')
+    COALESCE(NEW.raw_user_meta_data->>'current_year', ''),
+    COALESCE(NEW.raw_user_meta_data->>'graduation_year', ''),
+    COALESCE(NEW.raw_user_meta_data->>'highest_qualification', ''),
+    COALESCE(NEW.raw_user_meta_data->>'current_role', ''),
+    COALESCE(NEW.raw_user_meta_data->>'company', ''),
+    COALESCE(NEW.raw_user_meta_data->>'experience', ''),
+    COALESCE(NEW.raw_user_meta_data->>'target_industry', ''),
+    COALESCE(NEW.raw_user_meta_data->>'passout_year', ''),
+    COALESCE(NEW.raw_user_meta_data->>'preferred_language', 'Tanglish'),
+    COALESCE(NEW.raw_user_meta_data->>'avatar_url', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'),
+    COALESCE(NEW.raw_user_meta_data, '{}'::jsonb)
   )
   ON CONFLICT (id) DO UPDATE SET
     name = EXCLUDED.name,
-    email = EXCLUDED.email;
+    email = EXCLUDED.email,
+    phone = EXCLUDED.phone,
+    user_status = EXCLUDED.user_status,
+    college = EXCLUDED.college,
+    department = EXCLUDED.department,
+    preferred_language = EXCLUDED.preferred_language,
+    updated_at = NOW();
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

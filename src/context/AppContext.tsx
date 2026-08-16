@@ -41,7 +41,8 @@ interface AppContextType {
   isLoggedIn: boolean;
   login: (email: string, pass: string) => Promise<boolean>;
   loginWithGoogle: () => Promise<void>;
-  signup: (email: string, pass: string, details?: Partial<UserProfile>) => Promise<boolean>;
+  signup: (email: string, pass: string, details?: Partial<UserProfile>) => Promise<any>;
+  resendVerificationEmail: (email: string) => Promise<boolean>;
   logout: () => Promise<void>;
   updateLanguagePreference: (lang: LanguagePreference) => void;
   readinessScore: ReadinessScore;
@@ -249,10 +250,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     if (!isSupabaseConfigured()) return;
 
+    const cleanUrlAuthParams = () => {
+      if (typeof window !== 'undefined' && (window.location.hash.includes('access_token=') || window.location.search.includes('code='))) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    };
+
     // Check existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         handleAuthUserChange(session.user.id, session.user.email || '', session.user.user_metadata);
+        cleanUrlAuthParams();
       }
     });
 
@@ -260,6 +268,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
         await handleAuthUserChange(session.user.id, session.user.email || '', session.user.user_metadata);
+        cleanUrlAuthParams();
       } else if (event === 'SIGNED_OUT') {
         setIsLoggedIn(false);
         setCurrentUserId('');
@@ -276,11 +285,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentUserId(userId);
 
     // Fetch user-specific data from Supabase DB tables or LocalStorage
-    let [fetchedProfile, fetchedScores, fetchedResume, fetchedActivities] = await Promise.all([
+    let [fetchedProfile, fetchedScores, fetchedResume, fetchedActivities, fetchedSettings] = await Promise.all([
       SupabaseService.fetchProfile(userId),
       SupabaseService.fetchReadinessScore(userId),
       SupabaseService.fetchResume(userId, email),
-      SupabaseService.fetchRecentActivities(userId)
+      SupabaseService.fetchRecentActivities(userId),
+      SupabaseService.fetchUserSettings(userId)
     ]);
 
     // Extract actual Google name & picture metadata if user authenticated via Google OAuth
@@ -337,6 +347,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (fetchedActivities) {
       setRecentActivities(fetchedActivities);
       setCompletedTasksCount(fetchedActivities.length);
+    }
+    if (fetchedSettings) {
+      setSettingsState(fetchedSettings);
     }
     setShowSplash(false);
     setActiveTabDirectly((prev) => (prev === 'login' ? 'home' : prev));
@@ -556,42 +569,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     if (error && isSupabaseConfigured()) {
       console.error('Supabase Sign In error:', error.message);
+      throw new Error(error.message || 'Failed to sign in. Please check your credentials.');
     }
 
-    const userId = data?.user?.id || currentUserId || `user-${Date.now()}`;
+    if (!data?.user?.id) {
+      throw new Error('Sign in failed. No valid user session returned.');
+    }
+
+    const userId = data.user.id;
     setIsLoggedIn(true);
     setCurrentUserId(userId);
 
-    // Fetch User Data from Supabase DB or Local Storage
-    const loadedProfile = await SupabaseService.fetchProfile(cleanEmail || userId);
-    const loadedScores = await SupabaseService.fetchReadinessScore(userId);
-    const loadedResume = await SupabaseService.fetchResume(userId, cleanEmail);
-    const loadedActivities = await SupabaseService.fetchRecentActivities(userId);
+    // Fetch User Data from Supabase DB (Supabase is single source of truth)
+    const [loadedProfile, loadedScores, loadedResume, loadedActivities, loadedSettings] = await Promise.all([
+      SupabaseService.fetchProfile(userId || cleanEmail),
+      SupabaseService.fetchReadinessScore(userId),
+      SupabaseService.fetchResume(userId, cleanEmail),
+      SupabaseService.fetchRecentActivities(userId),
+      SupabaseService.fetchUserSettings(userId)
+    ]);
 
-    // Restore per-email scores & activities if local storage contains saved progress for this email
-    const localScoreStr = localStorage.getItem(`acehire_readiness_score_${cleanEmail}`);
-    const localActivitiesStr = localStorage.getItem(`acehire_recent_activities_${cleanEmail}`);
-
-    let activeScores = loadedScores;
-    if (localScoreStr) {
-      try {
-        const parsed = JSON.parse(localScoreStr);
-        if (parsed && typeof parsed.overall === 'number') activeScores = parsed;
-      } catch (e) {}
-    }
-
-    let activeActivities = loadedActivities;
-    if (localActivitiesStr) {
-      try {
-        const parsed = JSON.parse(localActivitiesStr);
-        if (Array.isArray(parsed)) activeActivities = parsed;
-      } catch (e) {}
-    }
+    const activeScores = loadedScores;
+    const activeActivities = loadedActivities;
 
     // Increment login count for returning email user
     const currentCount = loadedProfile.loginCount || 1;
     const updatedProfile: UserProfile = {
       ...loadedProfile,
+      id: userId,
       loginCount: currentCount + 1,
       isFirstLogin: false,
       lastLoginAt: new Date().toISOString()
@@ -604,6 +609,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setRecentActivities(activeActivities);
       setCompletedTasksCount(activeActivities.length);
     }
+    if (loadedSettings) setSettingsState(loadedSettings);
 
     setShowSplash(false);
     if (pendingTargetTab && pendingTargetTab !== 'login') {
@@ -620,15 +626,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     email: string,
     pass: string,
     details?: Partial<UserProfile>
-  ): Promise<boolean> => {
+  ): Promise<any> => {
     const cleanEmail = email.trim().toLowerCase();
     const { data, error } = await SupabaseService.signUp(cleanEmail, pass, details);
 
     if (error && isSupabaseConfigured()) {
       console.error('Supabase Sign Up error:', error.message);
+      throw new Error(error.message || 'Account creation failed. Please check your details.');
     }
 
-    const userId = data?.user?.id || `user-${Date.now()}`;
+    if (!data?.user?.id) {
+      throw new Error('Account creation failed. No user ID returned from Supabase.');
+    }
+
+    const userId = data.user.id;
+
+    // Check if email verification is required (no session token returned yet)
+    if (!data.session) {
+      setIsLoggedIn(false);
+      setCurrentUserId('');
+      return {
+        success: true,
+        needsVerification: true,
+        message: 'Account created successfully! Please check your email inbox to verify your account, then sign in.'
+      };
+    }
+
     setIsLoggedIn(true);
     setCurrentUserId(userId);
 
@@ -665,6 +688,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setUser(initialProfile);
+    await SupabaseService.saveProfile(initialProfile, userId);
 
     setShowSplash(false);
     if (pendingTargetTab && pendingTargetTab !== 'login') {
@@ -672,6 +696,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setPendingTargetTab(null);
     } else {
       setActiveTab('home');
+    }
+    return { success: true };
+  };
+
+  // RESEND SUPABASE EMAIL VERIFICATION ACTION
+  const resendVerificationEmail = async (emailToResend: string): Promise<boolean> => {
+    const { error } = await SupabaseService.resendVerificationEmail(emailToResend);
+    if (error) {
+      if (
+        error.status === 429 ||
+        error.code === 'over_email_send_rate_limit' ||
+        (error.message && error.message.toLowerCase().includes('rate limit'))
+      ) {
+        throw new Error(
+          'Resend email rate limit reached (HTTP 429). The email server is temporarily rate-limited by Supabase. Please wait a few minutes before resending.'
+        );
+      }
+      throw new Error(error.message || 'Failed to resend verification email.');
     }
     return true;
   };
@@ -768,6 +810,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         login,
         loginWithGoogle,
         signup,
+        resendVerificationEmail,
         logout,
         updateLanguagePreference,
         readinessScore,

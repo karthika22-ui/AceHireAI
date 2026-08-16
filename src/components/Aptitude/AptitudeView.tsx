@@ -244,10 +244,33 @@ export const AptitudeView: React.FC = () => {
     }
   };
 
+  const [previousAttemptsCount, setPreviousAttemptsCount] = useState<number>(0);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    SupabaseService.fetchAptitudeProgress(user.id).then((history) => {
+      if (history && Array.isArray(history)) {
+        setPreviousAttemptsCount(history.length);
+      }
+    });
+  }, [user?.id]);
+
   const handleSubmitQuiz = () => {
     setIsQuizCompleted(true);
+    const correctCount = userAnswers.filter((a) => a.isCorrect).length;
+    const timeTakenSeconds = Math.max(0, currentConfig.timeSeconds - timer);
+    const scorePercent = totalQuestionCount > 0 ? Math.round((correctCount / totalQuestionCount) * 100) : 0;
+
     if (user?.id) {
-      SupabaseService.saveAptitudeProgress(user.id, category, scorePercent);
+      SupabaseService.saveAptitudeProgress(
+        user.id,
+        category,
+        scorePercent,
+        difficulty,
+        totalQuestionCount,
+        correctCount,
+        timeTakenSeconds
+      );
     }
     recordUserActivity('aptitude', `${category} Aptitude Test Completed`, scorePercent, 'Aptitude');
   };

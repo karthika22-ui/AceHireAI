@@ -65,6 +65,17 @@ export const CodingView: React.FC = () => {
     userCode: string;
     problemTitle: string;
   } | null>(null);
+  const [completedProblemsCount, setCompletedProblemsCount] = useState<number>(0);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    SupabaseService.fetchCodingProgress(user.id).then((progressList) => {
+      if (progressList && Array.isArray(progressList)) {
+        const completed = progressList.filter((p: any) => p.status === 'Correct' || p.score > 0);
+        setCompletedProblemsCount(completed.length);
+      }
+    });
+  }, [user?.id]);
 
   // Automatically scroll container to top when starting a challenge
   useEffect(() => {

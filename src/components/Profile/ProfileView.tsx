@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { UserStatus, LanguagePreference } from '../../types';
+import { SupabaseService } from '../../services/supabaseClient';
 
 const AVATAR_PRESETS = [
   // 5 Professional Female Avatars
@@ -149,7 +150,7 @@ export const ProfileView: React.FC = () => {
     setShowPasswordModal(true);
   };
 
-  const handleChangePassword = (e: React.FormEvent) => {
+  const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPassword || newPassword.length < 6) {
       setPasswordError('New password must be at least 6 characters long.');
@@ -160,9 +161,18 @@ export const ProfileView: React.FC = () => {
       return;
     }
 
-    setShowPasswordModal(false);
-    setPasswordSuccess(true);
-    setTimeout(() => setPasswordSuccess(false), 3000);
+    try {
+      const { error } = await SupabaseService.updatePassword(newPassword);
+      if (error) {
+        setPasswordError(error.message || 'Failed to update password in Supabase.');
+        return;
+      }
+      setShowPasswordModal(false);
+      setPasswordSuccess(true);
+      setTimeout(() => setPasswordSuccess(false), 3000);
+    } catch (err: any) {
+      setPasswordError(err?.message || 'Failed to update password.');
+    }
   };
 
   // Helper to check if any academic/professional field is present for rendering

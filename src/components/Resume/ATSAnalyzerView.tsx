@@ -150,8 +150,14 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
   useEffect(() => {
     if (initialResumeData && !analysisResult && !isAnalyzing) {
       handleRunATSScan(initialResumeData);
+    } else if (user?.id && !analysisResult && !isAnalyzing) {
+      SupabaseService.fetchAtsAnalyses(user.id).then((scans) => {
+        if (scans && scans.length > 0 && scans[0].analysis_result) {
+          setAnalysisResult(scans[0].analysis_result as ResumeAnalysis);
+        }
+      });
     }
-  }, [initialResumeData]);
+  }, [initialResumeData, user?.id]);
 
   const getScoreTheme = (score: number) => {
     if (score >= 80) {

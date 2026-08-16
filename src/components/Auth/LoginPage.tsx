@@ -24,14 +24,17 @@ import { useApp } from '../../context/AppContext';
 import { UserStatus } from '../../types';
 
 export const LoginPage: React.FC = () => {
-  const { login, signup, loginWithGoogle } = useApp();
+  const { login, signup, loginWithGoogle, resendVerificationEmail } = useApp();
 
   // Mode State
   const [isSignUp, setIsSignUp] = useState(false);
   const [signUpStep, setSignUpStep] = useState<1 | 2>(1);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [isResending, setIsResending] = useState(false);
+  const [isUnconfirmedEmail, setIsUnconfirmedEmail] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [verificationSuccessMsg, setVerificationSuccessMsg] = useState<string | null>(null);
 
   // Form State - Basic Details
   const [email, setEmail] = useState('');
@@ -62,14 +65,32 @@ export const LoginPage: React.FC = () => {
   const [targetIndustry, setTargetIndustry] = useState('');
   const [passoutYear, setPassoutYear] = useState('');
 
+  const handleResendVerification = async () => {
+    if (!email.trim() || isResending) return;
+    setIsResending(true);
+    setErrorMsg(null);
+    setVerificationSuccessMsg(null);
+    try {
+      await resendVerificationEmail(email);
+      setVerificationSuccessMsg(`📬 Verification email resent to ${email}! Please check your inbox.`);
+      setIsUnconfirmedEmail(false);
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Failed to resend verification email.');
+    } finally {
+      setIsResending(false);
+    }
+  };
+
   const triggerAuth = async () => {
-    if (!email.trim() || !password.trim()) return;
+    if (loading || !email.trim() || !password.trim()) return;
     setLoading(true);
     setErrorMsg(null);
+    setVerificationSuccessMsg(null);
+    setIsUnconfirmedEmail(false);
 
     try {
       if (isSignUp) {
-        await signup(email, password, {
+        const res = await signup(email, password, {
           name,
           phone,
           userStatus,
@@ -88,11 +109,23 @@ export const LoginPage: React.FC = () => {
           targetIndustry,
           passoutYear
         });
+        if (res?.needsVerification) {
+          setIsSignUp(false);
+          setSignUpStep(1);
+          setVerificationSuccessMsg(res.message || 'Account created successfully! Please check your email inbox to verify your account, then sign in.');
+        }
       } else {
         await login(email, password);
       }
     } catch (err: any) {
-      setErrorMsg(err?.message || 'Authentication failed. Please check your details.');
+      const msg = err?.message || 'Authentication failed. Please check your details.';
+      if (msg.toLowerCase().includes('email not confirmed') || msg.toLowerCase().includes('email_not_confirmed')) {
+        setIsUnconfirmedEmail(true);
+        setErrorMsg('Your email address has not been verified yet. Please check your email inbox to verify your account.');
+      } else {
+        setIsUnconfirmedEmail(false);
+        setErrorMsg(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -176,9 +209,29 @@ export const LoginPage: React.FC = () => {
         {/* Right Side: Auth Form */}
         <div className="md:col-span-7 flex flex-col justify-center space-y-4">
           {errorMsg && (
-            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{errorMsg}</span>
+            <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex flex-col gap-2">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{errorMsg}</span>
+              </div>
+              {isUnconfirmedEmail && (
+                <button
+                  type="button"
+                  onClick={handleResendVerification}
+                  disabled={isResending}
+                  className="mt-1 px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-xs font-bold transition-all w-fit cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {isResending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />}
+                  <span>{isResending ? 'Sending...' : 'Resend Verification Email'}</span>
+                </button>
+              )}
+            </div>
+          )}
+
+          {verificationSuccessMsg && (
+            <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-start gap-2.5 shadow-md">
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400 mt-0.5" />
+              <span>{verificationSuccessMsg}</span>
             </div>
           )}
 

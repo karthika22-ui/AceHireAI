@@ -99,63 +99,137 @@ export const getInitialResumeForEmail = (email: string, name?: string): ResumeDa
   };
 };
 
+// Helper to get LAN-accessible Auth redirect URL
+export const getAuthRedirectUrl = (): string => {
+  const metaEnv = (import.meta as any).env || {};
+  if (metaEnv.VITE_AUTH_REDIRECT_URL) {
+    return metaEnv.VITE_AUTH_REDIRECT_URL;
+  }
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    const origin = window.location.origin;
+    if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+      return origin.replace('localhost', '10.215.47.112').replace('127.0.0.1', '10.215.47.112');
+    }
+    return origin;
+  }
+  return 'http://10.215.47.112:3000';
+};
+
 // --- SUPABASE SERVICE LAYER ---
 export class SupabaseService {
   // AUTH HELPERS
   static async signUp(email: string, pass: string, profileData?: Partial<UserProfile>) {
     const cleanEmail = email.trim().toLowerCase();
-    const defaultProfile = getInitialProfileForEmail(cleanEmail);
-
-    const profile: UserProfile = {
-      ...defaultProfile,
-      ...profileData,
-      id: profileData?.id || defaultProfile.id || `local-${Date.now()}`,
-      email: cleanEmail,
-      name: profileData?.name || defaultProfile.name
-    };
-
-    // Save to LocalStorage immediately
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem(`acehire_user_profile_${cleanEmail}`, JSON.stringify(profile));
-        localStorage.setItem('acehire_active_user', JSON.stringify(profile));
-      } catch (e) {}
-    }
 
     if (!isSupabaseConfigured()) {
-      return { data: { user: { id: profile.id, email: cleanEmail } }, error: null };
+      throw new Error('Supabase configuration missing. Cannot execute sign up.');
     }
+
+    const redirectUrl = getAuthRedirectUrl();
 
     const { data, error } = await supabase.auth.signUp({
       email: cleanEmail,
       password: pass,
       options: {
+        emailRedirectTo: redirectUrl,
         data: {
-          name: profile.name,
-          phone: profile.phone || '',
-          user_status: profile.userStatus || 'College Student',
-          college: profile.college || '',
-          department: profile.department || '',
-          preferred_language: profile.preferredLanguage || 'Tanglish'
+          name: profileData?.name || cleanEmail.split('@')[0],
+          phone: profileData?.phone || '',
+          user_status: profileData?.userStatus || 'College Student',
+          school_name: profileData?.schoolName || '',
+          stream: profileData?.stream || '',
+          expected_completion_year: profileData?.expectedCompletionYear || '',
+          college: profileData?.college || '',
+          degree: profileData?.degree || '',
+          department: profileData?.department || '',
+          current_year: profileData?.currentYear || '',
+          graduation_year: profileData?.graduationYear || '',
+          highest_qualification: profileData?.highestQualification || '',
+          current_role: profileData?.currentRole || '',
+          company: profileData?.company || '',
+          experience: profileData?.experience || '',
+          target_industry: profileData?.targetIndustry || '',
+          passout_year: profileData?.passoutYear || '',
+          preferred_language: profileData?.preferredLanguage || 'Tanglish',
+          avatar_url: profileData?.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'
         }
       }
     });
 
-    if (!error && data.user) {
-      profile.id = data.user.id;
-      await this.saveProfile(profile, data.user.id);
+    if (error) {
+      if (
+        error.status === 429 ||
+        error.code === 'over_email_send_rate_limit' ||
+        (error.message && error.message.toLowerCase().includes('rate limit'))
+      ) {
+        return {
+          data,
+          error: new Error(
+            'Supabase email confirmation rate limit reached (HTTP 429). The email service is temporarily rate-limited by Supabase server. Please wait a while before creating another account, or log in if your account is already created.'
+          )
+        };
+      }
+      return { data, error };
     }
-    return { data, error };
+
+    if (data?.user) {
+      const fullProfile: UserProfile = {
+        id: data.user.id,
+        name: profileData?.name || cleanEmail.split('@')[0],
+        email: cleanEmail,
+        phone: profileData?.phone || '',
+        userStatus: profileData?.userStatus || 'College Student',
+        schoolName: profileData?.schoolName || '',
+        stream: profileData?.stream || '',
+        expectedCompletionYear: profileData?.expectedCompletionYear || '',
+        college: profileData?.college || '',
+        degree: profileData?.degree || '',
+        department: profileData?.department || '',
+        currentYear: profileData?.currentYear || '',
+        graduationYear: profileData?.graduationYear || '',
+        highestQualification: profileData?.highestQualification || '',
+        currentRole: profileData?.currentRole || '',
+        company: profileData?.company || '',
+        experience: profileData?.experience || '',
+        targetIndustry: profileData?.targetIndustry || '',
+        passoutYear: profileData?.passoutYear || '',
+        preferredLanguage: profileData?.preferredLanguage || 'Tanglish',
+        targetJobRole: profileData?.targetJobRole || '',
+        skills: profileData?.skills || [],
+        avatarUrl: profileData?.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+        loginCount: 1,
+        isFirstLogin: true,
+        lastLoginAt: new Date().toISOString(),
+        createdAt: new Date().toISOString()
+      };
+      await this.saveProfile(fullProfile, data.user.id);
+    }
+    return { data, error: null };
   }
 
   static async signIn(email: string, pass: string) {
     if (!isSupabaseConfigured()) {
-      const cleanEmail = email.trim().toLowerCase();
-      return { data: { user: { id: `local-${Date.now()}`, email: cleanEmail } }, error: null };
+      throw new Error('Supabase configuration missing. Cannot execute sign in.');
     }
     return await supabase.auth.signInWithPassword({
       email: email.trim().toLowerCase(),
       password: pass
+    });
+  }
+
+  static async resendVerificationEmail(email: string) {
+    if (!isSupabaseConfigured()) {
+      throw new Error('Supabase configuration missing. Cannot resend verification email.');
+    }
+    const cleanEmail = email.trim().toLowerCase();
+    const redirectUrl = getAuthRedirectUrl();
+
+    return await supabase.auth.resend({
+      type: 'signup',
+      email: cleanEmail,
+      options: {
+        emailRedirectTo: redirectUrl
+      }
     });
   }
 
@@ -166,7 +240,7 @@ export class SupabaseService {
     return await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.origin
+        redirectTo: getAuthRedirectUrl()
       }
     });
   }
@@ -174,6 +248,11 @@ export class SupabaseService {
   static async signOut() {
     if (!isSupabaseConfigured()) return { error: null };
     return await supabase.auth.signOut();
+  }
+
+  static async updatePassword(newPassword: string) {
+    if (!isSupabaseConfigured()) return { error: null };
+    return await supabase.auth.updateUser({ password: newPassword });
   }
 
   static async getCurrentUser() {
@@ -279,9 +358,18 @@ export class SupabaseService {
 
     if (!isSupabaseConfigured()) return true;
 
+    const targetId = userId || profile.id;
+    const isUuid = typeof targetId === 'string' &&
+      /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(targetId);
+
+    if (!isUuid) {
+      console.warn('⚠️ [saveProfile] Cannot save profile to Supabase: ID is not a valid UUID:', targetId);
+      return false;
+    }
+
     try {
       const payload: Record<string, any> = {
-        id: userId || profile.id,
+        id: targetId,
         name: profile.name,
         email: profile.email,
         phone: profile.phone || '',
@@ -308,14 +396,15 @@ export class SupabaseService {
         custom_profile_data: profile
       };
 
-      const { error } = await supabase.from('profiles').upsert(payload, { onConflict: 'id' });
+      const { data, error } = await supabase.from('profiles').upsert(payload, { onConflict: 'id' }).select();
       if (error) {
-        // Try fallback on email
-        await supabase.from('profiles').upsert(payload, { onConflict: 'email' });
+        console.error('❌ Supabase saveProfile DB Error:', error.message, error);
+        return false;
       }
+      console.log('✅ Profile successfully persisted in Supabase public.profiles:', data);
       return true;
     } catch (e) {
-      console.warn('Supabase saveProfile error:', e);
+      console.error('💥 Supabase saveProfile exception:', e);
       return false;
     }
   }
@@ -918,37 +1007,46 @@ export class SupabaseService {
     }
   }
 
-  static async saveAptitudeProgress(userId: string, category: string, score: number) {
+  static async saveAptitudeProgress(
+    userId: string,
+    category: string,
+    score: number,
+    difficulty?: string,
+    totalQuestions?: number,
+    correctCount?: number,
+    timeTakenSeconds?: number
+  ) {
     if (!isSupabaseConfigured() || !userId) return null;
     try {
-      const { data } = await supabase.from('aptitude_progress').insert({
+      const payload = {
         user_id: userId,
         category,
-        score
-      }).select().single();
+        difficulty: difficulty || 'Medium',
+        score: Math.round(score),
+        total_questions: totalQuestions || 0,
+        correct_count: correctCount || 0,
+        time_taken_seconds: timeTakenSeconds || 0
+      };
+      const { data, error } = await supabase.from('aptitude_progress').insert(payload).select().single();
+      if (error) console.warn('Supabase saveAptitudeProgress warning:', error.message);
       return data;
     } catch (e) {
+      console.warn('Supabase saveAptitudeProgress error:', e);
       return null;
     }
   }
 
-  // 7. INTERVIEW_PROGRESS / INTERVIEW_SESSIONS TABLE OPERATIONS
+  // 7. INTERVIEW_SESSIONS & INTERVIEW_ANSWERS TABLE OPERATIONS
   static async fetchInterviewSessions(userId: string) {
     if (!isSupabaseConfigured() || !userId) return [];
     try {
-      const { data } = await supabase
-        .from('interview_progress')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
-      if (data && data.length > 0) return data;
-
-      const { data: alt } = await supabase
+      const { data, error } = await supabase
         .from('interview_sessions')
         .select('*')
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
-      return alt || [];
+      if (!error && data) return data;
+      return [];
     } catch (e) {
       return [];
     }
@@ -957,28 +1055,70 @@ export class SupabaseService {
   static async saveInterviewSession(userId: string, sessionData: any) {
     if (!isSupabaseConfigured() || !userId) return null;
     try {
-      const payload = {
+      const isUuid = (str?: string) =>
+        typeof str === 'string' &&
+        /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(str);
+
+      const payload: Record<string, any> = {
         user_id: userId,
-        type: sessionData.type || sessionData.category || 'Technical',
-        company: sessionData.company || 'Zoho',
-        score: sessionData.score || 0,
+        type: sessionData.selectedType || sessionData.type || 'Technical',
+        difficulty: sessionData.difficulty || 'Medium',
+        company: sessionData.company || 'AceHire Standard',
+        questions_count: sessionData.activeQuestions?.length || sessionData.questions_count || 0,
+        average_score: sessionData.averageScore || sessionData.score || 0,
+        status: sessionData.sessionCompleted || sessionData.status === 'completed' ? 'completed' : 'in_progress',
         session_data: sessionData,
-        status: sessionData.status || 'completed'
+        final_report: sessionData.finalReport || sessionData.final_report || null
       };
 
-      const { data, error } = await supabase.from('interview_progress').insert(payload).select().single();
+      if (isUuid(sessionData.id)) {
+        payload.id = sessionData.id;
+      }
+
+      const { data, error } = await supabase.from('interview_sessions').upsert(payload, { onConflict: 'id' }).select().single();
       if (error) {
-        const { data: legacyData } = await supabase.from('interview_sessions').insert({
-          user_id: userId,
-          type: sessionData.type || 'Technical',
-          company: sessionData.company || 'Zoho',
-          score: sessionData.score || 0,
-          status: 'completed'
-        }).select().single();
-        return legacyData;
+        delete payload.id;
+        const { data: fallbackData } = await supabase.from('interview_sessions').insert(payload).select().single();
+        return fallbackData;
       }
       return data;
     } catch (e) {
+      console.warn('Supabase saveInterviewSession error:', e);
+      return null;
+    }
+  }
+
+  static async saveInterviewAnswer(userId: string, sessionId: string, answerData: {
+    questionId?: string;
+    questionText: string;
+    userAnswer: string;
+    score: number;
+    feedback: any;
+  }) {
+    if (!isSupabaseConfigured() || !userId) return null;
+    try {
+      const isUuid = (str?: string) =>
+        typeof str === 'string' &&
+        /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(str);
+
+      const payload: Record<string, any> = {
+        user_id: userId,
+        question_id: answerData.questionId || 'q-1',
+        question_text: answerData.questionText,
+        user_answer: answerData.userAnswer,
+        score: Math.round(answerData.score || 0),
+        feedback: answerData.feedback || {}
+      };
+
+      if (isUuid(sessionId)) {
+        payload.session_id = sessionId;
+      }
+
+      const { data, error } = await supabase.from('interview_answers').insert(payload).select().single();
+      if (error) console.warn('Supabase saveInterviewAnswer warning:', error.message);
+      return data;
+    } catch (e) {
+      console.warn('Supabase saveInterviewAnswer error:', e);
       return null;
     }
   }
@@ -1001,14 +1141,18 @@ export class SupabaseService {
   static async saveCommunicationProgress(userId: string, sessionData: any) {
     if (!isSupabaseConfigured() || !userId) return null;
     try {
-      const { data } = await supabase.from('communication_progress').insert({
+      const payload = {
         user_id: userId,
-        score: sessionData.score || sessionData.overallScore || 0,
-        feedback: sessionData.feedback || JSON.stringify(sessionData),
-        topic: sessionData.topic || 'General Practice'
-      }).select().single();
+        topic: sessionData.topic || 'General Practice',
+        difficulty: sessionData.difficulty || 'Medium',
+        score: Math.round(sessionData.score || sessionData.overallScore || 0),
+        feedback: sessionData.feedback || {}
+      };
+      const { data, error } = await supabase.from('communication_progress').insert(payload).select().single();
+      if (error) console.warn('Supabase saveCommunicationProgress warning:', error.message);
       return data;
     } catch (e) {
+      console.warn('Supabase saveCommunicationProgress error:', e);
       return null;
     }
   }
