@@ -11,10 +11,12 @@ import {
   Sparkles,
   Award,
   Play,
-  LogOut
+  LogOut,
+  Loader2,
+  RefreshCw
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { APTITUDE_BANK } from '../../services/aiEngine';
+import { fetchOrGenerateAptitudeQuiz, normalizeQuestionText, hashQuestionText, APTITUDE_BANK } from '../../services/aiEngine';
 import { AptitudeCategory, AptitudeQuestion, DifficultyLevel } from '../../types';
 import { SessionResumeModal } from '../Common/SessionResumeModal';
 import { formatTanglishAddressing } from '../../utils/addressing';
@@ -25,11 +27,13 @@ export const AptitudeView: React.FC = () => {
 
   const [category, setCategory] = useState<AptitudeCategory>('Quantitative');
   const [difficulty, setDifficulty] = useState<DifficultyLevel>('Easy');
+  const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [attemptNumber, setAttemptNumber] = useState<number>(1);
   
   // Difficulty Config Helper:
   // Easy: 10 minutes (600s), 20 questions
   // Medium: 15 minutes (900s), 25 questions
-  // Hard: 20 minutes (1200s), 30 questions
+  // Hard: 20 minutes (1200s), 25 questions
   const getSessionConfig = (diff: DifficultyLevel) => {
     switch (diff) {
       case 'Easy':
@@ -37,25 +41,10 @@ export const AptitudeView: React.FC = () => {
       case 'Medium':
         return { totalQuestions: 25, timeSeconds: 900, label: '15 Minutes • 25 Questions' };
       case 'Hard':
-        return { totalQuestions: 30, timeSeconds: 1200, label: '20 Minutes • 30 Questions' };
+        return { totalQuestions: 25, timeSeconds: 1200, label: '20 Minutes • 25 Questions' };
       default:
         return { totalQuestions: 20, timeSeconds: 600, label: '10 Minutes • 20 Questions' };
     }
-  };
-
-  // Helper to generate dynamic questions list matching targetCount
-  const getQuizQuestions = (cat: AptitudeCategory, diff: DifficultyLevel, count: number): AptitudeQuestion[] => {
-    const base = APTITUDE_BANK.filter((q) => q.category === cat && q.difficulty === diff);
-    const pool = base.length > 0 ? base : APTITUDE_BANK.filter((q) => q.category === cat);
-    const source = pool.length > 0 ? pool : APTITUDE_BANK;
-
-    return Array.from({ length: count }, (_, i) => {
-      const item = source[i % source.length];
-      return {
-        ...item,
-        id: `${item.id}-dyn-${i + 1}`
-      };
-    });
   };
 
   // Quiz Flow States
@@ -110,13 +99,27 @@ export const AptitudeView: React.FC = () => {
     setLangView(user.preferredLanguage);
   }, [user.preferredLanguage]);
 
+  const loadQuizQuestions = async (cat: AptitudeCategory, diff: DifficultyLevel, forceFresh: boolean = false) => {
+    setIsGenerating(true);
+    const conf = getSessionConfig(diff);
+    const usedHashes = SupabaseService.getStoredAptitudeUsedQuestions(user?.id, cat, diff);
+    
+    try {
+      const questions = await fetchOrGenerateAptitudeQuiz(cat, diff, conf.totalQuestions, forceFresh ? usedHashes : []);
+      setQuizQuestions(questions);
+    } catch (err) {
+      console.warn('Error fetching quiz questions:', err);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   const handleContinueSession = () => {
     if (pendingSession) {
       setCategory(pendingSession.category);
       setDifficulty(pendingSession.difficulty);
       const conf = getSessionConfig(pendingSession.difficulty);
-      const generated = getQuizQuestions(pendingSession.category, pendingSession.difficulty, conf.totalQuestions);
-      setQuizQuestions(generated);
+      loadQuizQuestions(pendingSession.category, pendingSession.difficulty, false);
       setCurrentIdx(pendingSession.currentIdx);
       setTimer(pendingSession.timer);
       setUserAnswers(pendingSession.userAnswers);
@@ -136,7 +139,7 @@ export const AptitudeView: React.FC = () => {
     resetQuizState();
   };
 
-  // Overall Timer Countdown Effect (Runs for the entire test duration)
+  // Overall Timer Countdown Effect
   useEffect(() => {
     let interval: any;
     if (isQuizStarted && !isQuizCompleted && !timeUpMessage && !showContinuePrompt && timer > 0) {
@@ -163,14 +166,51 @@ export const AptitudeView: React.FC = () => {
     setTimeout(() => {
       setTimeUpMessage(null);
       timeUpLockRef.current = false;
-      setIsQuizCompleted(true);
+      handleSubmitQuiz();
     }, 1200);
   };
 
-  const handleStartQuiz = () => {
+  const handleStartQuiz = async () => {
     const conf = getSessionConfig(difficulty);
-    const generated = getQuizQuestions(category, difficulty, conf.totalQuestions);
-    setQuizQuestions(generated);
+    await loadQuizQuestions(category, difficulty, true);
+    setIsQuizStarted(true);
+    setCurrentIdx(0);
+    setSelectedIndex(null);
+    setShowExplanation(false);
+    setTimer(conf.timeSeconds);
+    setUserAnswers([]);
+    setIsQuizCompleted(false);
+    setTimeUpMessage(null);
+    timeUpLockRef.current = false;
+    setQuizStartTime(Date.now());
+  };
+
+  // RETRY QUIZ: Re-takes the EXACT SAME question set
+  const handleRetryQuiz = () => {
+    const conf = getSessionConfig(difficulty);
+    setIsQuizStarted(true);
+    setCurrentIdx(0);
+    setSelectedIndex(null);
+    setShowExplanation(false);
+    setTimer(conf.timeSeconds);
+    setUserAnswers([]);
+    setIsQuizCompleted(false);
+    setTimeUpMessage(null);
+    timeUpLockRef.current = false;
+    setQuizStartTime(Date.now());
+  };
+
+  // NEXT QUIZ: Creates a BRAND NEW question set excluding previous history
+  const handleNextQuiz = async () => {
+    const conf = getSessionConfig(difficulty);
+    
+    // Save current questions to used history before generating next
+    const currentHashes = quizQuestions.map((item) => hashQuestionText(item.question));
+    SupabaseService.recordAptitudeUsedQuestions(user?.id, category, difficulty, currentHashes);
+
+    setAttemptNumber((prev) => prev + 1);
+    await loadQuizQuestions(category, difficulty, true);
+
     setIsQuizStarted(true);
     setCurrentIdx(0);
     setSelectedIndex(null);
@@ -186,12 +226,14 @@ export const AptitudeView: React.FC = () => {
   const handleSelectCategory = (cat: AptitudeCategory) => {
     setCategory(cat);
     setIsQuizStarted(false);
+    setQuizQuestions([]);
     resetQuizState();
   };
 
   const handleSelectDifficulty = (diff: DifficultyLevel) => {
     setDifficulty(diff);
     setIsQuizStarted(false);
+    setQuizQuestions([]);
     resetQuizState();
   };
 
@@ -257,9 +299,10 @@ export const AptitudeView: React.FC = () => {
 
   const handleSubmitQuiz = () => {
     setIsQuizCompleted(true);
-    const correctCount = userAnswers.filter((a) => a.isCorrect).length;
+    const correctCount = userAnswers.filter((a) => a && a.isCorrect).length;
     const timeTakenSeconds = Math.max(0, currentConfig.timeSeconds - timer);
     const scorePercent = totalQuestionCount > 0 ? Math.round((correctCount / totalQuestionCount) * 100) : 0;
+    const questionHashes = quizQuestions.map((item) => hashQuestionText(item.question));
 
     if (user?.id) {
       SupabaseService.saveAptitudeProgress(
@@ -269,8 +312,12 @@ export const AptitudeView: React.FC = () => {
         difficulty,
         totalQuestionCount,
         correctCount,
-        timeTakenSeconds
+        timeTakenSeconds,
+        questionHashes,
+        attemptNumber
       );
+    } else {
+      SupabaseService.recordAptitudeUsedQuestions(undefined, category, difficulty, questionHashes);
     }
     recordUserActivity('aptitude', `${category} Aptitude Test Completed`, scorePercent, 'Aptitude');
   };
@@ -350,6 +397,7 @@ export const AptitudeView: React.FC = () => {
                 <button
                   key={cat}
                   onClick={() => handleSelectCategory(cat)}
+                  disabled={isGenerating}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                     category === cat
                       ? 'bg-amber-500 text-white shadow-md'
@@ -385,6 +433,7 @@ export const AptitudeView: React.FC = () => {
               <button
                 key={diff}
                 onClick={() => handleSelectDifficulty(diff)}
+                disabled={isGenerating}
                 className={`px-3 py-1 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
                   difficulty === diff
                     ? diff === 'Easy'
@@ -421,10 +470,20 @@ export const AptitudeView: React.FC = () => {
           <div className="pt-2">
             <button
               onClick={handleStartQuiz}
-              className="px-8 py-3.5 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-sm inline-flex items-center gap-2 shadow-xl hover:shadow-amber-500/20 transition-all cursor-pointer"
+              disabled={isGenerating}
+              className="px-8 py-3.5 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-sm inline-flex items-center gap-2 shadow-xl hover:shadow-amber-500/20 transition-all cursor-pointer disabled:opacity-50"
             >
-              <Play className="w-4 h-4 fill-white" />
-              <span>Start Aptitude</span>
+              {isGenerating ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Generating {currentConfig.totalQuestions} Unique Questions...</span>
+                </>
+              ) : (
+                <>
+                  <Play className="w-4 h-4 fill-white" />
+                  <span>Start Aptitude</span>
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -443,7 +502,7 @@ export const AptitudeView: React.FC = () => {
                   Aptitude Quiz Result Summary
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {category} Practice • {difficulty} Difficulty
+                  {category} Practice • {difficulty} Difficulty • Attempt #{attemptNumber}
                 </p>
               </div>
             </div>
@@ -476,14 +535,28 @@ export const AptitudeView: React.FC = () => {
             </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
+          {/* Action Buttons: Retry Quiz (Same Set), Next [Difficulty] Quiz (New Set), Back to Dashboard */}
+          <div className="flex flex-wrap items-center justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
             <button
-              onClick={handleStartQuiz}
+              onClick={handleRetryQuiz}
+              disabled={isGenerating}
               className="px-5 py-2.5 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer"
             >
               <RotateCcw className="w-4 h-4" />
               <span>Retry Quiz</span>
+            </button>
+
+            <button
+              onClick={handleNextQuiz}
+              disabled={isGenerating}
+              className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold flex items-center gap-2 shadow-lg transition-all cursor-pointer disabled:opacity-50"
+            >
+              {isGenerating ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )}
+              <span>Next {difficulty} Quiz</span>
             </button>
 
             <button
@@ -497,7 +570,7 @@ export const AptitudeView: React.FC = () => {
         </div>
       )}
 
-      {/* ACTIVE QUIZ QUESTION CARD (Only shown after clicking "Start Aptitude") */}
+      {/* ACTIVE QUIZ QUESTION CARD (Only shown after starting quiz) */}
       {isQuizStarted && !isQuizCompleted && (
         <div className="glass-card rounded-3xl p-6 sm:p-8 border space-y-6">
           <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
@@ -608,7 +681,7 @@ export const AptitudeView: React.FC = () => {
                 </p>
                 <div className="pt-2 text-xs text-amber-400/90 italic flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5" />
-                  <span>AI Explanation will be available after backend integration.</span>
+                  <span>Dual-language explanation provided by AceHire AI Engine.</span>
                 </div>
               </div>
             </div>

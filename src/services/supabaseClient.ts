@@ -993,6 +993,32 @@ export class SupabaseService {
   }
 
   // 6. APTITUDE_PROGRESS TABLE OPERATIONS
+  static getStoredAptitudeUsedQuestions(userId?: string, category?: string, difficulty?: string): string[] {
+    try {
+      const key = `acehire_aptitude_used_${userId || 'guest'}_${category || 'all'}_${difficulty || 'all'}`;
+      const data = localStorage.getItem(key);
+      return data ? JSON.parse(data) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  static recordAptitudeUsedQuestions(userId: string | undefined, category: string, difficulty: string, questionHashes: string[]) {
+    try {
+      const key = `acehire_aptitude_used_${userId || 'guest'}_${category}_${difficulty}`;
+      const existing = SupabaseService.getStoredAptitudeUsedQuestions(userId, category, difficulty);
+      const combined = Array.from(new Set([...existing, ...questionHashes]));
+      localStorage.setItem(key, JSON.stringify(combined));
+
+      const allKey = `acehire_aptitude_used_${userId || 'guest'}_all_all`;
+      const existingAll = SupabaseService.getStoredAptitudeUsedQuestions(userId, 'all', 'all');
+      const combinedAll = Array.from(new Set([...existingAll, ...questionHashes]));
+      localStorage.setItem(allKey, JSON.stringify(combinedAll));
+    } catch (e) {
+      console.warn('Failed recording used questions to localStorage:', e);
+    }
+  }
+
   static async fetchAptitudeProgress(userId: string) {
     if (!isSupabaseConfigured() || !userId) return [];
     try {
@@ -1014,21 +1040,36 @@ export class SupabaseService {
     difficulty?: string,
     totalQuestions?: number,
     correctCount?: number,
-    timeTakenSeconds?: number
+    timeTakenSeconds?: number,
+    questionsUsed?: string[],
+    attemptNumber?: number
   ) {
+    if (questionsUsed && questionsUsed.length > 0) {
+      SupabaseService.recordAptitudeUsedQuestions(userId, category, difficulty || 'Medium', questionsUsed);
+    }
+
     if (!isSupabaseConfigured() || !userId) return null;
     try {
-      const payload = {
+      const payload: any = {
         user_id: userId,
         category,
         difficulty: difficulty || 'Medium',
         score: Math.round(score),
         total_questions: totalQuestions || 0,
         correct_count: correctCount || 0,
-        time_taken_seconds: timeTakenSeconds || 0
+        time_taken_seconds: timeTakenSeconds || 0,
+        questions_used: questionsUsed || [],
+        attempt_number: attemptNumber || 1
       };
+
       const { data, error } = await supabase.from('aptitude_progress').insert(payload).select().single();
-      if (error) console.warn('Supabase saveAptitudeProgress warning:', error.message);
+      if (error) {
+        console.warn('Supabase saveAptitudeProgress warning (retrying basic payload):', error.message);
+        delete payload.questions_used;
+        delete payload.attempt_number;
+        const { data: fallbackData } = await supabase.from('aptitude_progress').insert(payload).select().single();
+        return fallbackData;
+      }
       return data;
     } catch (e) {
       console.warn('Supabase saveAptitudeProgress error:', e);

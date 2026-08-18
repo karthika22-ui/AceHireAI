@@ -179,6 +179,8 @@ CREATE TABLE public.aptitude_progress (
   total_questions INT,
   correct_count INT,
   time_taken_seconds INT,
+  questions_used JSONB DEFAULT '[]',
+  attempt_number INT DEFAULT 1,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
