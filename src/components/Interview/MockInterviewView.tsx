@@ -185,6 +185,40 @@ export const MockInterviewView: React.FC = () => {
   const [savedSession, setSavedSession] = useState<SavedInterviewState | null>(initialSaved);
   const [showResumeModal, setShowResumeModal] = useState<boolean>(() => !!initialSaved);
   const [showExitModal, setShowExitModal] = useState<boolean>(false);
+  const [timeExpired, setTimeExpired] = useState<boolean>(false);
+
+  // Helper to render metric score dynamically or N/A
+  const renderMetricScore = (val: number | null | undefined, label: string) => {
+    if (val === null || val === undefined || isNaN(val) || val < 0) {
+      return (
+        <div>
+          <div className="flex justify-between text-slate-300 mb-1">
+            <span>{label}</span>
+            <span className="text-amber-400 font-bold">N/A</span>
+          </div>
+          <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+            <div className="bg-slate-700 h-full rounded-full w-0" />
+          </div>
+        </div>
+      );
+    }
+
+    const scoreNum = Math.min(100, Math.max(0, Math.round(val)));
+    const colorClass = scoreNum >= 80 ? 'bg-[#22C55E]' : scoreNum >= 50 ? 'bg-amber-400' : 'bg-red-500';
+    const textClass = scoreNum >= 80 ? 'text-[#22C55E]' : scoreNum >= 50 ? 'text-amber-400' : 'text-red-400';
+
+    return (
+      <div>
+        <div className="flex justify-between text-slate-300 mb-1">
+          <span>{label}</span>
+          <span className={`font-bold ${textClass}`}>{scoreNum} / 100</span>
+        </div>
+        <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+          <div className={`h-full rounded-full transition-all duration-500 ${colorClass}`} style={{ width: `${scoreNum}%` }} />
+        </div>
+      </div>
+    );
+  };
 
   // 5. AI Evaluation State & Model Answer View Toggle
   const [isEvaluating, setIsEvaluating] = useState<boolean>(false);
@@ -274,15 +308,19 @@ export const MockInterviewView: React.FC = () => {
     expectedKeypoints: ['key concepts', 'examples', 'structure']
   };
 
-  // Timer Countdown (Fix: single continuous interval that never freezes, updates every second)
+  // Timer Countdown (Fix: stops at 0 and sets timeExpired)
   useEffect(() => {
-    if (!sessionActive || sessionCompleted || isEvaluating || showExitModal) {
+    if (!sessionActive || sessionCompleted || isEvaluating || showExitModal || timeExpired) {
       return;
     }
     const interval = setInterval(() => {
       setTimerSeconds((prev) => {
         if (prev <= 1) {
           clearInterval(interval);
+          setTimeExpired(true);
+          stopCamera();
+          setIsListening(false);
+          clearSessionStorage();
           return 0;
         }
         return prev - 1;
@@ -290,17 +328,53 @@ export const MockInterviewView: React.FC = () => {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [sessionActive, sessionCompleted, isEvaluating, showExitModal]);
+  }, [sessionActive, sessionCompleted, isEvaluating, showExitModal, timeExpired]);
 
-  // Auto-finish interview when countdown timer reaches zero (Requirement 1 & STEP 1)
-  useEffect(() => {
-    if (sessionActive && !sessionCompleted && timerSeconds === 0) {
-      stopCamera();
-      setIsListening(false);
-      setSessionCompleted(true);
-      clearSessionStorage();
-    }
-  }, [sessionActive, sessionCompleted, timerSeconds]);
+  // Timer Expiry Action Handlers (Requirement 1)
+  const handleRetryFromTimerExpired = () => {
+    stopCamera();
+    clearSessionStorage();
+    setTimeExpired(false);
+    setSessionCompleted(false);
+    const newQuestions = getRandomInterviewQuestions(selectedType, difficulty, 4);
+    setActiveQuestions(newQuestions);
+    setAnswersHistory([]);
+    setCurrentQuestionIndex(0);
+    setUserAnswer('');
+    baseAnswerRef.current = '';
+    setFeedback(null);
+    setShowModelAnswer(false);
+    setRecSeconds(0);
+    setTimerSeconds(getConfiguredDuration(selectedType));
+    setSessionActive(true);
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  };
+
+  const handleStartAgainFromTimerExpired = () => {
+    stopCamera();
+    clearSessionStorage();
+    setTimeExpired(false);
+    setSessionCompleted(false);
+    setAnswersHistory([]);
+    setCurrentQuestionIndex(0);
+    setUserAnswer('');
+    baseAnswerRef.current = '';
+    setFeedback(null);
+    setShowModelAnswer(false);
+    setRecSeconds(0);
+    setTimerSeconds(getConfiguredDuration(selectedType));
+    setSessionActive(true);
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  };
+
+  const handleExitFromTimerExpired = () => {
+    stopCamera();
+    clearSessionStorage();
+    setTimeExpired(false);
+    setSessionActive(false);
+    setSessionCompleted(false);
+    setActiveTab('home');
+  };
 
   // Attach active camera MediaStream to video elements whenever view or camera state changes
   const attachStreamToVideoElements = (stream: MediaStream) => {
@@ -1515,13 +1589,16 @@ export const MockInterviewView: React.FC = () => {
 
                 {/* Speech Input & Paste Controls */}
                 <div className="flex items-center gap-2 flex-wrap">
-                  {/* Prominent "Start Speaking" Button (Requirement 4) */}
+                  {/* Prominent "Start Speaking" Button */}
                   <button
-                    onClick={toggleSpeechRecognition}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer shadow-md ${
-                      isListening
-                        ? 'bg-red-500 text-white animate-pulse shadow-red-500/30'
-                        : 'bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-blue-600/30 hover:scale-105 active:scale-95'
+                    onClick={timeExpired ? undefined : toggleSpeechRecognition}
+                    disabled={timeExpired}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-extrabold transition-all shadow-md ${
+                      timeExpired
+                        ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50'
+                        : isListening
+                        ? 'bg-red-500 text-white animate-pulse shadow-red-500/30 cursor-pointer'
+                        : 'bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-blue-600/30 hover:scale-105 active:scale-95 cursor-pointer'
                     }`}
                   >
                     {isListening ? <MicOff className="w-4 h-4 text-white" /> : <Mic className="w-4 h-4 text-white" />}
@@ -1529,8 +1606,9 @@ export const MockInterviewView: React.FC = () => {
                   </button>
 
                   <button
-                    onClick={handlePaste}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all cursor-pointer"
+                    onClick={timeExpired ? undefined : handlePaste}
+                    disabled={timeExpired}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                   >
                     <Copy className="w-3.5 h-3.5 text-purple-400" />
                     <span>Paste</span>
@@ -1538,8 +1616,9 @@ export const MockInterviewView: React.FC = () => {
 
                   {userAnswer.length > 0 && (
                     <button
-                      onClick={handleClear}
-                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-red-500/20 text-red-400 border border-slate-700 hover:border-red-500/40 transition-all cursor-pointer"
+                      onClick={timeExpired ? undefined : handleClear}
+                      disabled={timeExpired}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-red-500/20 text-red-400 border border-slate-700 hover:border-red-500/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                       <span>Clear</span>
@@ -1553,9 +1632,10 @@ export const MockInterviewView: React.FC = () => {
                 rows={6}
                 maxLength={800}
                 value={userAnswer}
+                disabled={timeExpired}
                 onChange={(e) => setUserAnswer(e.target.value)}
-                placeholder="Type or speak your structured answer here..."
-                className="w-full p-5 rounded-2xl border border-slate-700 bg-slate-950 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-inner leading-relaxed font-sans placeholder:text-slate-500"
+                placeholder={timeExpired ? "Your time is over. Please choose an option to continue." : "Type or speak your structured answer here..."}
+                className="w-full p-5 rounded-2xl border border-slate-700 bg-slate-950 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-inner leading-relaxed font-sans placeholder:text-slate-500 disabled:opacity-50 disabled:cursor-not-allowed"
               />
 
               {/* Live Indicators Bar (Requirement 5) */}
@@ -1602,8 +1682,8 @@ export const MockInterviewView: React.FC = () => {
             ) : !feedback ? (
               <button
                 onClick={handleSubmitAnswer}
-                disabled={!userAnswer.trim()}
-                className="relative w-full py-4 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-600 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold text-base flex items-center justify-center gap-2.5 shadow-xl shadow-blue-600/35 hover:shadow-[0_0_35px_rgba(59,130,246,0.5)] transition-all duration-300 ease-out hover:scale-[1.01] active:scale-98 cursor-pointer disabled:opacity-50 overflow-hidden group border border-blue-400/30"
+                disabled={!userAnswer.trim() || timeExpired}
+                className="relative w-full py-4 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-600 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold text-base flex items-center justify-center gap-2.5 shadow-xl shadow-blue-600/35 hover:shadow-[0_0_35px_rgba(59,130,246,0.5)] transition-all duration-300 ease-out hover:scale-[1.01] active:scale-98 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden group border border-blue-400/30"
               >
                 <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/35 to-transparent animate-shine-continuous pointer-events-none" />
                 <Send className="w-5 h-5 text-white relative z-10" />
@@ -1612,8 +1692,8 @@ export const MockInterviewView: React.FC = () => {
             ) : (
               <button
                 onClick={handleSubmitAnswer}
-                disabled={!userAnswer.trim()}
-                className="relative w-full py-4 rounded-2xl bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-600 hover:from-indigo-500 hover:to-blue-500 text-white font-extrabold text-base flex items-center justify-center gap-2.5 shadow-xl shadow-indigo-600/35 hover:shadow-[0_0_35px_rgba(99,102,241,0.5)] transition-all duration-300 ease-out hover:scale-[1.01] active:scale-98 cursor-pointer disabled:opacity-50 overflow-hidden group border border-indigo-400/30"
+                disabled={!userAnswer.trim() || timeExpired}
+                className="relative w-full py-4 rounded-2xl bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-600 hover:from-indigo-500 hover:to-blue-500 text-white font-extrabold text-base flex items-center justify-center gap-2.5 shadow-xl shadow-indigo-600/35 hover:shadow-[0_0_35px_rgba(99,102,241,0.5)] transition-all duration-300 ease-out hover:scale-[1.01] active:scale-98 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden group border border-indigo-400/30"
               >
                 <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/35 to-transparent animate-shine-continuous pointer-events-none" />
                 <RefreshCw className="w-5 h-5 text-white relative z-10" />
@@ -2042,65 +2122,13 @@ export const MockInterviewView: React.FC = () => {
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-semibold">
-                      <div>
-                        <div className="flex justify-between text-slate-300 mb-1">
-                          <span>Relevance to Question</span>
-                          <span className="text-[#22C55E] font-bold">{feedback.relevanceScore} / 100</span>
-                        </div>
-                        <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                          <div className="bg-[#22C55E] h-full rounded-full transition-all duration-500" style={{ width: `${feedback.relevanceScore}%` }} />
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="flex justify-between text-slate-300 mb-1">
-                          <span>Technical Accuracy</span>
-                          <span className="text-[#22C55E] font-bold">{feedback.technicalAccuracyScore} / 100</span>
-                        </div>
-                        <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                          <div className="bg-[#22C55E] h-full rounded-full transition-all duration-500" style={{ width: `${feedback.technicalAccuracyScore}%` }} />
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="flex justify-between text-slate-300 mb-1">
-                          <span>Communication & Tone</span>
-                          <span className="text-[#22C55E] font-bold">{feedback.communicationScore} / 100</span>
-                        </div>
-                        <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                          <div className="bg-[#22C55E] h-full rounded-full transition-all duration-500" style={{ width: `${feedback.communicationScore}%` }} />
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="flex justify-between text-slate-300 mb-1">
-                          <span>Grammar & Vocabulary</span>
-                          <span className="text-[#22C55E] font-bold">{feedback.grammarScore} / 100</span>
-                        </div>
-                        <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                          <div className="bg-[#22C55E] h-full rounded-full transition-all duration-500" style={{ width: `${feedback.grammarScore}%` }} />
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="flex justify-between text-slate-300 mb-1">
-                          <span>Completeness</span>
-                          <span className="text-[#22C55E] font-bold">{feedback.completenessScore} / 100</span>
-                        </div>
-                        <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                          <div className="bg-[#22C55E] h-full rounded-full transition-all duration-500" style={{ width: `${feedback.completenessScore}%` }} />
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="flex justify-between text-slate-300 mb-1">
-                          <span>Professional Readiness</span>
-                          <span className="text-[#22C55E] font-bold">{feedback.professionalismScore} / 100</span>
-                        </div>
-                        <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                          <div className="bg-[#22C55E] h-full rounded-full transition-all duration-500" style={{ width: `${feedback.professionalismScore}%` }} />
-                        </div>
-                      </div>
+                      {renderMetricScore(feedback.relevanceScore, 'Relevance to Question')}
+                      {renderMetricScore(feedback.technicalAccuracyScore, 'Technical Accuracy')}
+                      {renderMetricScore(feedback.communicationScore, 'Communication & Tone')}
+                      {renderMetricScore(feedback.grammarScore, 'Grammar Score')}
+                      {renderMetricScore(feedback.vocabularyScore, 'Vocabulary Rating')}
+                      {renderMetricScore(feedback.completenessScore, 'Completeness & Depth')}
+                      {renderMetricScore(feedback.professionalismScore, 'Professional Readiness')}
                     </div>
 
                     {/* Why this score? Dynamic Explanation (Requirement #3) */}
@@ -2164,6 +2192,50 @@ export const MockInterviewView: React.FC = () => {
                 onClick={handleExitDiscard}
                 className="relative w-full py-3.5 rounded-2xl border border-red-500/40 bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 font-extrabold text-xs sm:text-sm transition-all cursor-pointer hover:scale-[1.01]"
               >
+                <span>Exit Interview</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 6. TIMER EXPIRED OVERLAY MODAL (REQUIREMENT 1) */}
+      {timeExpired && (
+        <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-xl flex items-center justify-center p-4 animate-in fade-in duration-300">
+          <div className="glass-card rounded-[28px] p-7 sm:p-8 max-w-md w-full border border-amber-500/50 bg-slate-900/95 shadow-[0_0_50px_rgba(245,158,11,0.25)] space-y-6 text-center relative overflow-hidden">
+            <div className="w-16 h-16 mx-auto rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-inner">
+              <Clock className="w-8 h-8 text-amber-400 animate-pulse" />
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-2xl font-black text-white font-['Space_Grotesk'] tracking-tight">Your time is over.</h3>
+              <p className="text-xs sm:text-sm text-slate-300 font-medium leading-relaxed">
+                The mock interview timer has reached 00:00. Further answering and submission are disabled. Please choose how you would like to proceed:
+              </p>
+            </div>
+
+            <div className="space-y-3 pt-2">
+              <button
+                onClick={handleRetryFromTimerExpired}
+                className="relative w-full py-3.5 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-600 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold text-xs sm:text-sm shadow-xl shadow-blue-600/30 transition-all cursor-pointer hover:scale-[1.01] flex items-center justify-center gap-2"
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span>Retry (Fresh Session)</span>
+              </button>
+
+              <button
+                onClick={handleStartAgainFromTimerExpired}
+                className="relative w-full py-3.5 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-extrabold text-xs sm:text-sm shadow-md transition-all cursor-pointer hover:scale-[1.01] flex items-center justify-center gap-2"
+              >
+                <PlayCircle className="w-4 h-4" />
+                <span>Start Again (Question 1)</span>
+              </button>
+
+              <button
+                onClick={handleExitFromTimerExpired}
+                className="relative w-full py-3.5 rounded-2xl border border-red-500/40 bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 font-extrabold text-xs sm:text-sm transition-all cursor-pointer hover:scale-[1.01] flex items-center justify-center gap-2"
+              >
+                <LogOut className="w-4 h-4" />
                 <span>Exit Interview</span>
               </button>
             </div>

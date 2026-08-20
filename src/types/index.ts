@@ -130,13 +130,14 @@ export interface DualLanguageFeedback {
   grammarDetail?: GrammarMistakeDetail[];
 
   // Breakdown Score Factors & Explanation
-  relevanceScore: number;
-  technicalAccuracyScore: number;
-  grammarScore: number;
-  communicationScore: number;
-  clarityScore: number;
-  completenessScore: number;
-  professionalismScore: number;
+  relevanceScore: number | null;
+  technicalAccuracyScore: number | null;
+  grammarScore: number | null;
+  vocabularyScore?: number | null;
+  communicationScore: number | null;
+  clarityScore: number | null;
+  completenessScore: number | null;
+  professionalismScore: number | null;
   overallScore: number;
   scoreExplanation: string;
 

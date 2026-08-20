@@ -387,11 +387,12 @@ export const CommunicationView: React.FC = () => {
     }
 
     // Evaluate What Was Wrong
-    if (feedback.grammarScore >= 85 && !lower.includes('myself')) {
+    const gScore = feedback.grammarScore ?? 0;
+    if (gScore >= 85 && !lower.includes('myself')) {
       wrong = `No major grammar mistakes found! Your sentence structure, verb tenses, and word choices are correct.`;
     } else if (lower.includes('myself')) {
       wrong = `Avoid starting your response with "Myself [Name]". In professional communication, use "My name is" or "I am".`;
-    } else if (feedback.grammarScore < 80) {
+    } else if (gScore < 80) {
       wrong = `There are minor grammatical/preposition errors in your sentence structure.`;
     } else if (words < 6) {
       wrong = `Your answer is very brief. Expand slightly with 1-2 supporting details or examples.`;

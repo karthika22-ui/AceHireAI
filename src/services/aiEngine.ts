@@ -3176,11 +3176,36 @@ export async function evaluateAnswerWithAI(
 
   let relevanceScore = 0;
   let technicalAccuracyScore = 0;
-  let grammarScore = 95;
+  let grammarScore = isGibberish ? 0 : 95;
+  let vocabularyScore = 0;
   let communicationScore = 0;
   let clarityScore = 0;
   let completenessScore = 0;
   let professionalismScore = 0;
+
+  // Dynamic Vocabulary Quality Analysis
+  const domainTechTerms = [
+    'optimization', 'architecture', 'latency', 'concurrency', 'asynchronous',
+    'interface', 'implementation', 'benchmarking', 'scalability', 'transactional',
+    'component', 'protocol', 'algorithm', 'refactoring', 'database', 'indexing',
+    'cache', 'microservice', 'framework', 'testing', 'deployment', 'pipeline'
+  ];
+  const matchedTechTerms = domainTechTerms.filter((term) => text.includes(term));
+  const avgWordLen = wordCount > 0 ? cleanInput.length / wordCount : 0;
+
+  if (isGibberish) {
+    vocabularyScore = 0;
+  } else if (wordCount < 5) {
+    vocabularyScore = Math.min(40, wordCount * 8);
+  } else {
+    vocabularyScore = Math.min(
+      98,
+      Math.max(
+        35,
+        Math.round(45 + Math.min(25, wordCount * 1.5) + matchedTechTerms.length * 10 + (avgWordLen > 5 ? 10 : 0))
+      )
+    );
+  }
 
   // 2. Dynamic Grammar Mistake Analysis Engine
   const grammarMistakesList: GrammarMistakeDetail[] = [];
@@ -3268,6 +3293,8 @@ export async function evaluateAnswerWithAI(
     }
   }
 
+  grammarScore = Math.max(0, Math.min(100, grammarScore));
+
   // 3. Classify into 5 Dynamic Grammar Cases
   let grammarReport: DetailedGrammarReport;
 
@@ -3324,6 +3351,7 @@ export async function evaluateAnswerWithAI(
     relevanceScore = 0;
     technicalAccuracyScore = 0;
     grammarScore = 0;
+    vocabularyScore = 0;
     communicationScore = 0;
     clarityScore = 0;
     completenessScore = 0;
@@ -3360,7 +3388,7 @@ export async function evaluateAnswerWithAI(
       explanation: `Failed to address essential keypoints: ${expectedKeypoints.join(', ')}.`
     });
 
-    scoreExplanation = `Your answer was unrelated to the prompt, so Relevance (${relevanceScore}%) and Technical Accuracy (${technicalAccuracyScore}%) are near zero. Grammar is evaluated independently (${grammarScore}%) on your sentence structure, but content does not answer the question.`;
+    scoreExplanation = `Your answer was unrelated to the prompt, so Relevance (${relevanceScore}%) and Technical Accuracy (${technicalAccuracyScore}%) are near zero. Grammar (${grammarScore}%) and Vocabulary (${vocabularyScore}%) are evaluated independently on your sentence structure.`;
 
   } else if (wordCount < 8) {
     status = 'Incorrect';
@@ -3423,10 +3451,11 @@ export async function evaluateAnswerWithAI(
 
   // Calculate Overall Score weighted average
   const overallScore = isGibberish ? 0 : Math.round(
-    relevanceScore * 0.35 +
-    technicalAccuracyScore * 0.35 +
+    relevanceScore * 0.30 +
+    technicalAccuracyScore * 0.30 +
     communicationScore * 0.10 +
     grammarScore * 0.10 +
+    vocabularyScore * 0.10 +
     completenessScore * 0.10
   );
 
@@ -3637,6 +3666,7 @@ Return ONLY a JSON object with this exact structure (no markdown tags, no prose)
     relevanceScore,
     technicalAccuracyScore,
     grammarScore,
+    vocabularyScore,
     communicationScore,
     clarityScore,
     completenessScore,
@@ -3667,30 +3697,31 @@ export function generateInterviewFinalReport(
 ): InterviewFinalReport {
   if (!history || history.length === 0) {
     return {
-      overallScore: 85,
-      technicalScore: 82,
-      grammarScore: 88,
-      communicationScore: 84,
-      confidenceScore: 86,
-      relevanceScore: 85,
-      strengths: ['Clear technical articulation', 'Good logical structure'],
-      weaknesses: ['Add quantitative metrics to answers', 'Expand behavioral scenario depth'],
+      overallScore: 0,
+      technicalScore: 0,
+      grammarScore: 0,
+      communicationScore: 0,
+      confidenceScore: 0,
+      relevanceScore: 0,
+      strengths: [],
+      weaknesses: ['No interview answers submitted yet.'],
       mistakes: [],
-      recommendedTopics: ['DSA Optimization', 'System Design Fundamentals', 'STAR Method Framework'],
+      recommendedTopics: selectedType === 'Technical'
+        ? ['Data Structures & Algorithms', 'System Design Patterns']
+        : ['STAR Behavioral Framework', 'Self-Introduction Structuring'],
       aiSuggestions: [
-        'Practice expanding technical explanations with architecture details.',
-        'Use quantitative results (percentages, metrics) to back claims.'
+        'Complete an interview session to generate personalized performance analytics.'
       ]
     };
   }
 
   const count = history.length;
-  const overallScore = Math.round(history.reduce((sum, h) => sum + h.feedback.overallScore, 0) / count);
-  const technicalScore = Math.round(history.reduce((sum, h) => sum + h.feedback.technicalAccuracyScore, 0) / count);
-  const grammarScore = Math.round(history.reduce((sum, h) => sum + h.feedback.grammarScore, 0) / count);
-  const communicationScore = Math.round(history.reduce((sum, h) => sum + h.feedback.communicationScore, 0) / count);
-  const confidenceScore = Math.round(history.reduce((sum, h) => sum + h.feedback.clarityScore, 0) / count);
-  const relevanceScore = Math.round(history.reduce((sum, h) => sum + h.feedback.relevanceScore, 0) / count);
+  const overallScore = Math.round(history.reduce((sum, h) => sum + (h.feedback.overallScore || 0), 0) / count);
+  const technicalScore = Math.round(history.reduce((sum, h) => sum + (h.feedback.technicalAccuracyScore || 0), 0) / count);
+  const grammarScore = Math.round(history.reduce((sum, h) => sum + (h.feedback.grammarScore || 0), 0) / count);
+  const communicationScore = Math.round(history.reduce((sum, h) => sum + (h.feedback.communicationScore || 0), 0) / count);
+  const confidenceScore = Math.round(history.reduce((sum, h) => sum + (h.feedback.clarityScore || 0), 0) / count);
+  const relevanceScore = Math.round(history.reduce((sum, h) => sum + (h.feedback.relevanceScore || 0), 0) / count);
 
   const allMistakes = history.flatMap((h) => h.feedback.mistakes);
 
