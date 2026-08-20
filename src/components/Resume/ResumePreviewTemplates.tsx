@@ -8,6 +8,7 @@ interface ResumePreviewTemplatesProps {
   onPhotoUpload?: (photoDataUrl: string) => void;
   isEditable?: boolean;
   onUpdateData?: (updatedData: ResumeData) => void;
+  isMiniPreview?: boolean;
 }
 
 const EditableText: React.FC<{
@@ -45,7 +46,8 @@ export const ResumePreviewTemplates: React.FC<ResumePreviewTemplatesProps> = ({
   template = 'modern',
   onPhotoUpload,
   isEditable = false,
-  onUpdateData
+  onUpdateData,
+  isMiniPreview = false
 }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 

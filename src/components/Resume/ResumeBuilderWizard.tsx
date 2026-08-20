@@ -401,14 +401,30 @@ const sampleMiniData: ResumeData = {
 // MINIATURE PREVIEW FOR TEMPLATE GALLERY MODAL CARDS ONLY
 const TemplateMiniPreview: React.FC<{ templateId: string; className?: string }> = ({ templateId, className = '' }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState<number>(0.35);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState<number>(0.25);
+  const [translateX, setTranslateX] = useState<number>(0);
 
   useEffect(() => {
     const updateScale = () => {
-      if (containerRef.current) {
-        const width = containerRef.current.clientWidth;
-        if (width > 0) {
-          setScale(width / 794);
+      if (containerRef.current && contentRef.current) {
+        const containerWidth = containerRef.current.clientWidth;
+        const containerHeight = containerRef.current.clientHeight || containerWidth * (297 / 210);
+        const contentHeight = contentRef.current.scrollHeight || 1123;
+        const contentWidth = 794;
+
+        if (containerWidth > 0 && contentHeight > 0) {
+          const scaleW = containerWidth / contentWidth;
+          const scaleH = containerHeight / contentHeight;
+          const finalScale = Math.min(scaleW, scaleH);
+          setScale(finalScale);
+
+          const scaledWidth = contentWidth * finalScale;
+          if (scaledWidth < containerWidth) {
+            setTranslateX((containerWidth - scaledWidth) / 2);
+          } else {
+            setTranslateX(0);
+          }
         }
       }
     };
@@ -418,8 +434,11 @@ const TemplateMiniPreview: React.FC<{ templateId: string; className?: string }> 
     if (containerRef.current) {
       observer.observe(containerRef.current);
     }
+    if (contentRef.current) {
+      observer.observe(contentRef.current);
+    }
     return () => observer.disconnect();
-  }, []);
+  }, [templateId]);
 
   const isPhoto = templateId.startsWith('photo-');
   const miniData: ResumeData = isPhoto
@@ -435,15 +454,15 @@ const TemplateMiniPreview: React.FC<{ templateId: string; className?: string }> 
       className={`w-full aspect-[210/297] rounded-xl bg-white border border-slate-200 dark:border-slate-800 shadow-md relative select-none pointer-events-none overflow-hidden transition-all flex items-start justify-start ${className}`}
     >
       <div
+        ref={contentRef}
         style={{
           width: '794px',
-          height: '1123px',
-          transform: `scale(${scale})`,
+          transform: `translate(${translateX}px, 0px) scale(${scale})`,
           transformOrigin: 'top left'
         }}
-        className="absolute top-0 left-0 bg-white text-slate-900 pointer-events-none box-border p-5 overflow-hidden"
+        className="absolute top-0 left-0 bg-white text-slate-900 pointer-events-none box-border p-4"
       >
-        <ResumePreviewTemplates data={miniData} template={templateId} />
+        <ResumePreviewTemplates data={miniData} template={templateId} isMiniPreview={true} />
       </div>
     </div>
   );
