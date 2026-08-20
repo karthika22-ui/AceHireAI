@@ -289,18 +289,38 @@ export interface ResumeData {
   photoUrl?: string;
 }
 
+export interface KeywordAnalysis {
+  detectedKeywords: string[];
+  weakKeywords: string[];
+  keywordSuggestions: string[];
+}
+
+export interface AchievementAnalysis {
+  hasMetrics: boolean;
+  actionVerbsRating: 'Strong' | 'Moderate' | 'Weak' | 'N/A';
+  score: number | null;
+  feedback: string;
+}
+
 export interface ResumeAnalysis {
   atsScore: number; // 0 to 100
-  matchedSkills: string[];
-  missingSkills: string[];
+  strengths?: string[];
+  detectedSkills?: string[];
+  keywordAnalysis?: KeywordAnalysis;
+  summary?: string;
   formattingSuggestions: string[];
+  grammarReview?: string[];
+  achievementAnalysis?: AchievementAnalysis;
   actionableImprovements: {
     section: string;
     issue: string;
     recommendation: string;
   }[];
-  summary?: string;
-  grammarReview?: string[];
+  improvementChecklist?: string[];
+
+  // Legacy field support for backwards-compatibility
+  matchedSkills: string[];
+  missingSkills: string[];
 }
 
 export type CodingLanguage = 'Java' | 'Python' | 'C' | 'C++' | 'SQL';

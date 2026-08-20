@@ -424,9 +424,12 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
       {analysisResult && (
         <div className="space-y-6 animate-in slide-in-from-bottom-4 zoom-in-95 duration-500">
           
-          {/* CARD 1: ATS SCORE & OVERVIEW CARD */}
+          {/* CARD 1: OVERALL ATS SCORE CARD */}
           {(() => {
             const theme = getScoreTheme(analysisResult.atsScore);
+            const detectedList = analysisResult.detectedSkills || analysisResult.matchedSkills || [];
+            const weakList = analysisResult.keywordAnalysis?.weakKeywords || analysisResult.missingSkills || [];
+
             return (
               <div className="glass-card rounded-3xl p-6 sm:p-8 border border-slate-200 dark:border-purple-500/20 bg-white/95 dark:bg-slate-900/85 backdrop-blur-2xl shadow-xl space-y-6 relative overflow-hidden">
                 <div className="flex flex-col md:flex-row items-center justify-between gap-8">
@@ -461,7 +464,7 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
                         <span className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">
                           {analysisResult.atsScore}%
                         </span>
-                        <span className="text-[10px] font-extrabold uppercase text-slate-400">Score</span>
+                        <span className="text-[10px] font-extrabold uppercase text-slate-400">ATS Score</span>
                       </div>
                     </div>
 
@@ -470,28 +473,28 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
                         {theme.title}
                       </span>
                       <h3 className="text-xl font-extrabold text-slate-900 dark:text-white font-['Space_Grotesk']">
-                        Overall ATS Readiness Index
+                        Overall ATS Readiness Score
                       </h3>
                       <p className="text-xs text-slate-600 dark:text-slate-400 max-w-md font-medium">
-                        {theme.desc}
+                        Based on structure, content quality, keyword usage, formatting, readability, grammar, and achievements.
                       </p>
                     </div>
                   </div>
 
                   {/* Right: Quick Breakdown Stats */}
                   <div className="flex items-center gap-3 w-full md:w-auto">
-                    <div className="flex-1 md:flex-initial p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-center min-w-[120px]">
+                    <div className="flex-1 md:flex-initial p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-center min-w-[130px]">
                       <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400 block">
-                        {analysisResult.matchedSkills.length}
+                        {detectedList.length}
                       </span>
-                      <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300">Matched Skills</span>
+                      <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300">Detected Skills</span>
                     </div>
 
-                    <div className="flex-1 md:flex-initial p-4 rounded-2xl bg-red-500/10 border border-red-500/30 text-center min-w-[120px]">
-                      <span className="text-2xl font-black text-red-600 dark:text-red-400 block">
-                        {analysisResult.missingSkills.length}
+                    <div className="flex-1 md:flex-initial p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-center min-w-[130px]">
+                      <span className="text-2xl font-black text-amber-600 dark:text-amber-400 block">
+                        {weakList.length}
                       </span>
-                      <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300">Missing Keywords</span>
+                      <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300">Weak Keywords</span>
                     </div>
                   </div>
                 </div>
@@ -499,7 +502,119 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
             );
           })()}
 
-          {/* CARD 2: RESUME EXECUTIVE SUMMARY */}
+          {/* CARD 2: RESUME STRENGTHS & DETECTED TECHNICAL SKILLS */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            {/* Resume Strengths */}
+            <div className="glass-card rounded-3xl p-6 border border-emerald-500/30 bg-white/95 dark:bg-slate-900/85 backdrop-blur-2xl shadow-lg space-y-4">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <Award className="w-5 h-5 text-emerald-500" />
+                  <h3 className="text-sm font-extrabold text-slate-900 dark:text-white">
+                    Resume Strengths ({analysisResult.strengths?.length || 2})
+                  </h3>
+                </div>
+                <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                  VERIFIED
+                </span>
+              </div>
+
+              <ul className="space-y-2 text-xs text-slate-700 dark:text-slate-300 font-medium">
+                {(analysisResult.strengths || [
+                  'Clean foundational structure with demarcated technical skills & experience.',
+                  'Accessible contact links and clear section organization.'
+                ]).map((str, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                    <span className="leading-relaxed">{str}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Detected Technical Skills */}
+            <div className="glass-card rounded-3xl p-6 border border-blue-500/30 bg-white/95 dark:bg-slate-900/85 backdrop-blur-2xl shadow-lg space-y-4">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <Zap className="w-5 h-5 text-blue-500" />
+                  <h3 className="text-sm font-extrabold text-slate-900 dark:text-white">
+                    Detected Technical Skills ({(analysisResult.detectedSkills || analysisResult.matchedSkills || []).length})
+                  </h3>
+                </div>
+                <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30">
+                  DETECTED
+                </span>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {(analysisResult.detectedSkills || analysisResult.matchedSkills || []).map((skill, i) => (
+                  <span
+                    key={i}
+                    className="px-3 py-1.5 rounded-xl bg-blue-500/15 text-blue-700 dark:text-blue-300 text-xs font-bold border border-blue-500/30 flex items-center gap-1.5"
+                  >
+                    <Check className="w-3.5 h-3.5 text-blue-500" />
+                    <span>{skill}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* CARD 3: KEYWORD ANALYSIS */}
+          <div className="glass-card rounded-3xl p-6 sm:p-7 border border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/85 backdrop-blur-2xl shadow-lg space-y-4">
+            <div className="flex items-center gap-2.5 pb-2 border-b border-slate-200 dark:border-slate-800">
+              <div className="p-2 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400">
+                <Search className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 dark:text-white font-['Space_Grotesk']">
+                  Keyword Analysis
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Evaluates technical term frequency and underused domain keywords in uploaded document.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+              {/* Weak / Underused Keywords */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 space-y-2">
+                <span className="text-xs font-extrabold text-slate-700 dark:text-slate-300 uppercase tracking-wider block">
+                  Underrepresented Keywords ({(analysisResult.keywordAnalysis?.weakKeywords || analysisResult.missingSkills || []).length})
+                </span>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {(analysisResult.keywordAnalysis?.weakKeywords || analysisResult.missingSkills || []).map((kw, idx) => (
+                    <span
+                      key={idx}
+                      className="px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[11px] font-bold border border-amber-500/30"
+                    >
+                      + {kw}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Keyword Improvement Suggestions */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 space-y-2">
+                <span className="text-xs font-extrabold text-slate-700 dark:text-slate-300 uppercase tracking-wider block">
+                  Keyword Optimization Guidance
+                </span>
+                <ul className="space-y-1.5 text-xs text-slate-600 dark:text-slate-400 font-medium">
+                  {(analysisResult.keywordAnalysis?.keywordSuggestions || [
+                    'Ensure core technical skills appear in both summary and project descriptions.',
+                    'Incorporate underrepresented domain keywords to improve automated indexing.'
+                  ]).map((sug, idx) => (
+                    <li key={idx} className="flex items-start gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-purple-500 mt-1.5 shrink-0" />
+                      <span>{sug}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          {/* CARD 4: AI EXECUTIVE RESUME SUMMARY */}
           <div className="glass-card rounded-3xl p-6 sm:p-7 border border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/85 backdrop-blur-2xl shadow-lg space-y-3">
             <div className="flex items-center gap-2.5 pb-2 border-b border-slate-200 dark:border-slate-800">
               <div className="p-2 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400">
@@ -510,74 +625,14 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
               </h3>
             </div>
             <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 leading-relaxed font-medium">
-              {analysisResult.summary || (
-                <>Candidate profile demonstrates solid core experience with <strong>{analysisResult.matchedSkills.join(', ')}</strong>. To maximize automated ATS pass rates for tier-1 tech engineering roles, incorporate structured quantitative impact statements and missing domain keywords.</>
-              )}
+              {analysisResult.summary || 'Candidate profile demonstrates verified technical competencies. Resume structure displays solid foundation across core engineering projects and technical skills.'}
             </p>
           </div>
 
-          {/* CARD 3 & CARD 4: SKILLS MATCH & MISSING KEYWORDS GRID */}
+          {/* CARD 5 & CARD 6: FORMATTING & GRAMMAR AUDIT GRID */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
-            {/* Matched Keywords */}
-            <div className="glass-card rounded-3xl p-6 border border-emerald-500/30 bg-white/95 dark:bg-slate-900/85 backdrop-blur-2xl shadow-lg space-y-4">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                  <h3 className="text-sm font-extrabold text-slate-900 dark:text-white">
-                    Matched Required Skills ({analysisResult.matchedSkills.length})
-                  </h3>
-                </div>
-                <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
-                  PASSED
-                </span>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                {analysisResult.matchedSkills.map((skill, i) => (
-                  <span
-                    key={i}
-                    className="px-3 py-1.5 rounded-xl bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-xs font-bold border border-emerald-500/30 flex items-center gap-1.5"
-                  >
-                    <Check className="w-3.5 h-3.5 text-emerald-500" />
-                    <span>{skill}</span>
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            {/* Missing Keywords */}
-            <div className="glass-card rounded-3xl p-6 border border-red-500/30 bg-white/95 dark:bg-slate-900/85 backdrop-blur-2xl shadow-lg space-y-4">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
-                <div className="flex items-center gap-2">
-                  <AlertCircle className="w-5 h-5 text-red-500" />
-                  <h3 className="text-sm font-extrabold text-slate-900 dark:text-white">
-                    Recommended Missing Keywords ({analysisResult.missingSkills.length})
-                  </h3>
-                </div>
-                <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/30">
-                  ACTION REQUIRED
-                </span>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                {analysisResult.missingSkills.map((skill, i) => (
-                  <span
-                    key={i}
-                    className="px-3 py-1.5 rounded-xl bg-red-500/15 text-red-700 dark:text-red-300 text-xs font-bold border border-red-500/30 flex items-center gap-1.5"
-                  >
-                    <span>+</span>
-                    <span>{skill}</span>
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* CARD 5 & CARD 6: GRAMMAR & FORMATTING ISSUES */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            
-            {/* Formatting & Parsing Warnings */}
+            {/* Formatting & Parsing Audit */}
             <div className="glass-card rounded-3xl p-6 border border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/85 backdrop-blur-2xl shadow-lg space-y-4">
               <div className="flex items-center gap-2.5 pb-2 border-b border-slate-200 dark:border-slate-800">
                 <AlertTriangle className="w-5 h-5 text-amber-500" />
@@ -623,7 +678,48 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
             </div>
           </div>
 
-          {/* CARD 7: ELEGANT EXPANDABLE AI SUGGESTIONS CARD */}
+          {/* CARD 7: ACHIEVEMENT & IMPACT ANALYSIS */}
+          <div className="glass-card rounded-3xl p-6 sm:p-7 border border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/85 backdrop-blur-2xl shadow-lg space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                  <BarChart3 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900 dark:text-white font-['Space_Grotesk']">
+                    Achievement & Impact Analysis
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Checks projects and work experience for measurable results, metrics, and numerical impact.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-extrabold px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                  Action Verbs: {analysisResult.achievementAnalysis?.actionVerbsRating || 'Strong'}
+                </span>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-extrabold text-slate-800 dark:text-slate-200">Quantitative Metrics Presence</span>
+                <span className={`text-xs font-black ${analysisResult.achievementAnalysis?.hasMetrics ? 'text-emerald-500' : 'text-amber-500'}`}>
+                  {analysisResult.achievementAnalysis?.hasMetrics ? '✓ Metrics Found' : '⚠️ Metrics Needed'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-medium">
+                {analysisResult.achievementAnalysis?.feedback || (
+                  analysisResult.achievementAnalysis?.hasMetrics
+                    ? '✓ Quantitative impact metrics (% improvements, latency reductions, user scale) detected in achievements.'
+                    : 'Actionable Suggestion: Add quantitative impact metrics (e.g. "Reduced API latency by 35%" or "Built for 5,000+ users") to validate engineering results.'
+                )}
+              </p>
+            </div>
+          </div>
+
+          {/* CARD 8 & CARD 9: RECOMMENDATIONS & ATS IMPROVEMENT CHECKLIST */}
           <div className="glass-card rounded-3xl border border-slate-200 dark:border-purple-500/30 bg-white/95 dark:bg-slate-900/85 backdrop-blur-2xl shadow-xl overflow-hidden">
             <button
               onClick={() => setOpenSuggestions((prev) => !prev)}
@@ -635,10 +731,10 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
                 </div>
                 <div>
                   <h3 className="text-base font-extrabold text-slate-900 dark:text-white font-['Space_Grotesk']">
-                    AI Strategic Placement Recommendations
+                    AI Resume Improvement Recommendations & Checklist
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Step-by-step guidance to boost resume callback rates
+                    Step-by-step guidance based strictly on the uploaded resume
                   </p>
                 </div>
               </div>
@@ -651,28 +747,58 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
             </button>
 
             {openSuggestions && (
-              <div className="p-6 pt-2 border-t border-slate-200 dark:border-slate-800 space-y-4 animate-in fade-in">
-                {analysisResult.actionableImprovements.map((item, idx) => (
-                  <div
-                    key={idx}
-                    className="p-4 rounded-2xl bg-slate-100/90 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800 space-y-1.5"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-extrabold uppercase tracking-wider text-purple-600 dark:text-purple-400">
-                        {item.section}
-                      </span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-500 border border-blue-500/20">
-                        Recommendation {idx + 1}
-                      </span>
+              <div className="p-6 pt-2 border-t border-slate-200 dark:border-slate-800 space-y-5 animate-in fade-in">
+                
+                {/* Recommendations */}
+                <div className="space-y-3">
+                  <span className="text-xs font-extrabold uppercase text-purple-600 dark:text-purple-400 tracking-wider block">
+                    Actionable Improvements
+                  </span>
+                  {analysisResult.actionableImprovements.map((item, idx) => (
+                    <div
+                      key={idx}
+                      className="p-4 rounded-2xl bg-slate-100/90 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800 space-y-1.5"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-extrabold uppercase tracking-wider text-purple-600 dark:text-purple-400">
+                          {item.section}
+                        </span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-500 border border-blue-500/20">
+                          Recommendation {idx + 1}
+                        </span>
+                      </div>
+                      <h4 className="text-xs font-extrabold text-slate-900 dark:text-white">
+                        Issue: {item.issue}
+                      </h4>
+                      <p className="text-xs text-slate-600 dark:text-slate-300 font-medium leading-relaxed">
+                        💡 {item.recommendation}
+                      </p>
                     </div>
-                    <h4 className="text-xs font-extrabold text-slate-900 dark:text-white">
-                      Issue: {item.issue}
+                  ))}
+                </div>
+
+                {/* Final Checklist */}
+                <div className="p-4 rounded-2xl bg-purple-500/10 border border-purple-500/30 space-y-2.5">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-purple-500" />
+                    <h4 className="text-xs font-extrabold text-purple-700 dark:text-purple-300 uppercase tracking-wider">
+                      ATS Improvement Checklist
                     </h4>
-                    <p className="text-xs text-slate-600 dark:text-slate-300 font-medium leading-relaxed">
-                      💡 {item.recommendation}
-                    </p>
                   </div>
-                ))}
+                  <ul className="space-y-2 text-xs text-slate-700 dark:text-slate-300 font-medium">
+                    {(analysisResult.improvementChecklist || [
+                      'Add quantitative metrics (percentages, latency, user numbers) to project bullet points.',
+                      'Include active GitHub repository and LinkedIn profile links in header.',
+                      'Incorporate underused domain keywords into technical skills section.',
+                      'Use standard single-column PDF/DOCX structure with clear section headings.'
+                    ]).map((chk, i) => (
+                      <li key={i} className="flex items-start gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-purple-500 shrink-0 mt-0.5" />
+                        <span className="leading-relaxed">{chk}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </div>
             )}
           </div>

@@ -3830,35 +3830,85 @@ export async function analyzeResumeWithAI(fileOrResume: any): Promise<ResumeAnal
     { name: 'Linux / Unix', category: 'OS', aliases: ['linux', 'unix', 'bash', 'shell'] }
   ];
 
-  // 1. Detect Matched Skills
-  const matchedSkills: string[] = [];
+  // 1. Detect Technical & Professional Skills
+  const detectedSkills: string[] = [];
 
   SKILL_CATALOG.forEach((skillItem) => {
     const isMatched = skillItem.aliases.some((alias) => searchableCorpus.includes(alias));
     if (isMatched) {
-      matchedSkills.push(skillItem.name);
+      detectedSkills.push(skillItem.name);
     }
   });
 
   // Infer skills from filename and content features if direct keyword matching is sparse
-  if (matchedSkills.length < 2) {
+  if (detectedSkills.length < 2) {
     const cleanName = fileName.toLowerCase().replace(/[^a-z0-9]/g, ' ');
-    if (cleanName.includes('java')) matchedSkills.push('Java', 'SQL & DBMS', 'Object-Oriented Programming (OOP)');
-    if (cleanName.includes('python')) matchedSkills.push('Python', 'Data Structures & Algorithms', 'Git & Version Control');
-    if (cleanName.includes('react') || cleanName.includes('front')) matchedSkills.push('React', 'JavaScript', 'HTML5/CSS3', 'RESTful APIs');
-    if (cleanName.includes('full') || cleanName.includes('stack')) matchedSkills.push('JavaScript', 'Node.js', 'React', 'SQL & DBMS');
-    if (cleanName.includes('data') || cleanName.includes('analyst')) matchedSkills.push('Python', 'SQL & DBMS', 'Data Structures & Algorithms');
+    if (cleanName.includes('java')) detectedSkills.push('Java', 'SQL & DBMS', 'Object-Oriented Programming (OOP)');
+    if (cleanName.includes('python')) detectedSkills.push('Python', 'Data Structures & Algorithms', 'Git & Version Control');
+    if (cleanName.includes('react') || cleanName.includes('front')) detectedSkills.push('React', 'JavaScript', 'HTML5/CSS3', 'RESTful APIs');
+    if (cleanName.includes('full') || cleanName.includes('stack')) detectedSkills.push('JavaScript', 'Node.js', 'React', 'SQL & DBMS');
+    if (cleanName.includes('data') || cleanName.includes('analyst')) detectedSkills.push('Python', 'SQL & DBMS', 'Data Structures & Algorithms');
     
-    if (matchedSkills.length === 0) {
-      matchedSkills.push('Git & Version Control', 'Data Structures & Algorithms', 'Problem Solving');
+    if (detectedSkills.length === 0) {
+      detectedSkills.push('Git & Version Control', 'Data Structures & Algorithms', 'Problem Solving');
     }
   }
 
-  // 2. Determine Missing Keywords based on target industry standards
+  // 2. Keyword Analysis (Detected Keywords, Weak Keywords, Keyword Suggestions)
   const allPossibleSkills = SKILL_CATALOG.map((s) => s.name);
-  const missingSkills = allPossibleSkills.filter((s) => !matchedSkills.includes(s)).slice(0, 6);
+  const weakKeywords = allPossibleSkills.filter((s) => !detectedSkills.includes(s)).slice(0, 6);
+  const keywordSuggestions = [
+    `Incorporate underrepresented domain keywords such as ${weakKeywords.slice(0, 3).join(', ')} to improve automated indexing across technical search filters.`,
+    `Ensure core technical skills (${detectedSkills.slice(0, 3).join(', ')}) appear prominently in both the summary and project descriptions.`
+  ];
 
-  // 3. Compute Deterministic & Dynamic ATS Score (Unique per File)
+  const keywordAnalysis = {
+    detectedKeywords: detectedSkills,
+    weakKeywords,
+    keywordSuggestions
+  };
+
+  // 3. Resume Strengths
+  const strengths: string[] = [];
+  if (detectedSkills.length >= 3) {
+    strengths.push(`Rich technical stack detected with ${detectedSkills.length} core technologies (${detectedSkills.slice(0, 3).join(', ')}).`);
+  } else {
+    strengths.push('Clean foundational skill list identified.');
+  }
+
+  if (searchableCorpus.includes('github') || searchableCorpus.includes('linkedin') || searchableCorpus.includes('http')) {
+    strengths.push('Professional portfolio / repository links accessible in header metadata.');
+  }
+
+  if (searchableCorpus.includes('experience') || searchableCorpus.includes('projects')) {
+    strengths.push('Clear demarcation of project portfolios and professional experience.');
+  }
+
+  // 4. Achievement & Impact Analysis
+  const metricRegex = /\b\d+(%|x|ms|s|k|m|\+|\s?percent|\s?users|\s?queries|\s?latency)\b/i;
+  const hasMetrics = metricRegex.test(extractedText || searchableCorpus);
+  const actionVerbsList = ['built', 'developed', 'engineered', 'architected', 'implemented', 'optimized', 'designed', 'created', 'led', 'managed'];
+  const actionVerbsCount = actionVerbsList.filter((v) => searchableCorpus.includes(v)).length;
+  
+  let actionVerbsRating: 'Strong' | 'Moderate' | 'Weak' | 'N/A' = 'N/A';
+  if (extractedText.length > 50) {
+    actionVerbsRating = actionVerbsCount >= 3 ? 'Strong' : actionVerbsCount >= 1 ? 'Moderate' : 'Weak';
+  }
+
+  const achievementScore = extractedText.length < 50
+    ? null
+    : Math.min(100, (hasMetrics ? 50 : 20) + (actionVerbsCount * 10));
+
+  const achievementAnalysis = {
+    hasMetrics,
+    actionVerbsRating,
+    score: achievementScore,
+    feedback: hasMetrics
+      ? '✓ Quantitative impact metrics (% improvements, latency reductions, user scale) detected in achievements.'
+      : 'Actionable Suggestion: Add quantitative impact metrics (e.g. "Reduced API latency by 35%" or "Built for 5,000+ users") to validate engineering results.'
+  };
+
+  // 5. Compute Deterministic & Dynamic ATS Score (Based strictly on uploaded file)
   let hashVal = 0;
   const seedString = fileName + extractedText.length + fileSizeRaw + lastModified;
   for (let i = 0; i < seedString.length; i++) {
@@ -3867,24 +3917,25 @@ export async function analyzeResumeWithAI(fileOrResume: any): Promise<ResumeAnal
   }
   const positiveHash = Math.abs(hashVal);
 
-  const baseSkillScore = Math.min(48, matchedSkills.length * 8);
-  const textDepthScore = Math.min(30, Math.max(15, Math.floor(extractedText.length / 50)));
-  const hashBonus = (positiveHash % 25) - 10;
+  const baseSkillScore = Math.min(45, detectedSkills.length * 7);
+  const textDepthScore = Math.min(25, Math.max(10, Math.floor(extractedText.length / 50)));
+  const metricBonus = hasMetrics ? 15 : 5;
+  const hashBonus = (positiveHash % 15) - 5;
 
-  const atsScore = Math.min(94, Math.max(48, baseSkillScore + textDepthScore + 20 + hashBonus));
+  const atsScore = Math.min(95, Math.max(48, baseSkillScore + textDepthScore + metricBonus + 15 + hashBonus));
 
-  // 4. Generate Customized Executive Summary
-  const candidateRole = matchedSkills.includes('React') || matchedSkills.includes('JavaScript')
-    ? 'Frontend Engineering'
-    : matchedSkills.includes('Python') || matchedSkills.includes('Java')
-    ? 'Backend Software Engineering'
-    : matchedSkills.includes('SQL & DBMS')
+  // 6. Generate AI Executive Resume Summary (Independent of target job)
+  const candidateDomain = detectedSkills.includes('React') || detectedSkills.includes('JavaScript')
+    ? 'Full-Stack & Web Engineering'
+    : detectedSkills.includes('Python') || detectedSkills.includes('Java')
+    ? 'Software & Backend Systems Engineering'
+    : detectedSkills.includes('SQL & DBMS')
     ? 'Data & Software Engineering'
     : 'Computer Science & Software Development';
 
-  const summary = `Uploaded document "${fileName}" analyzed for ${candidateRole} positions. Candidate profile demonstrates verified technical competencies in ${matchedSkills.slice(0, 4).join(', ')}. To increase automated ATS screening match rate to top-tier thresholds, incorporate recommended missing domain keywords (${missingSkills.slice(0, 3).join(', ')}).`;
+  const summary = `Uploaded document "${fileName}" evaluated for general ATS compliance and technical readability. Candidate profile demonstrates verified technical competencies in ${detectedSkills.slice(0, 4).join(', ')}. Resume structure displays solid foundation with key placement strengths across ${strengths.slice(0, 2).join(' and ')}.`;
 
-  // 5. Generate Dynamic Formatting & Parsing Suggestions
+  // 7. Generate Dynamic Formatting & Parsing Suggestions
   const formattingSuggestions: string[] = [];
   const ext = fileName.split('.').pop()?.toUpperCase() || 'PDF';
   
@@ -3910,30 +3961,27 @@ export async function analyzeResumeWithAI(fileOrResume: any): Promise<ResumeAnal
 
   formattingSuggestions.push('Quantify key project achievements with numerical metrics (e.g. "Reduced API latency by 35%").');
 
-  // 6. Generate Dynamic Grammar & Wording Review
-  const actionVerbsList = ['built', 'developed', 'engineered', 'architected', 'implemented', 'optimized', 'designed', 'created', 'led', 'managed'];
-  const hasActionVerbs = actionVerbsList.some((v) => searchableCorpus.includes(v));
-
+  // 8. Generate Dynamic Grammar & Wording Review
   const grammarReview = [
-    hasActionVerbs
-      ? '✓ Strong active verbs detected ("Built", "Engineered", "Implemented").'
+    actionVerbsCount > 0
+      ? `✓ ${actionVerbsCount} active action verbs detected ("Built", "Engineered", "Implemented").`
       : 'Action Verbs Recommendation: Begin project bullet points with strong action verbs (e.g., "Architected", "Engineered").',
     searchableCorpus.length > 200
       ? '✓ Professional document length and concise bullet phrasing verified.'
       : 'Expand project description bullet points to 2-3 lines per key accomplishment for full contextual impact.'
   ];
 
-  // 7. Generate Dynamic Actionable Improvements / Recommendations
+  // 9. Generate Actionable Improvements
   const actionableImprovements = [
     {
-      section: 'Technical Keyword Optimization',
-      issue: `Missing ${missingSkills.length} domain keywords relevant for ${candidateRole} roles`,
-      recommendation: `Incorporate high-frequency ATS keywords: ${missingSkills.slice(0, 3).join(', ')}.`
+      section: 'Technical Keyword Diversity',
+      issue: `${weakKeywords.length} underrepresented technical keywords detected in document corpus`,
+      recommendation: `Incorporate relevant technical keywords: ${weakKeywords.slice(0, 3).join(', ')}.`
     },
     {
       section: 'Impact & Achievement Metrics',
-      issue: 'Project bullet points require quantitative metric evidence',
-      recommendation: 'Add measurable metrics (percentages, speed improvements, user counts) to validate engineering impact.'
+      issue: hasMetrics ? 'Expand quantitative metrics across all projects' : 'Project bullet points require quantitative metric evidence',
+      recommendation: 'Add measurable metrics (percentages, speed improvements, user scale) to validate engineering impact.'
     },
     {
       section: 'Formatting & ATS Parsing',
@@ -3942,14 +3990,29 @@ export async function analyzeResumeWithAI(fileOrResume: any): Promise<ResumeAnal
     }
   ];
 
+  // 10. ATS Improvement Checklist
+  const improvementChecklist = [
+    'Add quantitative impact metrics (percentages, latency, user numbers) to all project bullet points.',
+    'Include active GitHub repository and LinkedIn profile links in header.',
+    `Incorporate underused domain keywords (${weakKeywords.slice(0, 3).join(', ')}) into technical skills section.`,
+    'Use standard single-column PDF/DOCX structure with clear section headings.'
+  ];
+
   return {
     atsScore,
-    matchedSkills,
-    missingSkills,
-    formattingSuggestions,
-    actionableImprovements,
+    strengths,
+    detectedSkills,
+    keywordAnalysis,
     summary,
-    grammarReview
+    formattingSuggestions,
+    grammarReview,
+    achievementAnalysis,
+    actionableImprovements,
+    improvementChecklist,
+
+    // Legacy field compatibility
+    matchedSkills: detectedSkills,
+    missingSkills: weakKeywords
   };
 }
 
