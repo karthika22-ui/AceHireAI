@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Sparkles,
   ArrowLeft,
@@ -399,9 +399,30 @@ const sampleMiniData: ResumeData = {
 };
 
 // MINIATURE PREVIEW FOR TEMPLATE GALLERY MODAL CARDS ONLY
-const TemplateMiniPreview: React.FC<{ templateId: string }> = ({ templateId }) => {
+const TemplateMiniPreview: React.FC<{ templateId: string; className?: string }> = ({ templateId, className = '' }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState<number>(0.35);
+
+  useEffect(() => {
+    const updateScale = () => {
+      if (containerRef.current) {
+        const width = containerRef.current.clientWidth;
+        if (width > 0) {
+          setScale(width / 794);
+        }
+      }
+    };
+
+    updateScale();
+    const observer = new ResizeObserver(updateScale);
+    if (containerRef.current) {
+      observer.observe(containerRef.current);
+    }
+    return () => observer.disconnect();
+  }, []);
+
   const isPhoto = templateId.startsWith('photo-');
-  const miniData = isPhoto
+  const miniData: ResumeData = isPhoto
     ? {
         ...sampleMiniData,
         photoUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'
@@ -410,14 +431,17 @@ const TemplateMiniPreview: React.FC<{ templateId: string }> = ({ templateId }) =
 
   return (
     <div
-      className={`w-full ${
-        isPhoto ? 'h-64' : 'h-56'
-      } overflow-hidden rounded-lg bg-white border border-slate-200 dark:border-slate-800 shadow-sm relative select-none pointer-events-none flex items-start justify-center transition-all`}
+      ref={containerRef}
+      className={`w-full aspect-[210/297] rounded-xl bg-white border border-slate-200 dark:border-slate-800 shadow-md relative select-none pointer-events-none overflow-hidden transition-all flex items-start justify-start ${className}`}
     >
       <div
-        className={`w-[420px] ${
-          isPhoto ? 'h-[660px] scale-[0.38]' : 'h-[565px] scale-[0.38]'
-        } origin-top-left bg-white text-slate-900 pointer-events-none box-border p-2 overflow-hidden`}
+        style={{
+          width: '794px',
+          height: '1123px',
+          transform: `scale(${scale})`,
+          transformOrigin: 'top left'
+        }}
+        className="absolute top-0 left-0 bg-white text-slate-900 pointer-events-none box-border p-5 overflow-hidden"
       >
         <ResumePreviewTemplates data={miniData} template={templateId} />
       </div>
@@ -1045,21 +1069,21 @@ export const ResumeBuilderWizard: React.FC<ResumeBuilderWizardProps> = ({ onBack
                 </div>
 
                 {/* CURRENT TEMPLATE FEATURE CARD */}
-                <div className="p-6 rounded-2xl bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800 space-y-4">
+                <div className="p-5 sm:p-6 rounded-2xl bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800 space-y-4 shadow-sm">
                   <span className="text-xs font-extrabold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider block">
                     Active Design Selection
                   </span>
                   {RESUME_TEMPLATES_LIST.find((t) => t.id === formData.selectedTemplate) && (
-                    <div className="flex flex-col sm:flex-row items-center gap-6">
-                      <div className="w-44 shrink-0">
+                    <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
+                      <div className="w-36 sm:w-40 shrink-0 shadow-lg rounded-xl overflow-hidden">
                         <TemplateMiniPreview templateId={formData.selectedTemplate || 'modern'} />
                       </div>
-                      <div className="space-y-3 flex-1 text-left">
-                        <div className="flex items-center gap-2">
+                      <div className="space-y-3 flex-1 text-left pt-1">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <h3 className="text-xl font-extrabold text-slate-900 dark:text-white font-['Space_Grotesk']">
                             {RESUME_TEMPLATES_LIST.find((t) => t.id === formData.selectedTemplate)!.name}
                           </h3>
-                          <span className="px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-[10px] font-extrabold border border-indigo-500/20">
+                          <span className="px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-[10px] font-extrabold border border-indigo-500/20">
                             {RESUME_TEMPLATES_LIST.find((t) => t.id === formData.selectedTemplate)!.category}
                           </span>
                         </div>
@@ -1070,8 +1094,9 @@ export const ResumeBuilderWizard: React.FC<ResumeBuilderWizardProps> = ({ onBack
                           <button
                             type="button"
                             onClick={() => setIsTemplateModalOpen(true)}
-                            className="px-5 py-2.5 rounded-xl bg-indigo-600 text-white font-extrabold text-xs flex items-center gap-1.5 shadow hover:bg-indigo-700 cursor-pointer"
+                            className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold text-xs flex items-center gap-1.5 shadow-md shadow-indigo-600/20 transition-all cursor-pointer"
                           >
+                            <Layout className="w-3.5 h-3.5" />
                             <span>Browse All 30 Resume Templates</span>
                             <ArrowRight className="w-3.5 h-3.5" />
                           </button>
@@ -1907,8 +1932,8 @@ export const ResumeBuilderWizard: React.FC<ResumeBuilderWizardProps> = ({ onBack
               </div>
             </div>
 
-            {/* COMPACT 4-COLUMN RESPONSIVE GRID SHOWING MULTIPLE COMPLETE A4 MINIATURE RESUME CARDS AT ONCE */}
-            <div className="p-5 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+            {/* 4-COLUMN RESPONSIVE GRID SHOWING MULTIPLE COMPLETE A4 MINIATURE RESUME CARDS AT ONCE */}
+            <div className="p-5 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
               {filteredTemplates.map((tpl) => {
                 const isSelected = formData.selectedTemplate === tpl.id;
                 const isNotified = selectedNotificationId === tpl.id;
