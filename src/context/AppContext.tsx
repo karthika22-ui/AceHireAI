@@ -281,6 +281,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const handleAuthUserChange = async (userId: string, email: string, userMetadata?: Record<string, any>) => {
+    const isNewLoginEvent = !isLoggedIn || currentUserId !== userId;
     setIsLoggedIn(true);
     setCurrentUserId(userId);
 
@@ -335,19 +336,85 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           googleAvatar ||
           fetchedProfile?.avatarUrl ||
           'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+        loginCount: 1,
+        isFirstLogin: true,
+        lastLoginAt: new Date().toISOString(),
         createdAt: fetchedProfile?.createdAt || new Date().toISOString()
       };
       fetchedProfile = newProfile;
       await SupabaseService.saveProfile(newProfile, userId);
+    } else if (isNewLoginEvent) {
+      // Existing profile logging in again -> update login count & returning state
+      const currentCount = fetchedProfile.loginCount || 1;
+      const updatedProfile: UserProfile = {
+        ...fetchedProfile,
+        id: userId,
+        loginCount: currentCount + 1,
+        isFirstLogin: false,
+        lastLoginAt: new Date().toISOString()
+      };
+      fetchedProfile = updatedProfile;
+      await SupabaseService.saveProfile(updatedProfile, userId);
     }
 
-    if (fetchedProfile) setUserState(fetchedProfile);
-    if (fetchedScores) setReadinessScore(fetchedScores);
-    if (fetchedResume) setResumeState(fetchedResume);
-    if (fetchedActivities) {
+    if (fetchedProfile) {
+      setUserState(fetchedProfile);
+      if (typeof window !== 'undefined' && fetchedProfile.email) {
+        try {
+          const cleanEmail = fetchedProfile.email.trim().toLowerCase();
+          localStorage.setItem(`acehire_user_profile_${cleanEmail}`, JSON.stringify(fetchedProfile));
+          localStorage.setItem('acehire_active_user', JSON.stringify(fetchedProfile));
+        } catch (e) {}
+      }
+    }
+
+    if (fetchedScores && typeof fetchedScores.overall === 'number' && (fetchedScores.overall > 0 || fetchedScores.lastUpdated !== 'Never')) {
+      setReadinessScore(fetchedScores);
+    } else if (email || fetchedProfile?.email) {
+      const cleanEmail = (email || fetchedProfile?.email || '').trim().toLowerCase();
+      const savedScore = localStorage.getItem(`acehire_readiness_score_${cleanEmail}`);
+      if (savedScore) {
+        try {
+          const parsed = JSON.parse(savedScore);
+          if (parsed && typeof parsed.overall === 'number') setReadinessScore(parsed);
+        } catch (e) {}
+      } else if (fetchedScores) {
+        setReadinessScore(fetchedScores);
+      }
+    }
+
+    if (fetchedResume && (fetchedResume.fullName || (fetchedResume.skills && fetchedResume.skills.length > 0))) {
+      setResumeState(fetchedResume);
+    } else if (email || fetchedProfile?.email) {
+      const cleanEmail = (email || fetchedProfile?.email || '').trim().toLowerCase();
+      const savedResume = localStorage.getItem(`acehire_resume_${cleanEmail}`);
+      if (savedResume) {
+        try {
+          const parsed = JSON.parse(savedResume);
+          if (parsed) setResumeState(parsed);
+        } catch (e) {}
+      } else if (fetchedResume) {
+        setResumeState(fetchedResume);
+      }
+    }
+
+    if (fetchedActivities && fetchedActivities.length > 0) {
       setRecentActivities(fetchedActivities);
       setCompletedTasksCount(fetchedActivities.length);
+    } else if (email || fetchedProfile?.email) {
+      const cleanEmail = (email || fetchedProfile?.email || '').trim().toLowerCase();
+      const savedActivities = localStorage.getItem(`acehire_recent_activities_${cleanEmail}`);
+      if (savedActivities) {
+        try {
+          const parsed = JSON.parse(savedActivities);
+          if (Array.isArray(parsed)) {
+            setRecentActivities(parsed);
+            setCompletedTasksCount(parsed.length);
+          }
+        } catch (e) {}
+      }
     }
+
     if (fetchedSettings) {
       setSettingsState(fetchedSettings);
     }
@@ -720,12 +787,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // SUPABASE LOGOUT ACTION
   const logout = async (): Promise<void> => {
-    await SupabaseService.signOut();
+    try {
+      await SupabaseService.signOut();
+    } catch (e) {
+      console.warn('Sign out error:', e);
+    }
+
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem('acehire_active_user');
+      } catch (e) {}
+    }
+
     setIsLoggedIn(false);
     setCurrentUserId('');
+    setUserState(getInitialProfileForEmail('guest@college.edu'));
+    setReadinessScore(INITIAL_READINESS);
+    setRecentActivities([]);
+    setCompletedTasksCount(0);
 
     setShowSplash(true);
-    setActiveTab('login');
+    setActiveTabDirectly('login');
   };
 
   const updateLanguagePreference = (lang: LanguagePreference) => {

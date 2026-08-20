@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   User, Mail, Phone, GraduationCap, Building2, Edit3, Save, CheckCircle2, 
-  Camera, X, Upload, Trash2, Sparkles, Lock, Shield, Key, Brain, Languages, Briefcase
+  Camera, X, Upload, Trash2, Sparkles, Lock, Shield, Key, Brain, Languages, Briefcase, LogOut
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { UserStatus, LanguagePreference } from '../../types';
@@ -24,7 +24,7 @@ const AVATAR_PRESETS = [
 ];
 
 export const ProfileView: React.FC = () => {
-  const { user, setUser } = useApp();
+  const { user, setUser, logout } = useApp();
 
   const [isEditing, setIsEditing] = useState(false);
   const [showAvatarModal, setShowAvatarModal] = useState(false);
@@ -245,7 +245,7 @@ export const ProfileView: React.FC = () => {
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2.5 shrink-0">
             {!isEditing ? (
               <button
                 type="button"
@@ -265,6 +265,16 @@ export const ProfileView: React.FC = () => {
                 <span>Save Changes</span>
               </button>
             )}
+
+            <button
+              type="button"
+              onClick={logout}
+              className="px-4 py-2.5 rounded-2xl bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/30 text-xs font-extrabold shadow-sm transition-all duration-300 flex items-center gap-2 cursor-pointer hover:scale-105 active:scale-95"
+              title="Log out of your account"
+            >
+              <LogOut className="w-4 h-4 text-red-500" />
+              <span>Logout</span>
+            </button>
           </div>
         </div>
 
@@ -532,24 +542,46 @@ export const ProfileView: React.FC = () => {
                 </h2>
               </div>
 
-              <div className="p-4 sm:p-5 rounded-2xl bg-slate-100/90 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="space-y-1">
-                  <span className="text-xs font-extrabold text-slate-900 dark:text-white block">
-                    Password & Security Key
-                  </span>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Password is encrypted and stored securely.
-                  </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-4 sm:p-5 rounded-2xl bg-slate-100/90 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <span className="text-xs font-extrabold text-slate-900 dark:text-white block">
+                      Password & Security
+                    </span>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Password is encrypted and stored securely.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={openPasswordModal}
+                    className="px-4 py-2.5 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-extrabold flex items-center gap-2 cursor-pointer shrink-0 transition-all"
+                  >
+                    <Key className="w-4 h-4 text-indigo-500" />
+                    <span>Change Password</span>
+                  </button>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={openPasswordModal}
-                  className="px-5 py-2.5 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-extrabold flex items-center gap-2 cursor-pointer shrink-0 transition-all"
-                >
-                  <Key className="w-4 h-4 text-indigo-500" />
-                  <span>Change Password</span>
-                </button>
+                <div className="p-4 sm:p-5 rounded-2xl bg-red-500/5 dark:bg-red-500/10 border border-red-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <span className="text-xs font-extrabold text-slate-900 dark:text-white block">
+                      Active Account Session
+                    </span>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Sign out safely. Progress remains saved.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={logout}
+                    className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-extrabold shadow-lg shadow-red-600/30 flex items-center gap-2 cursor-pointer shrink-0 transition-all hover:scale-105 active:scale-95"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span>Sign Out / Logout</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
