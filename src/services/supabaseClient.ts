@@ -127,7 +127,7 @@ export class SupabaseService {
 
     const redirectUrl = getAuthRedirectUrl();
 
-    const { data, error } = await supabase.auth.signUp({
+    let { data, error } = await supabase.auth.signUp({
       email: cleanEmail,
       password: pass,
       options: {
@@ -157,19 +157,24 @@ export class SupabaseService {
     });
 
     if (error) {
-      if (
-        error.status === 429 ||
-        error.code === 'over_email_send_rate_limit' ||
-        (error.message && error.message.toLowerCase().includes('rate limit'))
-      ) {
-        return {
-          data,
-          error: new Error(
-            'Supabase email confirmation rate limit reached (HTTP 429). The email service is temporarily rate-limited by Supabase server. Please wait a while before creating another account, or log in if your account is already created.'
-          )
-        };
+      const msg = error.message ? error.message.toLowerCase() : '';
+      if (msg.includes('already registered') || msg.includes('user_already_exists')) {
+        // User already exists in auth -> Attempt auto sign-in with password
+        const signInRes = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password: pass
+        });
+
+        if (signInRes.data?.user) {
+          return { data: signInRes.data, error: null };
+        } else {
+          return {
+            data: null,
+            error: new Error('An account with this email address already exists. Please sign in with your password.')
+          };
+        }
       }
-      return { data, error };
+      return { data: null, error: new Error(error.message || 'Account creation failed. Please check your details.') };
     }
 
     if (data?.user) {
@@ -203,6 +208,19 @@ export class SupabaseService {
         createdAt: new Date().toISOString()
       };
       await this.saveProfile(fullProfile, data.user.id);
+
+      // If session is null (e.g. email confirmation pending on remote Supabase), attempt auto sign-in immediately
+      if (!data.session) {
+        try {
+          const autoSignIn = await supabase.auth.signInWithPassword({
+            email: cleanEmail,
+            password: pass
+          });
+          if (autoSignIn.data?.session) {
+            data = autoSignIn.data;
+          }
+        } catch (e) {}
+      }
     }
     return { data, error: null };
   }

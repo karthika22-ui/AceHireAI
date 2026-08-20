@@ -47,18 +47,13 @@ export const AuthModal: React.FC = () => {
 
     try {
       if (mode === 'signup' && password) {
-        const res = await signup(email, password, {
+        await signup(email, password, {
           name,
           phone,
           userStatus,
           college,
           department
         });
-        if (res?.needsVerification) {
-          setModalSuccess(res.message || 'Account created! Please check your email inbox to verify your account.');
-          setMode('login');
-          return;
-        }
       } else if (mode === 'login' && password) {
         await login(email, password);
       } else {

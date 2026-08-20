@@ -90,7 +90,7 @@ export const LoginPage: React.FC = () => {
 
     try {
       if (isSignUp) {
-        const res = await signup(email, password, {
+        await signup(email, password, {
           name,
           phone,
           userStatus,
@@ -109,11 +109,6 @@ export const LoginPage: React.FC = () => {
           targetIndustry,
           passoutYear
         });
-        if (res?.needsVerification) {
-          setIsSignUp(false);
-          setSignUpStep(1);
-          setVerificationSuccessMsg(res.message || 'Account created successfully! Please check your email inbox to verify your account, then sign in.');
-        }
       } else {
         await login(email, password);
       }

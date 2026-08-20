@@ -708,17 +708,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const userId = data.user.id;
 
-    // Check if email verification is required (no session token returned yet)
-    if (!data.session) {
-      setIsLoggedIn(false);
-      setCurrentUserId('');
-      return {
-        success: true,
-        needsVerification: true,
-        message: 'Account created successfully! Please check your email inbox to verify your account, then sign in.'
-      };
-    }
-
     setIsLoggedIn(true);
     setCurrentUserId(userId);
 
