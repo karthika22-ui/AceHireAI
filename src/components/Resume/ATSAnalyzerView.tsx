@@ -118,45 +118,80 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
 
       // If text contains PDF stream signatures
       if (file.name.toLowerCase().endsWith('.pdf') || rawText.includes('%PDF')) {
-        const textChunks: string[] = [];
+        const textPieces: string[] = [];
 
-        // 1. Extract strings inside parenthesis followed by Tj / TJ operators: (text) Tj
-        const tjMatches = rawText.match(/\((.*?)\)\s*T[jJ]/gs) || [];
-        for (const m of tjMatches) {
-          const content = m.replace(/\)\s*T[jJ]$/, '').replace(/^\(/, '');
-          const unescaped = content.replace(/\\([()\\])/g, '$1').trim();
-          if (unescaped && !unescaped.startsWith('/') && !unescaped.startsWith('0 0 0') && unescaped.length > 0) {
-            textChunks.push(unescaped);
+        // 1. Extract Parenthesized String Literals inside Tj / TJ blocks: (Text) Tj or (Text) TJ
+        const parenthesizedRegex = /\(([^()\\]*(?:\\.[^()\\]*)*)\)\s*(?:T[jJ]|\)|\])/g;
+        let match;
+        while ((match = parenthesizedRegex.exec(rawText)) !== null) {
+          const token = match[1]
+            .replace(/\\([()\\])/g, '$1')
+            .replace(/\\n/g, ' ')
+            .replace(/\\r/g, ' ')
+            .replace(/\\t/g, ' ')
+            .trim();
+          if (
+            token &&
+            token.length > 0 &&
+            !token.startsWith('/') &&
+            !token.startsWith('0 0 0') &&
+            !token.startsWith('1 0 0') &&
+            !/^[0-9\.\-\s]+$/.test(token)
+          ) {
+            textPieces.push(token);
           }
         }
 
-        // 2. Extract array string items [ (text1) -10 (text2) ] TJ
-        const arrayMatches = rawText.match(/\[\s*(\(.*?\)\s*)+\]\s*TJ/gs) || [];
-        for (const arr of arrayMatches) {
-          const strings = arr.match(/\((.*?)\)/g) || [];
-          for (const s of strings) {
-            const content = s.slice(1, -1);
-            const unescaped = content.replace(/\\([()\\])/g, '$1').trim();
-            if (unescaped && !unescaped.startsWith('/') && unescaped.length > 0) {
-              textChunks.push(unescaped);
+        // 2. Extract Hex-encoded Strings <43414E444944415445204E414D45> Tj
+        const hexRegex = /<([0-9A-Fa-f\s]{4,})>\s*T[jJ]/g;
+        while ((match = hexRegex.exec(rawText)) !== null) {
+          const hex = match[1].replace(/\s+/g, '');
+          let str = '';
+          for (let i = 0; i < hex.length; i += 2) {
+            const code = parseInt(hex.substr(i, 2), 16);
+            if (code >= 32 && code <= 126) {
+              str += String.fromCharCode(code);
+            }
+          }
+          if (str.trim().length > 1) {
+            textPieces.push(str.trim());
+          }
+        }
+
+        if (textPieces.length >= 3) {
+          const result = textPieces.join(' ').replace(/\s+/g, ' ').trim();
+          if (result.length > 30) {
+            return result;
+          }
+        }
+
+        // 3. Fallback PDF Stream Text Harvester
+        const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
+        const streamTexts: string[] = [];
+        while ((match = streamRegex.exec(rawText)) !== null) {
+          const streamContent = match[1];
+          const innerStrings = streamContent.match(/\(([^()\\]*(?:\\.[^()\\]*)*)\)/g) || [];
+          for (const s of innerStrings) {
+            const clean = s.slice(1, -1).replace(/\\([()\\])/g, '$1').trim();
+            if (clean.length > 1 && !clean.startsWith('/')) {
+              streamTexts.push(clean);
             }
           }
         }
 
-        if (textChunks.length > 3) {
-          return textChunks.join(' ').replace(/\s+/g, ' ').trim();
+        if (streamTexts.length > 0) {
+          return streamTexts.join(' ').replace(/\s+/g, ' ').trim();
         }
 
-        // Fallback PDF text cleaning: strip binary non-printable characters & PDF object syntax
-        const sanitized = rawText
-          .replace(/%PDF-[\s\S]*?stream/g, '')
-          .replace(/endstream[\s\S]*?endobj/g, '')
-          .replace(/[/<>{}[\]()]/g, ' ')
-          .replace(/[^\x20-\x7E\n\r\t]/g, ' ')
-          .replace(/\b(obj|endobj|stream|endstream|xref|trailer|startxref)\b/gi, ' ')
+        // 4. Last-Resort Text Cleaner
+        const cleaned = rawText
+          .replace(/[\x00-\x1F\x7F-\xFF]/g, ' ')
+          .replace(/\/[\w]+/g, ' ')
+          .replace(/\b(obj|endobj|stream|endstream|xref|trailer|startxref|BT|ET|Td|TD|Tj|TJ|Tf|cm|rg|RG)\b/g, ' ')
           .replace(/\s+/g, ' ')
           .trim();
-        return sanitized;
+
+        return cleaned;
       }
       return rawText;
     } catch (e) {
@@ -569,6 +604,21 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
       }
 
       const fileName = `${candidateName.replace(/\s+/g, '_')}_ATS_Resume.pdf`;
+
+      // REQUIREMENT 7: INTERNAL ROUND-TRIP ATS VALIDATION CHECK BEFORE DOWNLOAD
+      try {
+        const pdfBlob = pdf.output('blob');
+        const validationFile = new File([pdfBlob], fileName, { type: 'application/pdf' });
+        const extractedValidationText = await extractReadableTextFromPdfOrFile(validationFile);
+        const roundTripResult = await analyzeResumeWithAI({
+          name: fileName,
+          extractedText: extractedValidationText
+        });
+        console.log(`[Internal ATS Validation Check] Pre-download ATS score = ${improvedResult?.improvedScore}%, Post-download PDF re-scanned score = ${roundTripResult.atsScore}%`);
+      } catch (valErr) {
+        console.warn('Internal ATS validation error:', valErr);
+      }
+
       pdf.save(fileName);
     } catch (err) {
       console.error('PDF generation error', err);
