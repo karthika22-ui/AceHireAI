@@ -497,27 +497,13 @@ export const MockInterviewView: React.FC = () => {
     setSavedSession(null);
   };
 
-  // Speech Recognition with Non-Duplicating Stream Processing (Requirement 1)
-  const resetSilenceAutoStopTimer = () => {
-    if (silenceTimerRef.current) {
-      clearTimeout(silenceTimerRef.current);
-    }
-    silenceTimerRef.current = setTimeout(() => {
-      if (isListeningRef.current) {
-        isListeningRef.current = false;
-        setIsListening(false);
-        if (recognitionRef.current) {
-          try {
-            recognitionRef.current.stop();
-          } catch (e) {}
-        }
-      }
-    }, 3000);
-  };
+  // Cumulative transcript tracking refs (zero truncation)
+  const accumulatedTranscriptRef = useRef<string>('');
+  const currentInterimRef = useRef<string>('');
 
   const toggleSpeechRecognition = () => {
     if (!('SpeechRecognition' in window) && !('webkitSpeechRecognition' in window)) {
-      alert('Speech Recognition is not supported in this browser. Please use Chrome/Edge.');
+      alert('Speech Recognition is not supported in this browser. Please use Chrome or Edge.');
       return;
     }
     if (micMuted) {
@@ -526,6 +512,10 @@ export const MockInterviewView: React.FC = () => {
     }
 
     if (!isListening) {
+      if (!cameraActive) {
+        startCamera();
+      }
+
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       const recognition = new SpeechRecognition();
       recognitionRef.current = recognition;
@@ -533,38 +523,45 @@ export const MockInterviewView: React.FC = () => {
       recognition.interimResults = true;
       recognition.lang = 'en-US';
 
-      baseAnswerRef.current = userAnswer.trim();
-      capturedFramesRef.current = [];
       isListeningRef.current = true;
       setIsListening(true);
 
-      let sessionFinalText = '';
-      resetSilenceAutoStopTimer();
+      // Preserve existing text if restarting speech
+      if (!accumulatedTranscriptRef.current && userAnswer) {
+        accumulatedTranscriptRef.current = userAnswer;
+      }
+
+      capturedFramesRef.current = [];
 
       recognition.onresult = (event: any) => {
-        resetSilenceAutoStopTimer();
-        let currentFinal = '';
-        let currentInterim = '';
+        let finalChunk = '';
+        let interimChunk = '';
 
-        for (let i = 0; i < event.results.length; i++) {
+        for (let i = event.resultIndex; i < event.results.length; i++) {
           const res = event.results[i];
           const transcriptChunk = res[0].transcript;
           if (res.isFinal) {
-            currentFinal += transcriptChunk + ' ';
+            finalChunk += transcriptChunk + ' ';
           } else {
-            currentInterim += transcriptChunk;
+            interimChunk += transcriptChunk;
           }
         }
 
-        sessionFinalText = currentFinal;
+        if (finalChunk) {
+          accumulatedTranscriptRef.current = (accumulatedTranscriptRef.current + ' ' + finalChunk)
+            .replace(/\s+/g, ' ')
+            .trim();
+        }
+        currentInterimRef.current = interimChunk;
 
-        const base = baseAnswerRef.current;
-        const full = [base, sessionFinalText.trim(), currentInterim.trim()]
+        const combinedText = [accumulatedTranscriptRef.current, interimChunk]
           .filter(Boolean)
           .join(' ')
-          .replace(/\s+/g, ' ');
+          .replace(/\s+/g, ' ')
+          .trim();
 
-        setUserAnswer(full.slice(0, 800));
+        // Full un-truncated transcript (NO .slice(0, 800) character limits)
+        setUserAnswer(combinedText);
       };
 
       recognition.onerror = (err: any) => {
@@ -572,25 +569,23 @@ export const MockInterviewView: React.FC = () => {
         if (err.error === 'not-allowed' || err.error === 'service-not-allowed') {
           setIsListening(false);
           isListeningRef.current = false;
-          if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
           alert('Microphone access denied. Please check browser permissions.');
         }
       };
 
       recognition.onend = () => {
         if (isListeningRef.current) {
-          if (userAnswer.trim()) {
-            baseAnswerRef.current = userAnswer.trim();
-          }
           try {
             recognition.start();
           } catch (e) {
-            setIsListening(false);
-            isListeningRef.current = false;
+            setTimeout(() => {
+              if (isListeningRef.current) {
+                try { recognition.start(); } catch (err) {}
+              }
+            }, 300);
           }
         } else {
           setIsListening(false);
-          if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
         }
       };
 
@@ -599,13 +594,11 @@ export const MockInterviewView: React.FC = () => {
       } catch (e) {
         setIsListening(false);
         isListeningRef.current = false;
-        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
         console.error('Speech recognition start error', e);
       }
     } else {
       isListeningRef.current = false;
       setIsListening(false);
-      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
       if (recognitionRef.current) {
         try {
           recognitionRef.current.stop();
@@ -733,10 +726,15 @@ export const MockInterviewView: React.FC = () => {
     setSessionCompleted(false);
     setCurrentQuestionIndex(0);
     setUserAnswer('');
+    accumulatedTranscriptRef.current = '';
+    currentInterimRef.current = '';
     setFeedback(null);
     setTimerSeconds(getConfiguredDuration(selectedType));
     setRecSeconds(0);
     setShowModelAnswer(false);
+
+    // Auto-prompt camera permission and start webcam
+    startCamera();
 
     // Immediate Scroll to Top
     window.scrollTo({ top: 0, behavior: 'instant' });
@@ -1559,9 +1557,15 @@ export const MockInterviewView: React.FC = () => {
                     {cameraActive ? (
                       <video ref={interviewVideoRef} autoPlay playsInline muted className="w-full h-full object-cover rounded-xl" />
                     ) : (
-                      <div className="flex flex-col items-center justify-center space-y-1 text-slate-500 p-2 text-center">
-                        <VideoOff className="w-5 h-5 text-slate-500" />
-                        <span className="text-[11px] font-extrabold text-slate-400">Camera Off</span>
+                      <div className="flex flex-col items-center justify-center space-y-1.5 text-slate-400 p-2.5 text-center">
+                        <VideoOff className="w-6 h-6 text-amber-400" />
+                        <span className="text-xs font-extrabold text-white">Camera Required</span>
+                        <button
+                          onClick={startCamera}
+                          className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-[11px] font-extrabold shadow-md transition-all cursor-pointer"
+                        >
+                          Turn On Camera
+                        </button>
                       </div>
                     )}
                   </div>
@@ -1577,79 +1581,114 @@ export const MockInterviewView: React.FC = () => {
               </div>
             </div>
 
-            {/* ANSWER INPUT AREA DIRECTLY BELOW WITH NO EXTRA GAPS */}
+            {/* VOICE ANSWER TRANSCRIPT AREA (VOICE ONLY — NO TYPING BOX) */}
             <div className="space-y-3 pt-3 border-t border-slate-800/80">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-2">
                 <label className="text-xs font-extrabold uppercase tracking-wider text-slate-200 flex items-center gap-2">
-                  <span>Your Answer</span>
-                  <span className="text-[11px] font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20 flex items-center gap-1.5 animate-in fade-in duration-300">
-                    <Check className="w-3.5 h-3.5 text-emerald-400" /> Saved just now
-                  </span>
+                  <span>Spoken Answer Live Transcript</span>
+                  {isListening && (
+                    <span className="text-[11px] font-bold text-red-400 bg-red-500/10 px-2.5 py-0.5 rounded-full border border-red-500/20 flex items-center gap-1.5 animate-pulse">
+                      <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" /> Live Transcribing...
+                    </span>
+                  )}
+                  {userAnswer.length > 0 && !isListening && (
+                    <span className="text-[11px] font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20 flex items-center gap-1.5 animate-in fade-in duration-300">
+                      <Check className="w-3.5 h-3.5 text-emerald-400" /> Speech Captured
+                    </span>
+                  )}
                 </label>
 
-                {/* Speech Input & Paste Controls */}
+                {/* Speech Control Buttons */}
                 <div className="flex items-center gap-2 flex-wrap">
-                  {/* Prominent "Start Speaking" Button */}
+                  {/* Prominent "Start / Stop Speaking" Button */}
                   <button
-                    onClick={timeExpired ? undefined : toggleSpeechRecognition}
+                    onClick={() => {
+                      if (timeExpired) return;
+                      if (!cameraActive && !isListening) {
+                        startCamera();
+                      }
+                      toggleSpeechRecognition();
+                    }}
                     disabled={timeExpired}
                     className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-extrabold transition-all shadow-md ${
                       timeExpired
                         ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50'
                         : isListening
-                        ? 'bg-red-500 text-white animate-pulse shadow-red-500/30 cursor-pointer'
+                        ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse shadow-red-500/30 cursor-pointer'
                         : 'bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-blue-600/30 hover:scale-105 active:scale-95 cursor-pointer'
                     }`}
                   >
                     {isListening ? <MicOff className="w-4 h-4 text-white" /> : <Mic className="w-4 h-4 text-white" />}
-                    <span>{isListening ? 'Stop Speaking' : 'Start Speaking'}</span>
-                  </button>
-
-                  <button
-                    onClick={timeExpired ? undefined : handlePaste}
-                    disabled={timeExpired}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                  >
-                    <Copy className="w-3.5 h-3.5 text-purple-400" />
-                    <span>Paste</span>
+                    <span>{isListening ? 'Stop Recording' : 'Start Speaking'}</span>
                   </button>
 
                   {userAnswer.length > 0 && (
                     <button
-                      onClick={timeExpired ? undefined : handleClear}
-                      disabled={timeExpired}
+                      onClick={() => {
+                        if (timeExpired) return;
+                        setUserAnswer('');
+                        baseAnswerRef.current = '';
+                      }}
+                      disabled={timeExpired || isListening}
                       className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-red-500/20 text-red-400 border border-slate-700 hover:border-red-500/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>Clear</span>
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Re-record</span>
                     </button>
                   )}
                 </div>
               </div>
 
-              {/* Textarea Input */}
-              <textarea
-                rows={6}
-                maxLength={800}
-                value={userAnswer}
-                disabled={timeExpired}
-                onChange={(e) => setUserAnswer(e.target.value)}
-                placeholder={timeExpired ? "Your time is over. Please choose an option to continue." : "Type or speak your structured answer here..."}
-                className="w-full p-5 rounded-2xl border border-slate-700 bg-slate-950 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-inner leading-relaxed font-sans placeholder:text-slate-500 disabled:opacity-50 disabled:cursor-not-allowed"
-              />
+              {/* READ-ONLY LIVE TRANSCRIPT CONTAINER */}
+              <div
+                className={`w-full p-5 rounded-2xl border transition-all duration-300 ${
+                  isListening
+                    ? 'border-red-500/50 bg-slate-950/90 ring-2 ring-red-500/20 shadow-[0_0_20px_rgba(239,68,68,0.15)]'
+                    : userAnswer.length > 0
+                    ? 'border-emerald-500/40 bg-slate-950 text-white'
+                    : 'border-slate-800 bg-slate-950/70 text-slate-400'
+                } min-h-[140px] flex flex-col justify-between relative overflow-hidden`}
+              >
+                {/* Audio Waves Animation Overlay when listening */}
+                {isListening && (
+                  <div className="absolute top-3 right-4 flex items-center gap-1">
+                    <span className="w-1 h-4 bg-red-500 rounded-full animate-bounce [animation-delay:-0.4s]" />
+                    <span className="w-1 h-6 bg-red-400 rounded-full animate-bounce [animation-delay:-0.2s]" />
+                    <span className="w-1 h-3 bg-red-500 rounded-full animate-bounce [animation-delay:-0.3s]" />
+                    <span className="w-1 h-5 bg-red-400 rounded-full animate-bounce" />
+                  </div>
+                )}
 
-              {/* Live Indicators Bar (Requirement 5) */}
-              <div className="flex flex-wrap items-center justify-between text-[11px] text-slate-400 font-medium px-1 gap-2">
-                <div className="flex items-center gap-3">
-                  <span>{userAnswer.length} / 800 chars</span>
-                  <span>•</span>
-                  <span>{userAnswer.trim() ? userAnswer.trim().split(/\s+/).length : 0} words</span>
+                <div className="space-y-2">
+                  {userAnswer.trim() ? (
+                    <p className="text-sm sm:text-base text-slate-100 font-medium leading-relaxed font-sans whitespace-pre-wrap">
+                      "{userAnswer}"
+                    </p>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-6 text-center space-y-2">
+                      <Mic className={`w-8 h-8 ${isListening ? 'text-red-400 animate-pulse' : 'text-slate-600'}`} />
+                      <p className="text-xs text-slate-400 font-medium max-w-md">
+                        {isListening
+                          ? 'Listening to your response... Speak clearly into your microphone.'
+                          : 'Turn on your camera and click "Start Speaking" to answer the question verbally. Your spoken words will appear live on screen here.'}
+                      </p>
+                    </div>
+                  )}
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-slate-300 flex items-center gap-1">
-                    <Clock className="w-3 h-3 text-blue-400" />
-                    ~{Math.ceil((userAnswer.trim() ? userAnswer.trim().split(/\s+/).length : 0) / 2.2)} sec speaking time
-                  </span>
+
+                {/* Spoken Word & Time Status Footer */}
+                <div className="flex flex-wrap items-center justify-between text-[11px] text-slate-400 font-medium pt-3 mt-3 border-t border-slate-800/80 gap-2">
+                  <div className="flex items-center gap-3">
+                    <span className="font-mono text-slate-300">{userAnswer.length} / 800 chars</span>
+                    <span>•</span>
+                    <span className="font-mono text-slate-300">{userAnswer.trim() ? userAnswer.trim().split(/\s+/).length : 0} spoken words</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-300 flex items-center gap-1 font-mono">
+                      <Clock className="w-3 h-3 text-blue-400" />
+                      ~{Math.ceil((userAnswer.trim() ? userAnswer.trim().split(/\s+/).length : 0) / 2.2)}s speech duration
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>

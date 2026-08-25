@@ -302,6 +302,16 @@ export interface AchievementAnalysis {
   feedback: string;
 }
 
+export interface ImprovedResumeResult {
+  originalScore: number;
+  improvedScore: number; // Targets ~98-99%
+  improvedResumeText: string;
+  improvedResumeData?: ResumeData;
+  enhancementsApplied: string[];
+  keywordBoosts: string[];
+  scoreIncrease: number;
+}
+
 export interface ResumeAnalysis {
   atsScore: number; // 0 to 100
   strengths?: string[];
@@ -317,6 +327,7 @@ export interface ResumeAnalysis {
     recommendation: string;
   }[];
   improvementChecklist?: string[];
+  improvedResult?: ImprovedResumeResult;
 
   // Legacy field support for backwards-compatibility
   matchedSkills: string[];
