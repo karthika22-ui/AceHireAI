@@ -3795,6 +3795,8 @@ export async function analyzeResumeWithAI(fileOrResume: any): Promise<ResumeAnal
       extractedText = fileOrResume.extractedText || fileOrResume.summary || '';
       fileSizeRaw = fileOrResume.fileSizeRaw || 1024 * 1024;
       lastModified = fileOrResume.lastModified || Date.now();
+    } else if (typeof fileOrResume === 'string') {
+      extractedText = fileOrResume;
     }
   }
 
@@ -3932,9 +3934,23 @@ export async function analyzeResumeWithAI(fileOrResume: any): Promise<ResumeAnal
                        (searchableCorpus.includes('linkedin') ? 3 : 0) +
                        (searchableCorpus.includes('@') ? 3 : 0);
 
-  // Total Deterministic ATS Score (Range: 48 - 98)
+  // Total Deterministic ATS Score (Range: 0 - 98)
   const calculatedScore = sectionScore + skillsScore + actionVerbsScore + metricScore + contactScore;
-  const atsScore = Math.min(98, Math.max(48, calculatedScore));
+  const atsScore = Math.min(98, Math.max(0, calculatedScore));
+
+  console.log('=== CENTRAL ATS SCORING ENGINE AUDIT ===');
+  console.log('1. Document File Name:', fileName);
+  console.log('2. Extracted Input Text Length:', extractedText.length);
+  console.log('3. Score Components Breakdown:', {
+    sectionScore,
+    skillsScore,
+    actionVerbsScore,
+    metricScore,
+    contactScore,
+    calculatedScore,
+    finalAtsScore: atsScore
+  });
+  console.log('4. Detected Skills Count:', detectedSkills.length);
 
   // 6. Generate AI Executive Resume Summary (Independent of target job)
   const candidateDomain = detectedSkills.includes('React') || detectedSkills.includes('JavaScript')
@@ -4010,10 +4026,41 @@ export async function analyzeResumeWithAI(fileOrResume: any): Promise<ResumeAnal
     'Use standard single-column PDF/DOCX structure with clear section headings.'
   ];
 
+  const overallScore = atsScore;
+  const sectionScores = {
+    structureScore: sectionScore,
+    skillsScore,
+    actionVerbsScore,
+    metricScore,
+    contactScore
+  };
+
+  const missingSections = ['summary', 'skills', 'experience', 'projects', 'education']
+    .filter((sec) => !searchableCorpus.includes(sec));
+
+  const weaknesses = [
+    ...weakKeywords.map((k) => `Missing domain keyword: ${k}`),
+    ...(hasMetrics ? [] : ['Lacks quantitative impact metrics (% improvements, latency reductions, user scale)']),
+    ...missingSections.map((s) => `Missing standard section header: ${s.toUpperCase()}`)
+  ];
+
+  const recommendations = [
+    ...keywordSuggestions,
+    ...formattingSuggestions
+  ];
+
   return {
+    overallScore,
     atsScore,
+    sectionScores,
     strengths,
+    weaknesses,
+    missingSections,
     detectedSkills,
+    weakKeywords,
+    missingKeywords: weakKeywords,
+    recommendations,
+
     keywordAnalysis,
     summary,
     formattingSuggestions,
@@ -4026,6 +4073,102 @@ export async function analyzeResumeWithAI(fileOrResume: any): Promise<ResumeAnal
     matchedSkills: detectedSkills,
     missingSkills: weakKeywords
   };
+}
+
+export const analyzeResume = analyzeResumeWithAI;
+
+/**
+ * Single Source of Truth Canonical Resume Text Builder
+ * Constructs a clean, standardized, single-column plain text representation of ResumeData.
+ * Used for on-screen ATS analysis, PDF generation validation, and re-uploaded PDF parsing.
+ */
+export function buildCanonicalResumeText(data: ResumeData): string {
+  const candidateName = (data.fullName || 'CANDIDATE NAME').trim().toUpperCase();
+  const title = (data.professionalTitle || '').trim();
+  const contactParts = [
+    data.email ? `Email: ${data.email.trim()}` : '',
+    data.phone ? `Phone: ${data.phone.trim()}` : '',
+    data.location ? `Location: ${data.location.trim()}` : '',
+    data.linkedIn ? `LinkedIn: ${data.linkedIn.trim()}` : '',
+    data.gitHub ? `GitHub: ${data.gitHub.trim()}` : ''
+  ].filter(Boolean);
+
+  const sections: string[] = [];
+
+  // Header Block
+  sections.push(candidateName);
+  if (title) sections.push(title);
+  if (contactParts.length > 0) sections.push(contactParts.join(' | '));
+
+  // Executive Summary
+  if (data.summary && data.summary.trim()) {
+    sections.push(`EXECUTIVE SUMMARY\n${data.summary.trim()}`);
+  }
+
+  // Technical Skills
+  const allSkills = Array.from(
+    new Set([
+      ...(data.skills || []),
+      ...(data.technicalSkills || []),
+      ...(data.programmingLanguages || []),
+      ...(data.webTechnologies || []),
+      ...(data.databases || []),
+      ...(data.frameworksLibraries || []),
+      ...(data.toolsAndTech || []),
+      ...(data.otherSkills || [])
+    ])
+  ).filter(Boolean);
+
+  if (allSkills.length > 0) {
+    sections.push(`TECHNICAL SKILLS\n${allSkills.join(', ')}`);
+  }
+
+  // Work Experience
+  if (data.experience && data.experience.length > 0) {
+    const expText = data.experience
+      .map((exp) => {
+        const header = `${exp.role || 'Developer'} - ${exp.company || 'Organization'}${exp.duration ? ` (${exp.duration})` : ''}`;
+        const desc = exp.description ? `• ${exp.description.trim()}` : '';
+        return [header, desc].filter(Boolean).join('\n');
+      })
+      .join('\n\n');
+    sections.push(`WORK EXPERIENCE\n${expText}`);
+  }
+
+  // Key Technical Projects
+  if (data.projects && data.projects.length > 0) {
+    const projText = data.projects
+      .map((proj) => {
+        const header = proj.title || 'Technical Project';
+        const tech = proj.techStack && (Array.isArray(proj.techStack) ? proj.techStack.length > 0 : proj.techStack)
+          ? `Technologies: ${Array.isArray(proj.techStack) ? proj.techStack.join(', ') : proj.techStack}`
+          : '';
+        const desc = proj.description ? `• ${proj.description.trim()}` : '';
+        return [header, tech, desc].filter(Boolean).join('\n');
+      })
+      .join('\n\n');
+    sections.push(`PROJECTS\n${projText}`);
+  }
+
+  // Education
+  if (data.education && data.education.length > 0) {
+    const eduText = data.education
+      .map((edu) => {
+        return `• ${edu.degree || 'Degree'} - ${edu.institution || 'University'}${edu.graduationYear || edu.endYear ? ` (${edu.graduationYear || edu.endYear})` : ''}${edu.cgpa ? ` | CGPA: ${edu.cgpa}` : ''}`;
+      })
+      .join('\n');
+    sections.push(`EDUCATION\n${eduText}`);
+  }
+
+  // Certifications
+  if (data.certifications && data.certifications.length > 0) {
+    const certText = data.certifications
+      .map((c) => `• ${c.title || 'Certification'}${c.issuer ? ` - ${c.issuer}` : ''}${c.year ? ` (${c.year})` : ''}`)
+      .join('\n');
+    sections.push(`CERTIFICATIONS\n${certText}`);
+  }
+
+  return sections.join('\n\n').trim();
 }
 
 /**
@@ -4236,6 +4379,8 @@ CERTIFICATIONS & PROFESSIONAL QUALIFICATIONS
       }
     ]
   };
+
+  improvedResumeText = buildCanonicalResumeText(improvedResumeData);
 
   // DYNAMIC ATS RE-ANALYSIS (NO HARDCODED SCORES)
   // Compute real ATS score by running the generated single-column resume text through analyzeResumeWithAI

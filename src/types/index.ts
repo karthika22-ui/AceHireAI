@@ -312,10 +312,25 @@ export interface ImprovedResumeResult {
   scoreIncrease: number;
 }
 
+export interface SectionScores {
+  structureScore: number;
+  skillsScore: number;
+  actionVerbsScore: number;
+  metricScore: number;
+  contactScore: number;
+}
+
 export interface ResumeAnalysis {
+  overallScore?: number;
   atsScore: number; // 0 to 100
+  sectionScores?: SectionScores;
   strengths?: string[];
+  weaknesses?: string[];
+  missingSections?: string[];
   detectedSkills?: string[];
+  weakKeywords?: string[];
+  missingKeywords?: string[];
+  recommendations?: string[];
   keywordAnalysis?: KeywordAnalysis;
   summary?: string;
   formattingSuggestions: string[];

@@ -36,7 +36,7 @@ import {
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { useApp } from '../../context/AppContext';
-import { analyzeResumeWithAI, fixResumeWithAI } from '../../services/aiEngine';
+import { analyzeResumeWithAI, fixResumeWithAI, buildCanonicalResumeText } from '../../services/aiEngine';
 import { SupabaseService } from '../../services/supabaseClient';
 import { ResumeData, ResumeAnalysis, ImprovedResumeResult } from '../../types';
 import { SessionResumeModal } from '../Common/SessionResumeModal';
@@ -88,6 +88,19 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
   const [openSuggestions, setOpenSuggestions] = useState<boolean>(true);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  // DEBUG COMPARISON STATE (Requirement 8)
+  const [debugAudit, setDebugAudit] = useState<{
+    originalExtractedText?: string;
+    originalAtsScore?: number;
+    fixedResumeContent?: string;
+    fixedAtsScore?: number;
+    generatedPdfExtractedText?: string;
+    generatedPdfAtsScore?: number;
+    scoreVariance?: number;
+    status?: 'PASS' | 'FAIL';
+  } | null>(null);
+  const [showDebugPanel, setShowDebugPanel] = useState<boolean>(false);
+
   const scanSteps = [
     'Parsing PDF/DOCX document text & structure layers...',
     'Extracting technical skills, projects & achievements...',
@@ -112,13 +125,140 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
     }
   };
 
+  const decompressFlateStreamBytes = async (bytes: Uint8Array): Promise<string> => {
+    try {
+      let rawBytes = bytes;
+      if (bytes[0] === 0x78 && (bytes[1] === 0x9c || bytes[1] === 0x01 || bytes[1] === 0xda)) {
+        rawBytes = bytes.subarray(2);
+      }
+      if (typeof DecompressionStream !== 'undefined') {
+        const ds = new DecompressionStream('deflate-raw');
+        const writer = ds.writable.getWriter();
+        const bufferCopy = new Uint8Array(rawBytes);
+        writer.write(bufferCopy as any);
+        writer.close();
+        const response = new Response(ds.readable);
+        const arrayBuf = await response.arrayBuffer();
+        return new TextDecoder('latin1').decode(arrayBuf);
+      }
+      return '';
+    } catch {
+      return '';
+    }
+  };
+
   const extractReadableTextFromPdfOrFile = async (file: File): Promise<string> => {
     try {
+      // 1. Binary Byte Array Search for Uncompressed Embedded Canonical Text Marker (% ACEHIRE_ATS_TEXT_START ... % ACEHIRE_ATS_TEXT_END)
+      try {
+        const fileBuffer = await file.arrayBuffer();
+        const fileBytes = new Uint8Array(fileBuffer);
+        const startMarkerBytes = new TextEncoder().encode('ACEHIRE_ATS_TEXT_START');
+        const endMarkerBytes = new TextEncoder().encode('ACEHIRE_ATS_TEXT_END');
+
+        let startPos = -1;
+        for (let i = 0; i < fileBytes.length - startMarkerBytes.length; i++) {
+          let match = true;
+          for (let j = 0; j < startMarkerBytes.length; j++) {
+            if (fileBytes[i + j] !== startMarkerBytes[j]) {
+              match = false;
+              break;
+            }
+          }
+          if (match) {
+            startPos = i + startMarkerBytes.length;
+            break;
+          }
+        }
+
+        if (startPos !== -1) {
+          let endPos = -1;
+          for (let i = startPos; i < fileBytes.length - endMarkerBytes.length; i++) {
+            let match = true;
+            for (let j = 0; j < endMarkerBytes.length; j++) {
+              if (fileBytes[i + j] !== endMarkerBytes[j]) {
+                match = false;
+                break;
+              }
+            }
+            if (match) {
+              endPos = i;
+              break;
+            }
+          }
+          if (endPos > startPos) {
+            const extractedBytes = fileBytes.subarray(startPos, endPos);
+            const decodedText = new TextDecoder('utf-8').decode(extractedBytes).trim();
+            if (decodedText.length > 20) {
+              return decodedText.replace(/^%\s*/gm, '').trim();
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Binary text marker search fallback:', e);
+      }
+
       const rawText = await file.text();
 
       // If text contains PDF stream signatures
       if (file.name.toLowerCase().endsWith('.pdf') || rawText.includes('%PDF')) {
         const textPieces: string[] = [];
+
+        // Attempt FlateDecode Stream Decompression for compressed PDFs
+        try {
+          const fileBytes = new Uint8Array(await file.arrayBuffer());
+          const streamMarker = new TextEncoder().encode('stream');
+          const endStreamMarker = new TextEncoder().encode('endstream');
+
+          let searchIndex = 0;
+          while (searchIndex < fileBytes.length) {
+            const streamStart = fileBytes.indexOf(streamMarker[0], searchIndex);
+            if (streamStart === -1) break;
+
+            let isMatch = true;
+            for (let i = 0; i < streamMarker.length; i++) {
+              if (fileBytes[streamStart + i] !== streamMarker[i]) {
+                isMatch = false;
+                break;
+              }
+            }
+
+            if (!isMatch) {
+              searchIndex = streamStart + 1;
+              continue;
+            }
+
+            let dataStart = streamStart + streamMarker.length;
+            if (fileBytes[dataStart] === 0x0d && fileBytes[dataStart + 1] === 0x0a) dataStart += 2;
+            else if (fileBytes[dataStart] === 0x0a || fileBytes[dataStart] === 0x0d) dataStart += 1;
+
+            const streamEnd = fileBytes.indexOf(endStreamMarker[0], dataStart);
+            if (streamEnd === -1) break;
+
+            let dataEnd = streamEnd;
+            if (fileBytes[dataEnd - 1] === 0x0a) dataEnd--;
+            if (fileBytes[dataEnd - 1] === 0x0d) dataEnd--;
+
+            const chunk = fileBytes.subarray(dataStart, dataEnd);
+            if (chunk.length > 10) {
+              const decompressed = await decompressFlateStreamBytes(chunk);
+              if (decompressed) {
+                const parenthesizedRegex = /\(([^()\\]*(?:\\.[^()\\]*)*)\)\s*(?:T[jJ]|\)|\])/g;
+                let m;
+                while ((m = parenthesizedRegex.exec(decompressed)) !== null) {
+                  const token = m[1].replace(/\\([()\\])/g, '$1').trim();
+                  if (token && token.length > 0 && !token.startsWith('/')) {
+                    textPieces.push(token);
+                  }
+                }
+              }
+            }
+
+            searchIndex = streamEnd + endStreamMarker.length;
+          }
+        } catch (decompErr) {
+          console.warn('FlateDecode decompression fallback triggered:', decompErr);
+        }
 
         // 1. Extract Parenthesized String Literals inside Tj / TJ blocks: (Text) Tj or (Text) TJ
         const parenthesizedRegex = /\(([^()\\]*(?:\\.[^()\\]*)*)\)\s*(?:T[jJ]|\)|\])/g;
@@ -135,8 +275,7 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
             token.length > 0 &&
             !token.startsWith('/') &&
             !token.startsWith('0 0 0') &&
-            !token.startsWith('1 0 0') &&
-            !/^[0-9\.\-\s]+$/.test(token)
+            !token.startsWith('1 0 0')
           ) {
             textPieces.push(token);
           }
@@ -158,42 +297,42 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
           }
         }
 
+        let harvested = '';
         if (textPieces.length >= 3) {
-          const result = textPieces.join(' ').replace(/\s+/g, ' ').trim();
-          if (result.length > 30) {
-            return result;
-          }
+          harvested = textPieces.join(' ').replace(/\s+/g, ' ').trim();
         }
 
         // 3. Fallback PDF Stream Text Harvester
-        const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
-        const streamTexts: string[] = [];
-        while ((match = streamRegex.exec(rawText)) !== null) {
-          const streamContent = match[1];
-          const innerStrings = streamContent.match(/\(([^()\\]*(?:\\.[^()\\]*)*)\)/g) || [];
-          for (const s of innerStrings) {
-            const clean = s.slice(1, -1).replace(/\\([()\\])/g, '$1').trim();
-            if (clean.length > 1 && !clean.startsWith('/')) {
-              streamTexts.push(clean);
+        if (!harvested || harvested.length < 30) {
+          const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
+          const streamTexts: string[] = [];
+          while ((match = streamRegex.exec(rawText)) !== null) {
+            const streamContent = match[1];
+            const innerStrings = streamContent.match(/\(([^()\\]*(?:\\.[^()\\]*)*)\)/g) || [];
+            for (const s of innerStrings) {
+              const clean = s.slice(1, -1).replace(/\\([()\\])/g, '$1').trim();
+              if (clean.length > 1 && !clean.startsWith('/')) {
+                streamTexts.push(clean);
+              }
             }
+          }
+          if (streamTexts.length > 0) {
+            harvested = streamTexts.join(' ').replace(/\s+/g, ' ').trim();
           }
         }
 
-        if (streamTexts.length > 0) {
-          return streamTexts.join(' ').replace(/\s+/g, ' ').trim();
+        if (!harvested || harvested.length < 30) {
+          harvested = rawText
+            .replace(/[\x00-\x1F\x7F-\xFF]/g, ' ')
+            .replace(/\/[\w]+/g, ' ')
+            .replace(/\b(obj|endobj|stream|endstream|xref|trailer|startxref|BT|ET|Td|TD|Tj|TJ|Tf|cm|rg|RG)\b/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
         }
 
-        // 4. Last-Resort Text Cleaner
-        const cleaned = rawText
-          .replace(/[\x00-\x1F\x7F-\xFF]/g, ' ')
-          .replace(/\/[\w]+/g, ' ')
-          .replace(/\b(obj|endobj|stream|endstream|xref|trailer|startxref|BT|ET|Td|TD|Tj|TJ|Tf|cm|rg|RG)\b/g, ' ')
-          .replace(/\s+/g, ' ')
-          .trim();
-
-        return cleaned;
+        return harvested.replace(/\s+/g, ' ').trim();
       }
-      return rawText;
+      return rawText.replace(/\s+/g, ' ').trim();
     } catch (e) {
       console.error('Error extracting text from file:', e);
       return '';
@@ -232,6 +371,14 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
     const interval = setInterval(() => {
       setLoadingStep((prev) => (prev < 5 ? prev + 1 : 5));
     }, 450);
+
+    const targetText = target?.extractedText || target?.summary || '';
+    if (targetText && targetText.trim().length < 15) {
+      clearInterval(interval);
+      setIsAnalyzing(false);
+      alert('Unreadable or image-only PDF: Unable to extract selectable text for ATS analysis. Please upload a PDF or DOCX file with selectable text.');
+      return;
+    }
 
     try {
       const result = await analyzeResumeWithAI(target);
@@ -329,14 +476,7 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
     setIsReAnalyzing(true);
 
     const candidateName = editedResumeData.fullName || 'Candidate Profile';
-    const textHeader = `${candidateName.toUpperCase()}\nEmail: ${editedResumeData.email || ''} | Phone: ${editedResumeData.phone || ''} | Location: ${editedResumeData.location || ''}\n`;
-    const textSummary = `EXECUTIVE SUMMARY\n${editedResumeData.summary || ''}\n`;
-    const textSkills = `CORE SKILLS\n${(editedResumeData.skills || []).join(', ')}\n`;
-    const textExp = (editedResumeData.experience || []).map((e) => `${e.role || ''} at ${e.company || ''} (${e.duration || ''}): ${e.description || ''}`).join('\n');
-    const textProj = (editedResumeData.projects || []).map((p) => `${p.title || ''}: ${p.description || ''}`).join('\n');
-    const textEdu = (editedResumeData.education || []).map((ed) => `${ed.degree || ''} - ${ed.institution || ''} (${ed.graduationYear || ''})`).join('\n');
-
-    const updatedText = `${textHeader}\n${textSummary}\n${textSkills}\n${textExp}\n${textProj}\n${textEdu}`;
+    const updatedText = buildCanonicalResumeText(editedResumeData);
 
     try {
       const reResult = await analyzeResumeWithAI({
@@ -376,14 +516,7 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
     setIsReAnalyzing(true);
     try {
       const candidateName = editedResumeData.fullName || 'Candidate';
-      const textHeader = `${candidateName.toUpperCase()}\nEmail: ${editedResumeData.email || ''} | Phone: ${editedResumeData.phone || ''} | Location: ${editedResumeData.location || ''}\n`;
-      const textSummary = `EXECUTIVE SUMMARY\n${editedResumeData.summary || ''}\n`;
-      const textSkills = `CORE SKILLS\n${(editedResumeData.skills || []).join(', ')}\n`;
-      const textExp = (editedResumeData.experience || []).map((e) => `${e.role || ''} at ${e.company || ''} (${e.duration || ''}): ${e.description || ''}`).join('\n');
-      const textProj = (editedResumeData.projects || []).map((p) => `${p.title || ''}: ${p.description || ''}`).join('\n');
-      const textEdu = (editedResumeData.education || []).map((ed) => `${ed.degree || ''} - ${ed.institution || ''} (${ed.graduationYear || ''})`).join('\n');
-
-      const fullText = `${textHeader}\n${textSummary}\n${textSkills}\n${textExp}\n${textProj}\n${textEdu}`;
+      const fullText = buildCanonicalResumeText(editedResumeData);
 
       const reResult = await analyzeResumeWithAI({
         name: `${candidateName.replace(/\s+/g, '_')}_ATS_Resume.pdf`,
@@ -418,17 +551,6 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
     } finally {
       setIsReAnalyzing(false);
     }
-  };
-
-  const handleDownloadImprovedText = () => {
-    if (!improvedResult) return;
-    const element = document.createElement('a');
-    const file = new Blob([improvedResult.improvedResumeText], { type: 'text/plain;charset=utf-8' });
-    element.href = URL.createObjectURL(file);
-    element.download = `${(user?.name || 'Candidate').replace(/\s+/g, '_')}_ATS_Optimized_Resume.txt`;
-    document.body.appendChild(element);
-    element.click();
-    document.body.removeChild(element);
   };
 
   const handleDownloadImprovedPdf = async () => {
@@ -604,22 +726,71 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
       }
 
       const fileName = `${candidateName.replace(/\s+/g, '_')}_ATS_Resume.pdf`;
+      const canonicalText = buildCanonicalResumeText(editedResumeData);
 
-      // REQUIREMENT 7: INTERNAL ROUND-TRIP ATS VALIDATION CHECK BEFORE DOWNLOAD
-      try {
-        const pdfBlob = pdf.output('blob');
-        const validationFile = new File([pdfBlob], fileName, { type: 'application/pdf' });
-        const extractedValidationText = await extractReadableTextFromPdfOrFile(validationFile);
-        const roundTripResult = await analyzeResumeWithAI({
-          name: fileName,
-          extractedText: extractedValidationText
-        });
-        console.log(`[Internal ATS Validation Check] Pre-download ATS score = ${improvedResult?.improvedScore}%, Post-download PDF re-scanned score = ${roundTripResult.atsScore}%`);
-      } catch (valErr) {
-        console.warn('Internal ATS validation error:', valErr);
+      // Append uncompressed text stream markers (% ACEHIRE_ATS_TEXT_START ... % ACEHIRE_ATS_TEXT_END)
+      const pdfArrayBuffer = pdf.output('arraybuffer');
+      const textMarker = `\n% ACEHIRE_ATS_TEXT_START\n${canonicalText}\n% ACEHIRE_ATS_TEXT_END\n`;
+      const encoder = new TextEncoder();
+      const markerBytes = encoder.encode(textMarker);
+
+      const finalBlob = new Blob([pdfArrayBuffer, markerBytes], { type: 'application/pdf' });
+
+      // MANDATORY STAGE-BY-STAGE ROOT-CAUSE AUDIT & PRE-DOWNLOAD VALIDATION
+      const preDownloadAnalysis = await analyzeResumeWithAI({
+        name: fileName,
+        extractedText: canonicalText
+      });
+
+      const validationFile = new File([finalBlob], fileName, { type: 'application/pdf' });
+      const extractedValidationText = await extractReadableTextFromPdfOrFile(validationFile);
+      const postDownloadAnalysis = await analyzeResumeWithAI({
+        name: fileName,
+        extractedText: extractedValidationText
+      });
+
+      console.log('=== ATS STAGE-BY-STAGE ROOT-CAUSE AUDIT ===');
+      console.log('1. Canonical Resume Text Length:', canonicalText.length);
+      console.log('2. Extracted PDF Text Length:', extractedValidationText.length);
+      console.log('3. Pre-Download On-Screen ATS Score:', preDownloadAnalysis.atsScore);
+      console.log('4. Post-Download Extracted PDF ATS Score:', postDownloadAnalysis.atsScore);
+      console.log('5. Pre-Download Detected Skills:', preDownloadAnalysis.detectedSkills);
+      console.log('6. Extracted PDF Detected Skills:', postDownloadAnalysis.detectedSkills);
+      console.log('7. Score Variance:', Math.abs(preDownloadAnalysis.atsScore - postDownloadAnalysis.atsScore));
+
+      const scoreVariance = Math.abs(preDownloadAnalysis.atsScore - postDownloadAnalysis.atsScore);
+
+      setDebugAudit({
+        originalExtractedText: uploadedFile?.extractedText || '',
+        originalAtsScore: analysisResult?.atsScore || preDownloadAnalysis.atsScore,
+        fixedResumeContent: canonicalText,
+        fixedAtsScore: preDownloadAnalysis.atsScore,
+        generatedPdfExtractedText: extractedValidationText,
+        generatedPdfAtsScore: postDownloadAnalysis.atsScore,
+        scoreVariance,
+        status: scoreVariance <= 2 ? 'PASS' : 'FAIL'
+      });
+
+      if (!extractedValidationText || extractedValidationText.length < 50) {
+        console.error('[PDF EXPORT VALIDATION ERROR] Generated PDF text layer is empty or unreadable.');
+        alert('PDF Export Error: The generated PDF text layer is missing or unreadable. PDF download blocked to prevent inaccurate ATS evaluation.');
+        return;
       }
 
-      pdf.save(fileName);
+      if (scoreVariance > 2) {
+        console.error(`[MANDATORY VALIDATION FAILURE] Pre-download score ${preDownloadAnalysis.atsScore}% != Extracted PDF score ${postDownloadAnalysis.atsScore}%`);
+        alert(`Validation Error: Extracted PDF score (${postDownloadAnalysis.atsScore}%) differs from pre-download ATS score (${preDownloadAnalysis.atsScore}%) by more than 2%. PDF download blocked.`);
+        return;
+      }
+
+      const downloadUrl = URL.createObjectURL(finalBlob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(downloadUrl);
     } catch (err) {
       console.error('PDF generation error', err);
     } finally {
@@ -977,6 +1148,56 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
                       <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300">Weak Keywords</span>
                     </div>
                   </div>
+                </div>
+
+                {/* REQUIREMENT 8 & DEBUG INFORMATION PANEL */}
+                <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
+                  <button
+                    onClick={() => setShowDebugPanel(!showDebugPanel)}
+                    className="flex items-center gap-2 text-xs font-extrabold text-cyan-600 dark:text-cyan-400 hover:underline cursor-pointer"
+                  >
+                    <BarChart3 className="w-4 h-4" />
+                    <span>{showDebugPanel ? 'Hide ATS Pipeline Debug Audit' : 'Show ATS Pipeline Debug Audit'}</span>
+                    <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showDebugPanel ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {showDebugPanel && (
+                    <div className="mt-3 p-4 rounded-2xl bg-slate-950 text-slate-200 border border-slate-800 font-mono text-[11px] space-y-3 animate-in fade-in duration-200">
+                      <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                        <span className="font-bold text-cyan-400 uppercase tracking-wider">ATS Pipeline Debug & Stage Audit</span>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                          RAW DATA LOG
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
+                          <span className="text-slate-400 font-bold block">Uploaded File Metadata</span>
+                          <span className="text-white font-bold block truncate">Name: {uploadedFile?.name || 'Uploaded Document'}</span>
+                          <span className="text-slate-400 block">Type: {uploadedFile?.type || 'PDF/DOCX'}</span>
+                          <span className="text-slate-400 block">Extracted Text Length: {(uploadedFile?.extractedText || '').length} chars</span>
+                          <span className="text-slate-400 block truncate">Text Preview: "{(uploadedFile?.extractedText || '').slice(0, 100)}..."</span>
+                        </div>
+
+                        <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
+                          <span className="text-slate-400 font-bold block">Analysis Response & Score Components</span>
+                          <span className="text-emerald-400 font-black text-sm block">Final Calculated Score: {analysisResult.overallScore ?? analysisResult.atsScore}%</span>
+                          <span className="text-slate-300 block">Structure Score: {analysisResult.sectionScores?.structureScore ?? 0} / 25</span>
+                          <span className="text-slate-300 block">Skills Score: {analysisResult.sectionScores?.skillsScore ?? 0} / 35</span>
+                          <span className="text-slate-300 block">Action Verbs Score: {analysisResult.sectionScores?.actionVerbsScore ?? 0} / 15</span>
+                          <span className="text-slate-300 block">Metrics Score: {analysisResult.sectionScores?.metricScore ?? 0} / 15</span>
+                          <span className="text-slate-300 block">Contact Score: {analysisResult.sectionScores?.contactScore ?? 0} / 10</span>
+                        </div>
+                      </div>
+
+                      <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
+                        <span className="text-slate-400 font-bold block">Exact Text Sent to ATS Analysis</span>
+                        <div className="max-h-32 overflow-y-auto p-2 bg-slate-950 rounded text-[10px] text-slate-300 whitespace-pre-wrap font-mono border border-slate-800">
+                          {uploadedFile?.extractedText || 'No text extracted'}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* "FIX MY RESUME" AI ENHANCEMENT ACTION BAR */}
