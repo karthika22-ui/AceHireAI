@@ -38,6 +38,7 @@ import { ResumeData, EducationEntry, ProjectEntry, CertificationEntry, Internshi
 import { ResumePreviewTemplates } from './ResumePreviewTemplates';
 import { ATSAnalyzerView } from './ATSAnalyzerView';
 import { fetchFromOpenRouter } from '../../services/aiEngine';
+import { AIRobotLoader } from '../Common/AIRobotLoader';
 import { SupabaseService } from '../../services/supabaseClient';
 import {
   getSavedResumesList,
@@ -666,17 +667,24 @@ export const ResumeBuilderWizard: React.FC<ResumeBuilderWizardProps> = ({ onBack
   };
 
   // Create Resume Action (Step 10)
+  const [isCreatingResume, setIsCreatingResume] = useState<boolean>(false);
+  const [isCreatingDone, setIsCreatingDone] = useState<boolean>(false);
+
   const handleCreateResume = () => {
-    setIsResumeCreated(true);
-    const savedRecord = saveResumeRecord(formData, formData.selectedTemplate, activeResumeId || undefined);
-    setActiveResumeIdState(savedRecord.id);
-    setSavedResumes(getSavedResumesList());
-    setResume(formData);
-    if (user?.id) {
-      SupabaseService.saveResume(formData, user.id);
-      SupabaseService.clearResumeDraft(user.id);
-    }
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setIsCreatingResume(true);
+    setIsCreatingDone(false);
+
+    setTimeout(() => {
+      const savedRecord = saveResumeRecord(formData, formData.selectedTemplate, activeResumeId || undefined);
+      setActiveResumeIdState(savedRecord.id);
+      setSavedResumes(getSavedResumesList());
+      setResume(formData);
+      if (user?.id) {
+        SupabaseService.saveResume(formData, user.id);
+        SupabaseService.clearResumeDraft(user.id);
+      }
+      setIsCreatingDone(true);
+    }, 1000);
   };
 
   // REAL SAVE PROGRESS FLOW
@@ -2052,6 +2060,21 @@ export const ResumeBuilderWizard: React.FC<ResumeBuilderWizardProps> = ({ onBack
             </div>
           </div>
         </div>
+      )}
+
+      {isCreatingResume && (
+        <AIRobotLoader
+          title="Wait, your resume is being created..."
+          subtitle="Creating your professional resume..."
+          details="Finalizing resume template & layout..."
+          isDone={isCreatingDone}
+          onComplete={() => {
+            setIsCreatingResume(false);
+            setIsResumeCreated(true);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          overlay={true}
+        />
       )}
     </div>
   );

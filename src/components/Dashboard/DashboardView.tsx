@@ -158,14 +158,14 @@ export const DashboardView: React.FC = () => {
                     className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-[#22C55E] hover:text-white text-white text-xs sm:text-sm font-extrabold flex items-center gap-2 shadow-lg shadow-blue-600/30 hover:shadow-[#22C55E]/30 transition-all duration-300 cursor-pointer hover:scale-[1.02] active:scale-95 group/btn"
                   >
                     <PlayCircle className="w-4 h-4" />
-                    <span>Start Practice</span>
+                    <span>Continue</span>
                     <ArrowRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" />
                   </button>
                   <button
                     onClick={() => handleLaunchModule('resume')}
                     className="px-4 py-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-slate-200 text-xs sm:text-sm font-bold border border-slate-700 transition-all cursor-pointer"
                   >
-                    Continue Learning
+                    Continue
                   </button>
                 </div>
               </div>
@@ -229,8 +229,7 @@ export const DashboardView: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {featureCards.map((card) => {
-              const isStarted = card.progress > 0 || startedModules[card.id];
-              const buttonText = card.id === 'interview' ? 'Start' : (isStarted ? 'Continue' : 'Start');
+              const buttonText = 'Continue';
 
               return (
                 /* Requirement 5: Improved Module Cards with Brighter Border, Soft Shadow & 4px Lift on Hover */
@@ -323,7 +322,7 @@ export const DashboardView: React.FC = () => {
                   onClick={() => handleLaunchModule('interview')}
                   className="px-3.5 py-1.5 rounded-xl bg-blue-600 dark:bg-slate-800 text-white text-xs font-bold hover:bg-[#22C55E] dark:hover:bg-[#22C55E] hover:border-[#22C55E] border border-transparent dark:border-slate-700/60 hover:shadow-[0_0_18px_rgba(34,197,94,0.5)] transition-all duration-300 ease-out flex items-center gap-1.5 active:scale-95 cursor-pointer relative overflow-hidden group/btn"
                 >
-                  <span className="relative z-10 text-white font-bold">Start Goal</span>
+                  <span className="relative z-10 text-white font-bold">Continue</span>
                   <ArrowRight className="w-3.5 h-3.5 relative z-10 text-white group-hover/btn:translate-x-1.5 transition-transform duration-300 ease-out brightness-110" />
                 </button>
               </div>

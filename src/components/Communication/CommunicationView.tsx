@@ -176,67 +176,136 @@ export const CommunicationView: React.FC = () => {
   const currentQuestionList = QUESTION_BANK_BY_DIFFICULTY[difficulty];
   const currentQuestion = currentQuestionList[currentQuestionIndex % currentQuestionList.length];
 
-  // Web Speech API Initialization
+  // Cumulative transcript tracking refs (zero truncation / zero duplication)
+  const accumulatedTranscriptRef = useRef<string>('');
+  const currentInterimRef = useRef<string>('');
+  const recognitionRef = useRef<any>(null);
+  const isListeningRef = useRef<boolean>(false);
+
+  // Web Speech API Support Detection on Mount
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        const recognition = new SpeechRecognition();
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        recognition.lang = 'en-US';
-
-        recognition.onstart = () => {
-          setIsRecording(true);
-          setVoiceNotice('Listening... Speak naturally in English.');
-        };
-
-        recognition.onresult = (event: any) => {
-          let transcript = '';
-          for (let i = event.resultIndex; i < event.results.length; i++) {
-            transcript += event.results[i][0].transcript;
-          }
-          if (transcript.trim()) {
-            setInputSentence(transcript);
-          }
-        };
-
-        recognition.onerror = (err: any) => {
-          console.warn('Speech recognition error:', err);
-          setIsRecording(false);
-          setVoiceNotice('Voice listening ended. You can edit the text below.');
-        };
-
-        recognition.onend = () => {
-          setIsRecording(false);
-        };
-
-        setSpeechRecognition(recognition);
-        setHasVoiceSupport(true);
-      } else {
-        setHasVoiceSupport(false);
-      }
+      setHasVoiceSupport(!!SpeechRecognition);
     }
   }, []);
 
   const toggleRecording = () => {
-    if (!hasVoiceSupport || !speechRecognition) {
-      setVoiceNotice('Web Speech Recognition is unavailable in this browser. You can type your answer below.');
+    if (typeof window === 'undefined') return;
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setHasVoiceSupport(false);
+      setVoiceNotice('Web Speech Recognition is not supported in this browser. Please use Google Chrome or Microsoft Edge.');
       return;
     }
 
-    if (isRecording) {
-      speechRecognition.stop();
+    // IF ALREADY RECORDING -> STOP
+    if (isRecording || isListeningRef.current) {
+      isListeningRef.current = false;
       setIsRecording(false);
-      setVoiceNotice('Recording stopped. Review or edit your text before submitting.');
-    } else {
-      setInputSentence('');
-      setVoiceNotice('Listening... Speak naturally.');
-      try {
-        speechRecognition.start();
-      } catch (e) {
-        console.warn('Speech recognition start error:', e);
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+          recognitionRef.current = null;
+        } catch (e) {}
       }
+      setVoiceNotice('Recording stopped. Review your spoken response below before analyzing.');
+      return;
+    }
+
+    // IF NOT RECORDING -> START FRESH SESSION DIRECTLY
+    try {
+      // Clear transcript refs for a fresh speaking session
+      accumulatedTranscriptRef.current = '';
+      currentInterimRef.current = '';
+      setInputSentence('');
+
+      const recognition = new SpeechRecognition();
+      recognitionRef.current = recognition;
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      
+      // Respect selected language preference (English vs Tanglish/Indian English)
+      const selectedLangCode = (feedbackLanguage === 'Tanglish' || user?.preferredLanguage === 'Tanglish') ? 'en-IN' : 'en-US';
+      recognition.lang = selectedLangCode;
+
+      isListeningRef.current = true;
+      setIsRecording(true);
+      setVoiceNotice('Listening... Speak naturally in English. Words will appear live below.');
+
+      recognition.onstart = () => {
+        isListeningRef.current = true;
+        setIsRecording(true);
+      };
+
+      recognition.onresult = (event: any) => {
+        let finalChunk = '';
+        let interimChunk = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const res = event.results[i];
+          const text = res[0].transcript;
+          if (res.isFinal) {
+            finalChunk += text + ' ';
+          } else {
+            interimChunk += text;
+          }
+        }
+
+        if (finalChunk) {
+          accumulatedTranscriptRef.current = (accumulatedTranscriptRef.current + ' ' + finalChunk)
+            .replace(/\s+/g, ' ')
+            .trim();
+        }
+        currentInterimRef.current = interimChunk;
+
+        const combinedText = [accumulatedTranscriptRef.current, interimChunk]
+          .filter(Boolean)
+          .join(' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        if (combinedText) {
+          setInputSentence(combinedText);
+        }
+      };
+
+      recognition.onerror = (err: any) => {
+        console.warn('Speech recognition error:', err);
+        if (err.error === 'not-allowed' || err.error === 'service-not-allowed') {
+          isListeningRef.current = false;
+          setIsRecording(false);
+          setVoiceNotice('Microphone access denied. Please allow microphone access in your browser settings.');
+        } else if (err.error !== 'no-speech') {
+          setVoiceNotice(`Speech recognition notice: ${err.error || 'Connection interrupted'}. Click 'Start Speaking' to try again.`);
+        }
+      };
+
+      recognition.onend = () => {
+        if (isListeningRef.current) {
+          try {
+            recognition.start();
+          } catch (e) {
+            setTimeout(() => {
+              if (isListeningRef.current && recognitionRef.current) {
+                try {
+                  recognitionRef.current.start();
+                } catch (err) {}
+              }
+            }, 200);
+          }
+        } else {
+          setIsRecording(false);
+        }
+      };
+
+      recognition.start();
+    } catch (e) {
+      console.error('Speech recognition start failed:', e);
+      setIsRecording(false);
+      isListeningRef.current = false;
+      setVoiceNotice('Could not start speech recognition. Please check your microphone and browser settings.');
     }
   };
 
@@ -274,9 +343,15 @@ export const CommunicationView: React.FC = () => {
 
     if (isAnalyzing) return;
 
-    if (isRecording && speechRecognition) {
-      speechRecognition.stop();
+    if (isRecording || isListeningRef.current) {
+      isListeningRef.current = false;
       setIsRecording(false);
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+          recognitionRef.current = null;
+        } catch (e) {}
+      }
     }
 
     setIsAnalyzing(true);
@@ -437,7 +512,7 @@ export const CommunicationView: React.FC = () => {
                 Answer Required
               </h3>
               <p className="text-xs text-slate-300 font-medium">
-                Please enter or speak your answer before analyzing.
+                Please click 'Start Speaking' and speak your response before analyzing.
               </p>
             </div>
 
@@ -534,11 +609,11 @@ export const CommunicationView: React.FC = () => {
             </h2>
           </div>
 
-          {/* USER RESPONSE AREA (Type OR Speak) */}
+          {/* USER RESPONSE AREA (Voice Only) */}
           <div className="glass-card rounded-3xl p-5 sm:p-6 border border-slate-200 dark:border-purple-500/20 bg-white/95 dark:bg-slate-900/85 backdrop-blur-2xl shadow-xl space-y-4 relative overflow-hidden">
             <div className="flex items-center justify-between">
               <label className="text-xs font-extrabold text-slate-700 dark:text-slate-300">
-                ⌨️ Type or 🎤 Speak your response:
+                🎤 Your Spoken Response (Voice Only):
               </label>
 
               <button
@@ -560,7 +635,7 @@ export const CommunicationView: React.FC = () => {
               <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400 text-xs font-extrabold flex items-center justify-between animate-in fade-in">
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
-                  <span>Listening... Speak naturally in English. Words will appear live below.</span>
+                  <span>Listening... Speak naturally in English. Your spoken words will appear live below.</span>
                 </div>
                 <button
                   type="button"
@@ -582,9 +657,9 @@ export const CommunicationView: React.FC = () => {
               ref={textareaRef}
               rows={4}
               value={inputSentence}
-              onChange={(e) => setInputSentence(e.target.value)}
-              placeholder="Type what you want to say... (or click 🎤 Start Speaking)"
-              className="w-full p-4 rounded-2xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white text-xs sm:text-sm font-medium focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all leading-relaxed"
+              readOnly={true}
+              placeholder="Click 🎤 Start Speaking and speak your response... (Recognized speech will appear here)"
+              className="w-full p-4 rounded-2xl border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-white text-xs sm:text-sm font-medium focus:outline-none leading-relaxed select-text cursor-not-allowed"
             />
 
             <button

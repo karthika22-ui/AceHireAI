@@ -303,9 +303,9 @@ export const MockInterviewView: React.FC = () => {
   const currentQ: InterviewQuestion = activeQuestions[currentQuestionIndex] || {
     id: 'default',
     category: selectedType,
-    question: selectedType === 'HR' ? 'Tell me about yourself and your career goals.' : 'Explain the difference between SQL and NoSQL databases.',
-    contextHint: 'Highlight key concepts clearly and provide real-world examples.',
-    expectedKeypoints: ['key concepts', 'examples', 'structure']
+    question: 'Tell me about yourself.',
+    contextHint: 'Provide a concise overview of your background, technical focus, key projects, and professional goals.',
+    expectedKeypoints: ['introduction', 'background', 'key projects', 'career goals']
   };
 
   // Timer Countdown (Fix: stops at 0 and sets timeExpired)
@@ -526,8 +526,11 @@ export const MockInterviewView: React.FC = () => {
       isListeningRef.current = true;
       setIsListening(true);
 
-      // Preserve existing text if restarting speech
-      if (!accumulatedTranscriptRef.current && userAnswer) {
+      // Preserve existing text if restarting speech on same question, else clear for new question
+      if (!userAnswer.trim()) {
+        accumulatedTranscriptRef.current = '';
+        currentInterimRef.current = '';
+      } else if (!accumulatedTranscriptRef.current && userAnswer) {
         accumulatedTranscriptRef.current = userAnswer;
       }
 
@@ -887,17 +890,22 @@ export const MockInterviewView: React.FC = () => {
     if (recognitionRef.current) {
       try {
         recognitionRef.current.stop();
+        recognitionRef.current = null;
       } catch (e) {}
     }
+
+    // Strictly isolate answer state for next question
+    accumulatedTranscriptRef.current = '';
+    currentInterimRef.current = '';
+    baseAnswerRef.current = '';
+    capturedFramesRef.current = [];
+    setUserAnswer('');
+    setFeedback(null);
+    setShowModelAnswer(false);
 
     if (currentQuestionIndex + 1 < activeQuestions.length) {
       const nextIndex = currentQuestionIndex + 1;
       setCurrentQuestionIndex(nextIndex);
-      setUserAnswer('');
-      baseAnswerRef.current = '';
-      setFeedback(null);
-      setShowModelAnswer(false);
-      capturedFramesRef.current = [];
       saveSessionToStorage(answersHistory, nextIndex, activeQuestions, '');
     } else {
       setSessionCompleted(true);
@@ -2160,15 +2168,128 @@ export const MockInterviewView: React.FC = () => {
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-semibold">
-                      {renderMetricScore(feedback.relevanceScore, 'Relevance to Question')}
-                      {renderMetricScore(feedback.technicalAccuracyScore, 'Technical Accuracy')}
-                      {renderMetricScore(feedback.communicationScore, 'Communication & Tone')}
-                      {renderMetricScore(feedback.grammarScore, 'Grammar Score')}
-                      {renderMetricScore(feedback.vocabularyScore, 'Vocabulary Rating')}
-                      {renderMetricScore(feedback.completenessScore, 'Completeness & Depth')}
-                      {renderMetricScore(feedback.professionalismScore, 'Professional Readiness')}
-                    </div>
+                    {/* ✦ 2D COMPETENCY WAVEFORM GRAPH FOR PERFORMANCE SCORECARD ✦ */}
+                    {(() => {
+                      const scorecardMetrics = [
+                        { label: 'Relevance', val: Math.min(100, Math.max(0, Math.round(feedback.relevanceScore ?? 75))), color: '#06B6D4' },
+                        { label: 'Technical', val: Math.min(100, Math.max(0, Math.round(feedback.technicalAccuracyScore ?? 75))), color: '#3B82F6' },
+                        { label: 'Comm & Tone', val: Math.min(100, Math.max(0, Math.round(feedback.communicationScore ?? 75))), color: '#8B5CF6' },
+                        { label: 'Grammar', val: Math.min(100, Math.max(0, Math.round(feedback.grammarScore ?? 75))), color: '#EC4899' },
+                        { label: 'Vocabulary', val: Math.min(100, Math.max(0, Math.round(feedback.vocabularyScore ?? 75))), color: '#F59E0B' },
+                        { label: 'Completeness', val: Math.min(100, Math.max(0, Math.round(feedback.completenessScore ?? 75))), color: '#10B981' },
+                        { label: 'Professional', val: Math.min(100, Math.max(0, Math.round(feedback.professionalismScore ?? 75))), color: '#6366F1' }
+                      ];
+
+                      const wavePts = scorecardMetrics.map((d, idx) => {
+                        const x = 55 + idx * 105;
+                        const y = 135 - (d.val / 100) * 105;
+                        return { ...d, x, y };
+                      });
+
+                      let wavePathStr = `M ${wavePts[0].x} ${wavePts[0].y}`;
+                      for (let i = 0; i < wavePts.length - 1; i++) {
+                        const p0 = wavePts[i];
+                        const p1 = wavePts[i + 1];
+                        const cp1x = p0.x + (p1.x - p0.x) / 2;
+                        const cp1y = p0.y;
+                        const cp2x = p0.x + (p1.x - p0.x) / 2;
+                        const cp2y = p1.y;
+                        wavePathStr += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p1.x} ${p1.y}`;
+                      }
+                      const waveAreaStr = `${wavePathStr} L ${wavePts[wavePts.length - 1].x} 135 L ${wavePts[0].x} 135 Z`;
+
+                      return (
+                        <div className="pt-2 space-y-2">
+                          <div className="flex items-center justify-between px-1">
+                            <div className="flex items-center gap-2 text-xs font-extrabold text-white font-['Space_Grotesk']">
+                              <Activity className="w-4 h-4 text-cyan-400" />
+                              <span>Performance Competency Waveform Graph</span>
+                            </div>
+                            <span className="text-[10px] font-mono text-emerald-400 font-bold bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/30 uppercase">
+                              Deterministic Rating Wave
+                            </span>
+                          </div>
+
+                          <div className="relative w-full h-44 sm:h-52 bg-slate-950/80 rounded-2xl border border-slate-800 p-2 overflow-hidden backdrop-blur-md">
+                            {/* Animated Ambient Light Reflections */}
+                            <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                              <div className="absolute top-1/4 left-1/6 w-2 h-2 rounded-full bg-cyan-400/30 blur-xs animate-ping" style={{ animationDuration: '3s' }} />
+                              <div className="absolute top-1/2 left-1/2 w-2.5 h-2.5 rounded-full bg-purple-400/25 blur-xs animate-pulse" style={{ animationDuration: '2s' }} />
+                              <div className="absolute top-1/3 left-3/4 w-1.5 h-1.5 rounded-full bg-emerald-400/30 blur-xs animate-ping" style={{ animationDuration: '4s' }} />
+                            </div>
+
+                            <svg viewBox="0 0 740 170" className="w-full h-full overflow-visible relative z-10 select-none">
+                              <defs>
+                                <linearGradient id="scorecardWaveStroke" x1="0%" y1="0%" x2="100%" y2="0%">
+                                  <stop offset="0%" stopColor="#06B6D4" />
+                                  <stop offset="20%" stopColor="#3B82F6" />
+                                  <stop offset="40%" stopColor="#8B5CF6" />
+                                  <stop offset="60%" stopColor="#EC4899" />
+                                  <stop offset="80%" stopColor="#F59E0B" />
+                                  <stop offset="100%" stopColor="#10B981" />
+                                </linearGradient>
+
+                                <linearGradient id="scorecardWaveFill" x1="0%" y1="0%" x2="0%" y2="100%">
+                                  <stop offset="0%" stopColor="#06B6D4" stopOpacity="0.3" />
+                                  <stop offset="60%" stopColor="#8B5CF6" stopOpacity="0.1" />
+                                  <stop offset="100%" stopColor="#020617" stopOpacity="0.0" />
+                                </linearGradient>
+
+                                <filter id="scorecardGlow" x="-20%" y="-20%" width="140%" height="140%">
+                                  <feGaussianBlur stdDeviation="3" result="blur" />
+                                  <feMerge>
+                                    <feMergeNode in="blur" />
+                                    <feMergeNode in="SourceGraphic" />
+                                  </feMerge>
+                                </filter>
+                              </defs>
+
+                              {/* Horizontal Grid Lines */}
+                              <line x1="35" y1="25" x2="705" y2="25" stroke="#334155" strokeDasharray="3 3" strokeOpacity="0.4" />
+                              <text x="25" y="28" fill="#64748B" fontSize="9" fontWeight="bold" textAnchor="end">100%</text>
+
+                              <line x1="35" y1="80" x2="705" y2="80" stroke="#334155" strokeDasharray="3 3" strokeOpacity="0.4" />
+                              <text x="25" y="83" fill="#64748B" fontSize="9" fontWeight="bold" textAnchor="end">50%</text>
+
+                              <line x1="35" y1="135" x2="705" y2="135" stroke="#334155" strokeDasharray="3 3" strokeOpacity="0.4" />
+                              <text x="25" y="138" fill="#64748B" fontSize="9" fontWeight="bold" textAnchor="end">0%</text>
+
+                              {/* Axes */}
+                              <line x1="35" y1="15" x2="35" y2="135" stroke="#475569" strokeWidth="1.5" strokeLinecap="round" />
+                              <line x1="35" y1="135" x2="705" y2="135" stroke="#475569" strokeWidth="1.5" strokeLinecap="round" />
+
+                              {/* Wave Area Fill */}
+                              <path d={waveAreaStr} fill="url(#scorecardWaveFill)" />
+
+                              {/* Wave Curve Line */}
+                              <path
+                                d={wavePathStr}
+                                fill="none"
+                                stroke="url(#scorecardWaveStroke)"
+                                strokeWidth="3"
+                                strokeLinecap="round"
+                                filter="url(#scorecardGlow)"
+                                className="transition-all duration-1000 ease-out"
+                              />
+
+                              {/* Data Nodes & Badges */}
+                              {wavePts.map((pt, i) => (
+                                <g key={i} className="group cursor-pointer">
+                                  <circle cx={pt.x} cy={pt.y} r="7" fill={pt.color} fillOpacity="0.25" className="animate-ping" style={{ animationDuration: '3s' }} />
+                                  <circle cx={pt.x} cy={pt.y} r="4" fill="#020617" stroke={pt.color} strokeWidth="2.5" />
+                                  <text x={pt.x} y={pt.y - 9} fill="#F8FAFC" fontSize="10" fontWeight="900" textAnchor="middle" className="font-mono">
+                                    {pt.val}%
+                                  </text>
+                                  <text x={pt.x} y="153" fill="#94A3B8" fontSize="9" fontWeight="700" textAnchor="middle">
+                                    {pt.label}
+                                  </text>
+                                </g>
+                              ))}
+                            </svg>
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     {/* Why this score? Dynamic Explanation (Requirement #3) */}
                     {feedback.scoreExplanation && (

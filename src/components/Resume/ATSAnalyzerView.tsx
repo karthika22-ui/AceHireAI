@@ -38,6 +38,7 @@ import {
   TrendingUp,
   Flame
 } from 'lucide-react';
+import { AIRobotLoader } from '../Common/AIRobotLoader';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import * as pdfjsLib from 'pdfjs-dist';
@@ -381,66 +382,49 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Dynamic compatibility level theme helper
+  // Dynamic compatibility level theme helper (Score-based RED < 60%, GREEN >= 60%)
   const getScoreLevel = (score: number) => {
-    if (score >= 90) {
+    if (score >= 80) {
       return {
         label: 'EXCELLENT ATS COMPATIBILITY',
         badgeBg: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
         strokeColor: '#10B981',
-        glowColor: 'rgba(16, 185, 129, 0.2)',
+        glowColor: 'rgba(16, 185, 129, 0.25)',
         textColor: 'text-emerald-400',
         bgTint: 'bg-emerald-950/40 border-emerald-500/30',
         summary: 'Your resume meets tier-1 recruiter ATS screening standards with top-tier keyword alignment and clean single-column structure.'
       };
     }
-    if (score >= 80) {
-      return {
-        label: 'HIGH ATS COMPATIBILITY',
-        badgeBg: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40',
-        strokeColor: '#06B6D4',
-        glowColor: 'rgba(6, 182, 212, 0.2)',
-        textColor: 'text-cyan-400',
-        bgTint: 'bg-cyan-950/40 border-cyan-500/30',
-        summary: 'Your resume is well-optimized for ATS screening, with a few targeted areas that can be improved.'
-      };
-    }
-    if (score >= 70) {
-      return {
-        label: 'GOOD ATS COMPATIBILITY',
-        badgeBg: 'bg-blue-500/20 text-blue-300 border-blue-500/40',
-        strokeColor: '#3B82F6',
-        glowColor: 'rgba(59, 130, 246, 0.2)',
-        textColor: 'text-blue-400',
-        bgTint: 'bg-blue-950/40 border-blue-500/30',
-        summary: 'Solid structural foundation detected. Incorporate targeted technical keywords and impact metrics to boost callbacks.'
-      };
-    }
     if (score >= 60) {
       return {
-        label: 'MODERATE ATS COMPATIBILITY',
-        badgeBg: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
-        strokeColor: '#F59E0B',
-        glowColor: 'rgba(245, 158, 11, 0.2)',
-        textColor: 'text-amber-400',
-        bgTint: 'bg-amber-950/40 border-amber-500/30',
-        summary: 'Structure is acceptable, but critical domain keywords and bullet impact metrics are underrepresented.'
+        label: 'GOOD ATS COMPATIBILITY',
+        badgeBg: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+        strokeColor: '#10B981',
+        glowColor: 'rgba(16, 185, 129, 0.25)',
+        textColor: 'text-emerald-400',
+        bgTint: 'bg-emerald-950/40 border-emerald-500/30',
+        summary: 'Your resume is well-optimized for ATS screening, with a few targeted areas that can be improved.'
       };
     }
     return {
       label: 'NEEDS IMPROVEMENT',
       badgeBg: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
-      strokeColor: '#F43F5E',
-      glowColor: 'rgba(244, 63, 94, 0.2)',
+      strokeColor: '#EF4444',
+      glowColor: 'rgba(239, 68, 68, 0.25)',
       textColor: 'text-rose-400',
       bgTint: 'bg-rose-950/40 border-rose-500/30',
-      summary: 'Significant formatting or keyword gaps detected. Click "Improve My Resume" to auto-optimize layout and wording.'
+      summary: 'Significant formatting or keyword gaps detected. Click "Generate All" to auto-optimize layout and wording.'
     };
   };
 
   // "Fix My Resume" AI Enhancement & Interactive Editor State
+  const [workflowStep, setWorkflowStep] = useState<
+    'UPLOAD' | 'ANALYZING' | 'ANALYSIS_RESULT' | 'GENERATE_ALL_LOADING' | 'DETAILS_CHECK' | 'GENERATING_RESUME' | 'FINAL_RESULT'
+  >('UPLOAD');
   const [isFixingResume, setIsFixingResume] = useState<boolean>(false);
+  const [isFixingDone, setIsFixingDone] = useState<boolean>(false);
   const [isReAnalyzing, setIsReAnalyzing] = useState<boolean>(false);
+  const [isReAnalyzingDone, setIsReAnalyzingDone] = useState<boolean>(false);
   const [improvedResult, setImprovedResult] = useState<ImprovedResumeResult | null>(null);
   const [editedResumeData, setEditedResumeData] = useState<ResumeData | null>(null);
   const [activeModalTab, setActiveModalTab] = useState<'edit' | 'preview'>('edit');
@@ -641,16 +625,67 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
       clearInterval(interval);
     } finally {
       setIsAnalyzing(false);
+      setWorkflowStep('ANALYSIS_RESULT');
     }
   };
 
   const handleFixResume = async () => {
     if (!uploadedFile && !initialResumeData && !resume) return;
     setIsFixingResume(true);
+    setWorkflowStep('GENERATE_ALL_LOADING');
 
     try {
       const target: any = uploadedFile || initialResumeData || resume;
-      const res = await fixResumeWithAI(target, analysisResult || undefined);
+
+      const priorityImprovementsList = [
+        {
+          id: 'issue_1',
+          index: 1,
+          total: 3,
+          title: 'Add Missing Job-Related Keywords',
+          whatIsTheIssue: 'Your resume is missing important technical domain keywords commonly required for engineering roles.',
+          whyDoesItMatter: 'Missing keywords reduce your match score when an ATS compares your resume with job descriptions.',
+          whatNeedsToChange: 'Incorporate core frameworks and technical skills into your Technical Skills section or project bullet points.',
+          whereIsTheIssue: 'Section: Skills & Competencies',
+          sectionName: 'Technical Skills',
+          entryName: 'Engineering Skills List',
+          currentContent: uploadedFile?.extractedText ? uploadedFile.extractedText.slice(0, 100) + '...' : 'Skills: Web Development, Programming, Software',
+          suggestedAIContent: 'Technical Skills: React, TypeScript, Node.js, AWS, Docker, Kubernetes, CI/CD, REST APIs',
+          missingKeywords: ['AWS', 'Docker', 'Kubernetes', 'CI/CD', 'REST APIs']
+        },
+        {
+          id: 'issue_2',
+          index: 2,
+          total: 3,
+          title: 'Add Quantitative Impact Metrics',
+          whatIsTheIssue: 'Project achievement bullet points lack numerical results, percentages, and metrics.',
+          whyDoesItMatter: 'Recruiters favor candidates who demonstrate measurable business value and throughput metrics.',
+          whatNeedsToChange: 'Add numerical metrics (e.g. "Reduced API latency by 35%") to your project descriptions.',
+          whereIsTheIssue: 'Section: Experience / Projects',
+          sectionName: 'Projects & Experience',
+          entryName: 'Full-Stack Engineering Project',
+          currentContent: 'Developed a web application for user management and database queries.',
+          suggestedAIContent: 'Engineered a high-throughput web application processing 10,000+ daily requests, optimizing SQL queries to reduce API latency by 35%.',
+          missingKeywords: ['Latency % Reduction', 'User Volume Count', 'Throughput Metrics']
+        },
+        {
+          id: 'issue_3',
+          index: 3,
+          total: 3,
+          title: 'Upgrade Action Verb Wording',
+          whatIsTheIssue: 'Bullet points use passive language instead of strong engineering action verbs.',
+          whyDoesItMatter: 'Active action verbs increase resume impact and ATS parsing readability scores.',
+          whatNeedsToChange: 'Replace passive phrases like "Worked on" with "Architected", "Deployed", and "Optimized".',
+          whereIsTheIssue: 'Section: Experience',
+          sectionName: 'Experience',
+          entryName: 'Software Engineering Role',
+          currentContent: 'Worked on building database queries and frontend web pages.',
+          suggestedAIContent: 'Architected scalable PostgreSQL database schemas and deployed responsive React UI modules.',
+          missingKeywords: ['Architected', 'Deployed', 'Optimized', 'Engineered']
+        }
+      ];
+
+      const res = await fixResumeWithAI(target, analysisResult || undefined, priorityImprovementsList);
       
       const origScore = originalAtsScore ?? analysisResult?.atsScore ?? res.originalScore;
       res.originalScore = origScore;
@@ -671,20 +706,29 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
         projects: []
       };
       setEditedResumeData(defaultData);
+
+      // Mark all Fix Issues recommendations as completed!
+      setFixedIssueIds(new Set(['issue_1', 'issue_2', 'issue_3']));
+
+      // AS SOON AS GENERATION FINISHES, NAVIGATE IMMEDIATELY TO DETAILS CHECK PAGE
+      setWorkflowStep('DETAILS_CHECK');
       setActiveModalTab('edit');
       setShowImprovedModal(true);
 
       recordUserActivity('resume', 'AI ATS Resume Optimization ("Fix My Resume")', res.improvedScore, 'Resume');
     } catch (err) {
       console.error('Error fixing resume:', err);
+      setWorkflowStep('ANALYSIS_RESULT');
     } finally {
       setIsFixingResume(false);
     }
   };
 
   const handleCreateResume = async () => {
-    if (!editedResumeData) return;
+    if (!editedResumeData || isReAnalyzing) return;
+    setWorkflowStep('GENERATING_RESUME');
     setIsReAnalyzing(true);
+    setIsReAnalyzingDone(false);
 
     const candidateName = editedResumeData.fullName || 'Candidate Profile';
     const updatedText = buildCanonicalResumeText(editedResumeData);
@@ -699,24 +743,6 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
       const genScore = reResult.atsScore;
       const improvementVal = genScore - origScore;
 
-      console.log('[ATS ORIGINAL]', {
-        originalScore: origScore,
-        type: typeof origScore,
-        isValid: origScore !== undefined && origScore !== null && !isNaN(origScore)
-      });
-
-      console.log('[ATS GENERATED]', {
-        generatedScore: genScore,
-        type: typeof genScore,
-        isValid: genScore !== undefined && genScore !== null && !isNaN(genScore)
-      });
-
-      console.log('[ATS IMPROVEMENT]', {
-        calculatedImprovement: improvementVal,
-        type: typeof improvementVal,
-        isValid: improvementVal !== undefined && improvementVal !== null && !isNaN(improvementVal)
-      });
-
       const updatedImproved: ImprovedResumeResult = {
         originalScore: origScore,
         improvedScore: genScore,
@@ -729,12 +755,10 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
 
       setImprovedResult(updatedImproved);
       setGeneratedResumeAtsScore(genScore);
-      setActiveModalTab('preview');
     } catch (e) {
       console.error(e);
-      setActiveModalTab('preview');
     } finally {
-      setIsReAnalyzing(false);
+      setIsReAnalyzingDone(true);
     }
   };
 
@@ -1157,7 +1181,7 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
       </div>
 
       {/* 3. COMMAND CENTER AI RESULTS DASHBOARD */}
-      {analysisResult && (
+      {analysisResult && workflowStep === 'ANALYSIS_RESULT' && (
         <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
                {/* TABBED NAVIGATION BAR (SIMPLIFIED TO 4 CLEAN TABS, NO HISTORY) */}
           <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-slate-950/90 border border-slate-800 overflow-x-auto scrollbar-none">
@@ -1216,14 +1240,14 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
               
               {/* HERO RADIAL SCORE RING & 2D CRYSTAL WAVEFORM GRAPH */}
               {(() => {
-                const scoreTheme = getScoreLevel(analysisResult.atsScore);
+                const scoreTheme = getScoreLevel(displayScore);
                 const detectedList = analysisResult.detectedSkills || analysisResult.matchedSkills || [];
                 const weakList = analysisResult.keywordAnalysis?.weakKeywords || analysisResult.missingSkills || [];
                 const scoreIncreaseVal = (generatedResumeAtsScore !== null && (originalAtsScore !== null || analysisResult?.atsScore !== undefined))
                   ? generatedResumeAtsScore - (originalAtsScore ?? analysisResult?.atsScore ?? 0)
                   : null;
 
-                // COMPUTE DYNAMIC 2D WAVEFORM GRAPH DATA POINTS
+                // COMPUTE DYNAMIC 2D WAVEFORM GRAPH DATA POINTS (ORIGINAL MULTI-SPECTRUM COLORS)
                 const kwScore = Math.min(100, Math.round(((analysisResult?.detectedSkills?.length || 1) / ((analysisResult?.detectedSkills?.length || 1) + (analysisResult?.weakKeywords?.length || 1))) * 100));
                 const structScore = Math.min(100, Math.round(((analysisResult?.sectionScores?.structureScore ?? Math.round(displayScore * 0.95)) / 25) * 100));
                 const grammarScore = analysisResult?.achievementAnalysis?.actionVerbsRating === 'Strong' ? 90 : 70;
@@ -1272,7 +1296,47 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
                             style={{ backgroundColor: scoreTheme.glowColor }}
                           />
 
-                          <svg className="w-36 h-36 transform -rotate-90 relative z-10">
+                          <style>{`
+                            @keyframes ringShimmerOrbit {
+                              0% { transform: rotate(0deg); }
+                              100% { transform: rotate(360deg); }
+                            }
+                          `}</style>
+                          <svg className="w-36 h-36 transform -rotate-90 relative z-10 overflow-visible">
+                            <defs>
+                              <linearGradient id="scoreRingGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                {displayScore >= 60 ? (
+                                  <>
+                                    <stop offset="0%" stopColor="#06B6D4" />
+                                    <stop offset="50%" stopColor="#3B82F6" />
+                                    <stop offset="100%" stopColor="#10B981" />
+                                  </>
+                                ) : (
+                                  <>
+                                    <stop offset="0%" stopColor="#F43F5E" />
+                                    <stop offset="50%" stopColor="#F59E0B" />
+                                    <stop offset="100%" stopColor="#EF4444" />
+                                  </>
+                                )}
+                              </linearGradient>
+
+                              {/* Shiny Travelling Light Beam Highlight */}
+                              <linearGradient id="ringShimmerBeam" x1="0%" y1="0%" x2="100%" y2="0%">
+                                <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0" />
+                                <stop offset="50%" stopColor="#FFFFFF" stopOpacity="0.95" />
+                                <stop offset="100%" stopColor="#38BDF8" stopOpacity="0" />
+                              </linearGradient>
+
+                              <filter id="shimmerGlow">
+                                <feGaussianBlur stdDeviation="2" result="blur" />
+                                <feMerge>
+                                  <feMergeNode in="blur" />
+                                  <feMergeNode in="SourceGraphic" />
+                                </feMerge>
+                              </filter>
+                            </defs>
+
+                            {/* Track Circle */}
                             <circle
                               cx="72"
                               cy="72"
@@ -1281,11 +1345,13 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
                               strokeWidth="11"
                               fill="transparent"
                             />
+
+                            {/* Base Multi-Tone Score Ring */}
                             <circle
                               cx="72"
                               cy="72"
                               r="58"
-                              stroke={scoreTheme.strokeColor}
+                              stroke="url(#scoreRingGrad)"
                               strokeWidth="11"
                               className="transition-all duration-1000 ease-out"
                               strokeDasharray={364}
@@ -1293,14 +1359,30 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
                               strokeLinecap="round"
                               fill="transparent"
                             />
+
+                            {/* Continuous Travelling Shiny Light Beam */}
+                            <circle
+                              cx="72"
+                              cy="72"
+                              r="58"
+                              stroke="url(#ringShimmerBeam)"
+                              strokeWidth="11"
+                              strokeDasharray="45 319"
+                              strokeLinecap="round"
+                              fill="transparent"
+                              filter="url(#shimmerGlow)"
+                              style={{ animation: 'ringShimmerOrbit 3.5s linear infinite', transformOrigin: '72px 72px' }}
+                            />
                           </svg>
 
-                          {/* Inner Crystal Liquid Score Text (Requirement 1: Overall ATS Score: XX/100) */}
-                          <div className="absolute inset-0 flex flex-col items-center justify-center z-20">
-                            <span className={`text-4xl font-black ${scoreTheme.textColor} tracking-tight font-['Space_Grotesk']`}>
+                          {/* Inner Crystal Liquid Score Text (Perfect Centering & Responsive Typography) */}
+                          <div className="absolute inset-0 flex flex-col items-center justify-center z-20 px-2 text-center pointer-events-none select-none">
+                            <span className={`text-3xl sm:text-4xl font-black ${scoreTheme.textColor} tracking-tight font-['Space_Grotesk'] leading-none drop-shadow-md`}>
                               {displayScore}
                             </span>
-                            <span className="text-[10px] font-extrabold uppercase text-slate-400">Overall ATS: {displayScore}/100</span>
+                            <span className="text-[9px] sm:text-[10px] font-extrabold uppercase text-slate-400 tracking-wider mt-1 whitespace-nowrap">
+                              Overall ATS Score
+                            </span>
                           </div>
                         </div>
 
@@ -1326,7 +1408,7 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
                         </div>
                       </div>
 
-                      {/* Right: Quick Action Callout Box (Requirement 5: Improve All) */}
+                      {/* Right: Quick Action Callout Box */}
                       <div className="w-full lg:w-auto shrink-0 flex flex-col sm:flex-row lg:flex-col gap-3">
                         <button
                           onClick={handleFixResume}
@@ -1334,15 +1416,7 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
                           className="px-6 py-4 rounded-2xl bg-gradient-to-r from-cyan-500 via-indigo-600 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2.5 shadow-xl shadow-cyan-500/25 transition-all cursor-pointer disabled:opacity-50 border border-cyan-300/30"
                         >
                           <Sparkles className="w-4.5 h-4.5 text-yellow-300 animate-pulse" />
-                          <span>✨ Improve All →</span>
-                        </button>
-
-                        <button
-                          onClick={() => setActiveViewTab('detailed')}
-                          className="px-5 py-3 rounded-2xl bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer"
-                        >
-                          <Eye className="w-4 h-4 text-cyan-400" />
-                          <span>View Detailed Analysis</span>
+                          <span>✨ Generate All →</span>
                         </button>
                       </div>
                     </div>
@@ -1371,7 +1445,7 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
 
                         <svg viewBox="0 0 700 170" className="w-full h-full overflow-visible relative z-10 select-none">
                           <defs>
-                            {/* Crystal Gradient Stroke */}
+                            {/* Original Crystal Multi-Spectrum Gradient Stroke */}
                             <linearGradient id="crystalWaveStroke" x1="0%" y1="0%" x2="100%" y2="0%">
                               <stop offset="0%" stopColor="#06B6D4" />
                               <stop offset="25%" stopColor="#3B82F6" />
@@ -1380,7 +1454,7 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
                               <stop offset="100%" stopColor="#F59E0B" />
                             </linearGradient>
 
-                            {/* Translucent Crystal Area Fill */}
+                            {/* Original Translucent Area Fill */}
                             <linearGradient id="crystalWaveFill" x1="0%" y1="0%" x2="0%" y2="100%">
                               <stop offset="0%" stopColor="#06B6D4" stopOpacity="0.3" />
                               <stop offset="60%" stopColor="#8B5CF6" stopOpacity="0.1" />
@@ -1478,31 +1552,23 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
                 </div>
               </div>
 
-              {/* 4. TOP 3 PRIORITY IMPROVEMENTS WITH CLEAR ACTION BUTTON (Requirement 3 & 4) */}
-              <div className="p-6 rounded-3xl bg-slate-900/90 border border-slate-800 space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400">
-                      <Flame className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h3 className="text-base font-extrabold text-white font-['Space_Grotesk']">
-                        ⚡ Top 3 Priority Improvements
-                      </h3>
-                      <p className="text-xs text-slate-400">
-                        What is wrong • Why it matters • What to change
-                      </p>
+                {/* 4. TOP 3 PRIORITY IMPROVEMENTS */}
+                <div className="p-6 rounded-3xl bg-slate-900/90 border border-slate-800 space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400">
+                        <Flame className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-base font-extrabold text-white font-['Space_Grotesk']">
+                          ⚡ Top 3 Priority Improvements
+                        </h3>
+                        <p className="text-xs text-slate-400">
+                          What is wrong • Why it matters • What to change
+                        </p>
+                      </div>
                     </div>
                   </div>
-
-                  <button
-                    onClick={handleFixResume}
-                    disabled={isFixingResume}
-                    className="text-xs font-extrabold text-cyan-400 hover:text-cyan-300 flex items-center gap-1 cursor-pointer"
-                  >
-                    <span>Improve All →</span>
-                  </button>
-                </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {[
@@ -1617,7 +1683,7 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
                   className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-cyan-500 via-indigo-600 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-white font-extrabold text-xs sm:text-sm flex items-center gap-2.5 shadow-xl shadow-cyan-500/25 transition-all cursor-pointer whitespace-nowrap"
                 >
                   <Wand2 className="w-4 h-4 text-yellow-300" />
-                  <span>Improve All & Review Changes →</span>
+                  <span>Generate All & Review Changes →</span>
                 </button>
               </div>
 
@@ -2225,7 +2291,10 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
                 )}
 
                 <button
-                  onClick={() => setShowImprovedModal(false)}
+                  onClick={() => {
+                    setShowImprovedModal(false);
+                    setWorkflowStep('ANALYSIS_RESULT');
+                  }}
                   className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-all cursor-pointer"
                 >
                   <X className="w-4.5 h-4.5" />
@@ -2237,29 +2306,21 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
             {activeModalTab === 'edit' && (
               <div className="space-y-5 animate-in fade-in overflow-y-auto pr-2 flex-1">
                 
-                {/* ATTRACTIVE RESUME GENERATION SCREEN OVERLAY (Requirement 9) */}
+                {/* ATTRACTIVE RESUME GENERATION SCREEN OVERLAY WITH ANIMATED ROBOT */}
                 {isReAnalyzing ? (
-                  <div className="py-16 px-6 text-center space-y-6 animate-in fade-in">
-                    <div className="relative w-28 h-28 mx-auto flex items-center justify-center">
-                      <div className="absolute inset-0 rounded-3xl bg-gradient-to-tr from-cyan-500 to-purple-600 blur-xl opacity-60 animate-pulse" />
-                      <div className="relative z-10 w-24 h-24 rounded-2xl bg-slate-950 border border-cyan-400/50 flex items-center justify-center shadow-2xl">
-                        <FileText className="w-12 h-12 text-cyan-400 animate-bounce" />
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <h3 className="text-xl font-black text-white font-['Space_Grotesk'] animate-pulse">
-                        Wait, your resume is generating...
-                      </h3>
-                      <p className="text-xs text-cyan-300 font-semibold max-w-md mx-auto leading-relaxed">
-                        AI is optimizing your resume structure & preparing your professional ATS-ready single-column resume...
-                      </p>
-                    </div>
-
-                    <div className="w-64 mx-auto bg-slate-950 h-2.5 rounded-full overflow-hidden border border-slate-800">
-                      <div className="bg-gradient-to-r from-blue-500 via-cyan-400 to-purple-500 h-full rounded-full animate-pulse w-3/4 shadow-[0_0_15px_rgba(6,182,212,0.8)]" />
-                    </div>
-                  </div>
+                  <AIRobotLoader
+                    title="Wait, your resume is being created..."
+                    subtitle="Creating your professional resume..."
+                    details="AI is auditing layout and calculating ATS score..."
+                    isDone={isReAnalyzingDone}
+                    onComplete={() => {
+                      setActiveModalTab('preview');
+                      setWorkflowStep('FINAL_RESULT');
+                      setShowImprovedModal(true);
+                      setIsReAnalyzing(false);
+                    }}
+                    overlay={true}
+                  />
                 ) : (
                   <>
                     <div className="p-4 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-between text-xs text-cyan-200">
@@ -2553,7 +2614,7 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
                       <div className="p-4 rounded-xl bg-gradient-to-br from-slate-900 to-purple-950/60 border border-purple-500/30 flex items-center justify-between">
                         <div>
                           <span className="text-xs text-slate-400 block font-bold">Generated Resume ATS Score</span>
-                          <span className="text-3xl font-black text-emerald-400">{gen}%</span>
+                          <span className={`text-3xl font-black ${gen >= 60 ? 'text-emerald-400' : 'text-rose-400'}`}>{gen}%</span>
                         </div>
                         <div className="text-right">
                           <span className={`text-xs font-extrabold px-3 py-1 rounded-full border block ${badgeStyle}`}>
@@ -2564,15 +2625,6 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
                       </div>
                     );
                   })()}
-
-                  {/* Apply Full Resume Button (Requirements 18 & 19) */}
-                  <button
-                    onClick={() => setShowFullImproveConfirmation(true)}
-                    className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-600 hover:from-purple-500 hover:to-emerald-500 text-white text-xs font-extrabold flex items-center justify-center gap-2 shadow-xl shadow-purple-600/25 transition-all cursor-pointer border border-purple-400/30"
-                  >
-                    <Wand2 className="w-4 h-4 text-yellow-300 animate-pulse" />
-                    <span>Apply Full Resume Optimization →</span>
-                  </button>
 
                   {/* Detected Technical Keywords & Competencies */}
                   <div className="space-y-2">
@@ -2730,6 +2782,34 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
                 View Updated Resume →
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* FULL-SCREEN CIRCULAR SPINNER LOADING OVERLAY FOR "GENERATE ALL" */}
+      {isFixingResume && (
+        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex flex-col items-center justify-center p-6 space-y-5 animate-in fade-in select-none">
+          <div className="relative w-20 h-20 flex items-center justify-center">
+            {/* Outer spinning gradient ring */}
+            <div className="absolute inset-0 rounded-full border-4 border-cyan-500/20 border-t-cyan-400 border-r-indigo-500 animate-spin" />
+            {/* Inner glowing icon */}
+            <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-lg shadow-cyan-500/20">
+              <Sparkles className="w-6 h-6 animate-pulse text-cyan-300" />
+            </div>
+          </div>
+
+          <div className="text-center space-y-2 max-w-sm">
+            <h3 className="text-lg font-black text-white font-['Space_Grotesk'] tracking-wide">
+              Generating your resume…
+            </h3>
+            <p className="text-xs text-slate-300 font-medium leading-relaxed">
+              AI is optimizing sections, enhancing technical keywords, and auditing single-column hierarchy...
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs font-mono font-bold text-cyan-400 bg-cyan-500/10 px-4 py-1.5 rounded-full border border-cyan-500/30 shadow-md">
+            <div className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+            <span>AI Optimization Running</span>
           </div>
         </div>
       )}

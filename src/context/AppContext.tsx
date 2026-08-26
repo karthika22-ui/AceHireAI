@@ -926,39 +926,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       {/* GLOBAL EXIT CONFIRMATION MODAL */}
       {isExitModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200 select-none">
           <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-5 relative text-left">
             <div className="flex items-center gap-3 border-b border-slate-800 pb-4">
-              <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-500 border border-amber-500/20 shrink-0">
+              <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0">
                 <AlertTriangle className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-lg font-extrabold text-white font-['Space_Grotesk']">
-                  Exit {activeWorkflowGuard?.workflowName || 'Workflow'}?
+                <h3 className="text-lg font-black text-white font-['Space_Grotesk']">
+                  Leave this session?
                 </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Unsaved or incomplete progress detected.
+                <p className="text-xs text-slate-400 font-medium mt-0.5">
+                  In-progress practice session detected
                 </p>
               </div>
             </div>
 
             <p className="text-xs sm:text-sm text-slate-300 font-medium leading-relaxed">
-              Are you sure you want to exit {activeWorkflowGuard?.workflowName || 'this workflow'}? Your current progress may not be completed.
+              You're currently working on <strong className="text-white font-extrabold">{activeWorkflowGuard?.workflowName || 'an active session'}</strong>. Do you want to stay here or leave this session?
             </p>
 
             <div className="flex items-center justify-end gap-3 pt-2">
               <button
                 onClick={cancelExitWorkflow}
-                className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-extrabold text-xs transition-all cursor-pointer"
+                className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-extrabold text-xs transition-all cursor-pointer border border-slate-700"
               >
-                No, Stay
+                Stay
               </button>
 
               <button
                 onClick={confirmExitWorkflow}
-                className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-extrabold text-xs shadow-lg transition-all cursor-pointer"
+                className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-extrabold text-xs shadow-lg shadow-red-600/20 transition-all cursor-pointer"
               >
-                Yes, Exit
+                Exit
               </button>
             </div>
           </div>
