@@ -21,6 +21,7 @@ import {
   X
 } from 'lucide-react';
 import { useApp, ActiveTab } from '../../context/AppContext';
+import { AIRobot } from './AIRobot';
 
 export const DashboardView: React.FC = () => {
   const {
@@ -140,74 +141,65 @@ export const DashboardView: React.FC = () => {
             <div className="absolute top-0 right-0 -mt-12 -mr-12 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
             <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
               
-              {/* Welcome Text & Action Buttons */}
-              <div className="space-y-3 max-w-xl">
+              {/* Welcome Text Header */}
+              <div className="space-y-1.5 max-w-xl">
                 <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight font-['Space_Grotesk'] text-white">
-                  {user.isFirstLogin === true || user.loginCount === 1
-                    ? `Welcome, ${user.name ? user.name.split(' ')[0] : 'Student'}! 👋`
-                    : `Welcome back, ${user.name ? user.name.split(' ')[0] : 'Student'}! 👋`}
+                  <span id="dashboard-welcome-name" className="inline-block">
+                    {user.isFirstLogin === true || user.loginCount === 1
+                      ? `Welcome, ${user.name ? user.name.split(' ')[0] : 'Student'}!`
+                      : `Welcome back, ${user.name ? user.name.split(' ')[0] : 'Student'}!`}
+                  </span>
                 </h1>
                 <p className="text-sm sm:text-base text-slate-100 dark:text-slate-300 font-medium">
                   Continue your AI-powered placement preparation.
                 </p>
-
-                {/* Action Buttons */}
-                <div className="flex items-center gap-3 pt-2">
-                  <button
-                    onClick={() => handleLaunchModule('interview')}
-                    className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-[#22C55E] hover:text-white text-white text-xs sm:text-sm font-extrabold flex items-center gap-2 shadow-lg shadow-blue-600/30 hover:shadow-[#22C55E]/30 transition-all duration-300 cursor-pointer hover:scale-[1.02] active:scale-95 group/btn"
-                  >
-                    <PlayCircle className="w-4 h-4" />
-                    <span>Continue</span>
-                    <ArrowRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" />
-                  </button>
-                  <button
-                    onClick={() => handleLaunchModule('resume')}
-                    className="px-4 py-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-slate-200 text-xs sm:text-sm font-bold border border-slate-700 transition-all cursor-pointer"
-                  >
-                    Continue
-                  </button>
-                </div>
               </div>
 
-              {/* Requirement 4: High-Contrast Placement Readiness Gauge Card */}
-              <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/85 dark:bg-slate-950/85 border border-slate-700/80 shadow-2xl flex items-center gap-4.5 shrink-0 min-w-[280px]">
-                {/* Circular Progress Gauge */}
-                <div className="relative w-20 h-20 flex items-center justify-center shrink-0">
-                  <svg className="w-20 h-20 transform -rotate-90">
-                    <circle
-                      cx="40"
-                      cy="40"
-                      r="34"
-                      stroke="#334155"
-                      strokeWidth="7"
-                      fill="transparent"
-                    />
-                    <circle
-                      cx="40"
-                      cy="40"
-                      r="34"
-                      stroke="#22C55E"
-                      strokeWidth="7"
-                      className="transition-all duration-1000 ease-out"
-                      strokeDasharray={213}
-                      strokeDashoffset={213 - (213 * readinessScore.overall) / 100}
-                      strokeLinecap="round"
-                      fill="transparent"
-                    />
-                  </svg>
-                  <span className="absolute text-3xl font-black text-white drop-shadow-md tracking-tight">
-                    {readinessScore.overall}%
-                  </span>
+              {/* Realistic AI Assistant Robot positioned in space between Welcome Text & Readiness Card */}
+              <div className="flex items-center justify-center md:justify-end gap-1.5 sm:gap-3 shrink-0 self-center md:self-auto">
+                <div id="dashboard-robot-container" className="inline-block mr-8 sm:mr-12 md:mr-14">
+                  <AIRobot className="w-24 h-32 sm:w-28 sm:h-36 md:w-32 md:h-40 z-10 select-none pointer-events-none" />
                 </div>
-                <div>
-                  <span className="text-xs text-slate-300 uppercase font-extrabold tracking-wider block">
-                    Placement Readiness
-                  </span>
-                  <strong className="text-lg font-extrabold text-white block mt-0.5">
-                    {readinessScore.overall >= 80 ? 'Highly Ready' : 'In Progress'}
-                  </strong>
-                  <p className="text-xs text-emerald-400 font-bold mt-1">Overall Readiness Index</p>
+
+                {/* Requirement 4: High-Contrast Placement Readiness Gauge Card */}
+                <div id="dashboard-readiness-card" className="p-4 sm:p-5 rounded-2xl bg-slate-900/85 dark:bg-slate-950/85 border border-slate-700/80 shadow-2xl flex items-center gap-4.5 shrink-0 min-w-[260px] sm:min-w-[280px] relative z-0">
+                  {/* Circular Progress Gauge */}
+                  <div className="relative w-20 h-20 flex items-center justify-center shrink-0">
+                    <svg className="w-20 h-20 transform -rotate-90">
+                      <circle
+                        cx="40"
+                        cy="40"
+                        r="34"
+                        stroke="#334155"
+                        strokeWidth="7"
+                        fill="transparent"
+                      />
+                      <circle
+                        cx="40"
+                        cy="40"
+                        r="34"
+                        stroke="#22C55E"
+                        strokeWidth="7"
+                        className="transition-all duration-1000 ease-out"
+                        strokeDasharray={213}
+                        strokeDashoffset={213 - (213 * readinessScore.overall) / 100}
+                        strokeLinecap="round"
+                        fill="transparent"
+                      />
+                    </svg>
+                    <span className="absolute text-3xl font-black text-white drop-shadow-md tracking-tight">
+                      {readinessScore.overall}%
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-xs text-slate-300 uppercase font-extrabold tracking-wider block">
+                      Placement Readiness
+                    </span>
+                    <strong className="text-lg font-extrabold text-white block mt-0.5">
+                      {readinessScore.overall >= 80 ? 'Highly Ready' : 'In Progress'}
+                    </strong>
+                    <p className="text-xs text-emerald-400 font-bold mt-1">Overall Readiness Index</p>
+                  </div>
                 </div>
               </div>
 

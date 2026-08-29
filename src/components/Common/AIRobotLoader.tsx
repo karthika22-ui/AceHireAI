@@ -6,6 +6,7 @@ interface AIRobotLoaderProps {
   details?: string;
   overlay?: boolean;
   isDone?: boolean;
+  isSpeaking?: boolean;
   onComplete?: () => void;
   minDurationMs?: number;
 }
@@ -16,6 +17,7 @@ export const AIRobotLoader: React.FC<AIRobotLoaderProps> = ({
   details = 'Checking your details...',
   overlay = true,
   isDone = true,
+  isSpeaking = false,
   onComplete,
   minDurationMs = 2500,
 }) => {
@@ -106,6 +108,18 @@ export const AIRobotLoader: React.FC<AIRobotLoaderProps> = ({
         @keyframes waveArmRight {
           0%, 100% { transform: rotate(0deg); }
           50% { transform: rotate(8deg); }
+        }
+        @keyframes robotTalkingMouth {
+          0%, 100% {
+            transform: scaleY(1);
+          }
+          50% {
+            transform: scaleY(2.6) translateY(-1px);
+          }
+        }
+        .robot-talking-mouth-anim {
+          animation: robotTalkingMouth 0.28s ease-in-out infinite;
+          transform-origin: 100px 88px;
         }
       `}</style>
 
@@ -216,8 +230,15 @@ export const AIRobotLoader: React.FC<AIRobotLoaderProps> = ({
           <circle cx="68" cy="87" r="4" fill="#F472B6" opacity="0.5" />
           <circle cx="132" cy="87" r="4" fill="#F472B6" opacity="0.5" />
 
-          {/* CUTE DIGITAL SMILE */}
-          <path d="M 91 85 Q 100 91 109 85" fill="none" stroke="#38BDF8" strokeWidth="2.5" strokeLinecap="round" />
+          {/* CUTE DIGITAL SMILE / TALKING MOUTH */}
+          {isSpeaking ? (
+            <g className="robot-talking-mouth-anim">
+              <ellipse cx="100" cy="88" rx="8" ry="5" fill="#38BDF8" filter="url(#glowEffect)" />
+              <ellipse cx="100" cy="88" rx="5" ry="3" fill="#020617" />
+            </g>
+          ) : (
+            <path d="M 91 85 Q 100 91 109 85" fill="none" stroke="#38BDF8" strokeWidth="2.5" strokeLinecap="round" />
+          )}
         </svg>
       </div>
 

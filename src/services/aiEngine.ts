@@ -4378,6 +4378,31 @@ Return ONLY a raw JSON object with this exact structure:
     };
   }
 
+  // Preserve original candidate photo/avatar, education, experience, projects, contacts if present in input file or object
+  if (fileOrResume && typeof fileOrResume === 'object') {
+    const inputPhoto = fileOrResume.photoUrl || fileOrResume.photo || fileOrResume.avatar_url;
+    if (inputPhoto && generatedData) {
+      generatedData.photoUrl = inputPhoto;
+    }
+    if (generatedData) {
+      if (email && !generatedData.email) generatedData.email = email;
+      if (phone && !generatedData.phone) generatedData.phone = phone;
+      if (location && !generatedData.location) generatedData.location = location;
+      if (linkedIn && !generatedData.linkedIn) generatedData.linkedIn = linkedIn;
+      if (gitHub && !generatedData.gitHub) generatedData.gitHub = gitHub;
+
+      if (userEducation.length > 0 && (!generatedData.education || generatedData.education.length === 0)) {
+        generatedData.education = userEducation;
+      }
+      if (userExperience.length > 0 && (!generatedData.experience || generatedData.experience.length === 0)) {
+        generatedData.experience = userExperience;
+      }
+      if (userProjects.length > 0 && (!generatedData.projects || generatedData.projects.length === 0)) {
+        generatedData.projects = userProjects;
+      }
+    }
+  }
+
   const improvedResumeText = buildCanonicalResumeText(generatedData);
 
   // Compute DYNAMIC preview ATS score by analyzing the improved text

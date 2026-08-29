@@ -6,24 +6,22 @@ import {
   CheckCircle2,
   XCircle,
   AlertCircle,
-  Terminal,
   Clock,
-  Globe,
   RefreshCw,
   RotateCcw,
   ArrowRight,
   LogOut,
   ChevronLeft,
   Zap,
-  Info,
-  Edit3
+  Edit3,
+  Volume2
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { generateQuestions, STARTER_TEMPLATES, generateAICodeReview, DynamicAICodeReview } from '../../services/aiEngine';
 import { CodingLanguage, DifficultyLevel, CodingSubmissionResult, CodingChallenge } from '../../types';
 import { SessionResumeModal } from '../Common/SessionResumeModal';
+import { AIRobotLoader } from '../Common/AIRobotLoader';
 import { SupabaseService } from '../../services/supabaseClient';
-import { formatTanglishAddressing } from '../../utils/addressing';
 
 export const CodingView: React.FC = () => {
   const { recordUserActivity, user, setActiveTab, registerWorkflowGuard, clearWorkflowGuard } = useApp();
@@ -40,13 +38,26 @@ export const CodingView: React.FC = () => {
   const mainContainerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<HTMLTextAreaElement>(null);
 
-  // Editor initializes completely empty (no starter code/comments/templates)
+  // Editor initializes completely empty
   const [userCode, setUserCode] = useState<string>('');
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [hasEvaluated, setHasEvaluated] = useState<boolean>(false);
   const [executionResult, setExecutionResult] = useState<CodingSubmissionResult | null>(null);
   const [dynamicAiFeedback, setDynamicAiFeedback] = useState<DynamicAICodeReview | null>(null);
-  const [adviceLanguage, setAdviceLanguage] = useState<'Tanglish' | 'English'>(user.preferredLanguage);
+
+  // NEW EVALUATION OVERLAY STATES
+  const [isEvaluatingOverlay, setIsEvaluatingOverlay] = useState<boolean>(false);
+  const [isEvaluationLoading, setIsEvaluationLoading] = useState<boolean>(false);
+  const [isRobotSpeaking, setIsRobotSpeaking] = useState<boolean>(false);
+  const [robotVoiceMessage, setRobotVoiceMessage] = useState<string | null>(null);
+  const [evaluationError, setEvaluationError] = useState<string | null>(null);
+  const [evaluationMetrics, setEvaluationMetrics] = useState<{
+    correctnessPercent: number;
+    passedTestCasesCount: number;
+    totalTestCasesCount: number;
+    mistakes: string[];
+    howToImprove: string[];
+  } | null>(null);
 
   // REGISTER GLOBAL EXIT GUARD FOR CODING PRACTICE
   useEffect(() => {
@@ -65,16 +76,10 @@ export const CodingView: React.FC = () => {
     userCode: string;
     problemTitle: string;
   } | null>(null);
-  const [completedProblemsCount, setCompletedProblemsCount] = useState<number>(0);
 
   useEffect(() => {
     if (!user?.id) return;
-    SupabaseService.fetchCodingProgress(user.id).then((progressList) => {
-      if (progressList && Array.isArray(progressList)) {
-        const completed = progressList.filter((p: any) => p.status === 'Correct' || p.score > 0);
-        setCompletedProblemsCount(completed.length);
-      }
-    });
+    SupabaseService.fetchCodingProgress(user.id);
   }, [user?.id]);
 
   // Automatically scroll container to top when starting a challenge
@@ -86,6 +91,61 @@ export const CodingView: React.FC = () => {
       window.scrollTo({ top: 0, behavior: 'auto' });
     }
   }, [hasStartedChallenge]);
+
+  // Helper for Web Speech API TTS with female voice selection & mouth sync
+  const speakRobotFeedback = (text: string) => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 0.82;
+        utterance.pitch = 1.0;
+
+        const setVoiceAndPlay = () => {
+          const voices = window.speechSynthesis.getVoices();
+          if (voices && voices.length > 0) {
+            const femaleVoice = voices.find(
+              (v) =>
+                v.name.toLowerCase().includes('female') ||
+                v.name.toLowerCase().includes('zira') ||
+                v.name.toLowerCase().includes('google us english') ||
+                v.name.toLowerCase().includes('samantha') ||
+                v.name.toLowerCase().includes('victoria') ||
+                v.name.toLowerCase().includes('natural') ||
+                v.name.toLowerCase().includes('karen') ||
+                v.name.toLowerCase().includes('moira')
+            );
+            if (femaleVoice) {
+              utterance.voice = femaleVoice;
+            }
+          }
+
+          utterance.onstart = () => {
+            setIsRobotSpeaking(true);
+          };
+          utterance.onend = () => {
+            setIsRobotSpeaking(false);
+          };
+          utterance.onerror = () => {
+            setIsRobotSpeaking(false);
+          };
+
+          window.speechSynthesis.speak(utterance);
+        };
+
+        if (window.speechSynthesis.getVoices().length === 0) {
+          window.speechSynthesis.onvoiceschanged = () => {
+            setVoiceAndPlay();
+          };
+        } else {
+          setVoiceAndPlay();
+        }
+      } catch (e) {
+        console.warn('TTS error:', e);
+        setIsRobotSpeaking(false);
+      }
+    }
+  };
 
   // Language Icon Helper
   const getLanguageIcon = (lang: CodingLanguage) => {
@@ -119,12 +179,12 @@ export const CodingView: React.FC = () => {
     }
   };
 
-  // Real Code Syntax & Random Text Validation Helper
+  // Real Code Syntax & Validation Helper
   const validateCodeSyntax = (code: string, lang: CodingLanguage): boolean => {
     const trimmed = code.trim();
     if (trimmed.length < 4) return false;
 
-    // Single random word check e.g. "hello", "hi", "123abc"
+    // Single random word check
     if (/^[a-zA-Z0-9_\s]+$/.test(trimmed) && !trimmed.includes('\n') && !trimmed.includes(' ') && !trimmed.includes('=')) {
       return false;
     }
@@ -156,16 +216,14 @@ export const CodingView: React.FC = () => {
 
   // Function to fetch a new unique AI coding question
   const fetchNewQuestion = async (lang: CodingLanguage, diff: DifficultyLevel) => {
-    console.log('🔄 [CODING_PROGRESS EVENT] fetchNewQuestion triggered for', lang, diff);
-    if (isGenerating) {
-      console.warn('⚠️ [CODING_PROGRESS EVENT] Question generation already in progress. Skipping duplicate call.');
-      return;
-    }
+    if (isGenerating) return;
     setIsGenerating(true);
     setGenerationError(null);
     setExecutionResult(null);
     setDynamicAiFeedback(null);
     setHasEvaluated(false);
+    setEvaluationMetrics(null);
+    setRobotVoiceMessage(null);
 
     let attempts = 0;
     let generatedSuccess = false;
@@ -186,9 +244,7 @@ export const CodingView: React.FC = () => {
         if (generated && generated.title && generated.description) {
           const normalizedTitle = generated.title.toLowerCase().trim();
           
-          // Retry if Gemini generated a title already seen in this session
           if (seenTitlesRef.current.has(normalizedTitle) && attempts < 3) {
-            console.warn(`Duplicate question title "${generated.title}" received. Retrying attempt ${attempts}...`);
             continue;
           }
 
@@ -223,14 +279,10 @@ export const CodingView: React.FC = () => {
           };
 
           setCurrentProblem(formatted);
-          // Set code editor completely EMPTY on new question load
           setUserCode('');
           setGenerationError(null);
           generatedSuccess = true;
 
-          console.log('✨ [CODING_PROGRESS EVENT] New question generated:', formatted.title, formatted.id);
-
-          // Immediately insert record into coding_progress table
           await SupabaseService.initCodingProgress({
             userEmail: user?.email || 'student@college.edu',
             userId: user?.id,
@@ -273,97 +325,175 @@ export const CodingView: React.FC = () => {
     setUserCode('');
   };
 
+  // NEXT QUESTION: Clears all previous evaluation states completely
   const handleNextQuestion = () => {
-    console.log('👉 [CODING_PROGRESS EVENT] "Next Question" button clicked!');
-    setQuestionCount((prev) => prev + 1);
-    setUserCode('');
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    setIsEvaluatingOverlay(false);
+    setIsEvaluationLoading(false);
     setExecutionResult(null);
     setDynamicAiFeedback(null);
+    setEvaluationMetrics(null);
+    setRobotVoiceMessage(null);
     setHasEvaluated(false);
+    setUserCode('');
+    setQuestionCount((prev) => prev + 1);
     fetchNewQuestion(selectedLang, difficulty);
   };
 
   const handleResetCode = () => {
-    // Reset editor to empty string while keeping current state
     setUserCode('');
     setExecutionResult(null);
     setDynamicAiFeedback(null);
+    setEvaluationMetrics(null);
+    setRobotVoiceMessage(null);
   };
 
-  const handleReopenEditor = () => {
-    // 1. Hide AI Feedback panel completely to return to coding editor view
-    setExecutionResult(null);
-    setDynamicAiFeedback(null);
-
-    // 2. Focus cursor inside the editor without scrolling to unrelated positions
+  // EDIT CODE: Closes overlay & preserves user code
+  const handleCloseEvaluationOverlayToEdit = () => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    setIsEvaluatingOverlay(false);
     if (editorRef.current) {
       editorRef.current.focus();
     }
   };
 
+  // RUN & EVALUATE CODE FLOW WITH DIRECT AI ROBOT FEEDBACK (NO INTERMEDIATE LOADING SCREEN)
   const handleRunCode = async () => {
     if (isRunning) return;
     setIsRunning(true);
+    setIsEvaluatingOverlay(false);
+    setIsEvaluationLoading(true);
+    setEvaluationError(null);
+    setRobotVoiceMessage(null);
+    setEvaluationMetrics(null);
 
+    const userName = user.name ? user.name.split(' ')[0] : 'Student';
+    const isTanglish = user.preferredLanguage === 'Tanglish';
     const trimmedCode = userCode.trim();
     const problemTitle = currentProblem?.title || 'Coding Challenge';
     const problemDesc = currentProblem?.description || '';
 
-    // Step 1: Check Empty
-    if (!trimmedCode) {
-      const emptyErrorMsg = 'Please write your solution before running.';
-      setExecutionResult({
-        status: 'Compilation Error',
-        passed: false,
-        score: 0,
-        executionTimeMs: 0,
-        passedTestCasesCount: 0,
-        totalTestCasesCount: 1,
-        errorMessage: emptyErrorMsg
-      });
-      setHasEvaluated(true);
-      setIsRunning(false);
-      return;
-    }
+    try {
+      // Step 1: Empty Code Check
+      if (!trimmedCode) {
+        await new Promise((res) => setTimeout(res, 1200));
 
-    // Step 2: Check Syntax & Random Text Validation
-    const isCodeValid = validateCodeSyntax(trimmedCode, selectedLang);
-    if (!isCodeValid) {
-      const invalidErrorMsg = `Invalid code. Please enter valid ${selectedLang} code.`;
-      const rawTanglishInvalidMsg = selectedLang === 'Python' 
-        ? 'Idhu valid Python code illa. Proper function or logic write pannunga.' 
-        : `Idhu valid ${selectedLang} code illa. Proper logic write pannunga.`;
-      const tanglishInvalidMsg = formatTanglishAddressing(rawTanglishInvalidMsg, user, 'Tanglish');
+        const emptyMessage = isTanglish
+          ? `${userName}, code edhum submit pannala. First solution write panni execute pannunga.`
+          : `${userName}, no code was submitted. Please write your solution before evaluating.`;
 
-      const syntaxErrorResult: CodingSubmissionResult = {
-        status: 'Compilation Error',
-        passed: false,
-        score: 0,
-        executionTimeMs: 12,
-        errorMessage: invalidErrorMsg,
-        aiCodeReview: {
-          timeComplexity: 'N/A',
-          spaceComplexity: 'N/A',
-          optimizations: [invalidErrorMsg],
-          englishAdvice: invalidErrorMsg,
-          tanglishAdvice: tanglishInvalidMsg
+        const metrics = {
+          correctnessPercent: 0,
+          passedTestCasesCount: 0,
+          totalTestCasesCount: 1,
+          mistakes: ['No code submitted in editor.'],
+          howToImprove: ['Write your solution logic in the editor before running.']
+        };
+
+        setEvaluationMetrics(metrics);
+        setRobotVoiceMessage(emptyMessage);
+        setHasEvaluated(true);
+        setIsEvaluationLoading(false);
+        setIsRunning(false);
+        setIsEvaluatingOverlay(true);
+        speakRobotFeedback(emptyMessage);
+        return;
+      }
+
+      // Step 2: Syntax & Validation Check
+      const isCodeValid = validateCodeSyntax(trimmedCode, selectedLang);
+      if (!isCodeValid) {
+        await new Promise((res) => setTimeout(res, 1500));
+
+        const syntaxMistake = `Invalid ${selectedLang} code syntax. Please check syntax rules.`;
+        const syntaxMessage = isTanglish
+          ? `${userName}, unga code-la konjam mistakes irukku. Innum konjam practice pannunga. Mainly indha areas-la improve panna try pannunga.`
+          : `${userName}, there are a few mistakes in your code. Keep practicing and focus on the areas mentioned in the feedback.`;
+
+        const metrics = {
+          correctnessPercent: 0,
+          passedTestCasesCount: 0,
+          totalTestCasesCount: 1,
+          mistakes: [syntaxMistake],
+          howToImprove: [`Write syntactically correct ${selectedLang} code with proper keywords and structure.`]
+        };
+
+        setEvaluationMetrics(metrics);
+        setRobotVoiceMessage(syntaxMessage);
+        setHasEvaluated(true);
+        setIsEvaluationLoading(false);
+        setIsRunning(false);
+        setIsEvaluatingOverlay(true);
+        speakRobotFeedback(syntaxMessage);
+
+        if (currentProblem) {
+          await SupabaseService.updateCodingProgress({
+            problemId: currentProblem.id,
+            userEmail: user?.email || 'student@college.edu',
+            userId: user?.id,
+            code: userCode,
+            score: 0,
+            status: 'Compilation Error',
+            timeComplexity: 'N/A',
+            englishAdvice: syntaxMistake,
+            tanglishAdvice: syntaxMessage
+          });
         }
+        return;
+      }
+
+      // Step 3: Valid Code -> Generate Actual AI Review
+      const dynamicReview = await generateAICodeReview({
+        problemTitle,
+        description: problemDesc,
+        code: trimmedCode,
+        language: selectedLang,
+        validationStatus: 'Success'
+      }, user);
+
+      const isCorrect = dynamicReview.result === 'Correct';
+      const score = isCorrect ? 100 : 60;
+      const passedCount = isCorrect ? 1 : 0;
+      const totalCount = 1;
+
+      let robotMsg = '';
+      if (isCorrect) {
+        robotMsg = isTanglish
+          ? `Hi ${userName}! Neenga coding-a perfect-ah write pannirukeenga. Very good! Ippadiye continue pannunga. Indha problem-a neenga easy-ah crack panniteenga.`
+          : `Hi ${userName}! You wrote the code perfectly. Great job! Keep continuing like this. You solved this problem very well.`;
+      } else {
+        robotMsg = isTanglish
+          ? `${userName}, good attempt! Unga code-la sila parts correct-ah irukku, but konjam corrections thevai. Feedback-a check panni next attempt-la improve pannunga.`
+          : `Hi ${userName}! Good attempt! Some parts of your code are correct, but a few adjustments are needed. Check the feedback to improve on your next attempt.`;
+      }
+
+      const mistakesList = dynamicReview.mistakes && dynamicReview.mistakes !== 'None'
+        ? [dynamicReview.mistakes]
+        : isCorrect
+        ? ['None. Logic handles inputs correctly.']
+        : ['Edge case handling needs refinement.'];
+
+      const improveList = dynamicReview.betterApproach
+        ? [dynamicReview.betterApproach]
+        : [`Optimize ${dynamicReview.timeComplexity} complexity where possible.`];
+
+      const metrics = {
+        correctnessPercent: score,
+        passedTestCasesCount: passedCount,
+        totalTestCasesCount: totalCount,
+        mistakes: mistakesList,
+        howToImprove: improveList
       };
 
-      setExecutionResult(syntaxErrorResult);
-      setDynamicAiFeedback({
-        result: 'Compilation Error',
-        strengths: 'None',
-        mistakes: invalidErrorMsg,
-        betterApproach: `Write syntactically correct ${selectedLang} code with proper keywords and structure.`,
-        timeComplexity: 'N/A',
-        spaceComplexity: 'N/A',
-        interviewTip: 'Always double-check language syntax rules before compiling.',
-        englishAdvice: invalidErrorMsg,
-        tanglishAdvice: tanglishInvalidMsg
-      });
+      setEvaluationMetrics(metrics);
+      setRobotVoiceMessage(robotMsg);
+      setDynamicAiFeedback(dynamicReview);
       setHasEvaluated(true);
-      setIsRunning(false);
+      recordUserActivity('coding', problemTitle, score, 'Coding');
 
       if (currentProblem) {
         await SupabaseService.updateCodingProgress({
@@ -371,62 +501,26 @@ export const CodingView: React.FC = () => {
           userEmail: user?.email || 'student@college.edu',
           userId: user?.id,
           code: userCode,
-          score: 0,
-          status: 'Compilation Error',
-          timeComplexity: 'N/A',
-          englishAdvice: invalidErrorMsg,
-          tanglishAdvice: tanglishInvalidMsg
+          score: score,
+          status: isCorrect ? 'Correct' : 'Needs Improvement',
+          timeComplexity: dynamicReview.timeComplexity,
+          englishAdvice: dynamicReview.englishAdvice,
+          tanglishAdvice: dynamicReview.tanglishAdvice
         });
       }
-      return;
+
+      setIsEvaluationLoading(false);
+      setIsRunning(false);
+      setIsEvaluatingOverlay(true);
+      speakRobotFeedback(robotMsg);
+
+    } catch (err: any) {
+      console.error('Error evaluating code:', err);
+      setIsEvaluationLoading(false);
+      setIsRunning(false);
+      setIsEvaluatingOverlay(true);
+      setEvaluationError('Evaluation could not be completed due to a temporary connection issue. Please try again.');
     }
-
-    // Step 3: Valid Code -> Generate Dynamic AI Review
-    const dynamicReview = await generateAICodeReview({
-      problemTitle,
-      description: problemDesc,
-      code: trimmedCode,
-      language: selectedLang,
-      validationStatus: 'Success'
-    }, user);
-
-    const successResult: CodingSubmissionResult = {
-      status: 'Success',
-      passed: true,
-      score: 100,
-      executionTimeMs: 28,
-      passedTestCasesCount: 1,
-      totalTestCasesCount: 1,
-      aiCodeReview: {
-        timeComplexity: dynamicReview.timeComplexity,
-        spaceComplexity: dynamicReview.spaceComplexity,
-        optimizations: [dynamicReview.betterApproach],
-        englishAdvice: dynamicReview.englishAdvice,
-        tanglishAdvice: dynamicReview.tanglishAdvice
-      }
-    };
-
-    setExecutionResult(successResult);
-    setDynamicAiFeedback(dynamicReview);
-    setHasEvaluated(true);
-    recordUserActivity('coding', problemTitle, 100, 'Coding');
-
-    // Step 4: Persist in Supabase
-    if (currentProblem) {
-      await SupabaseService.updateCodingProgress({
-        problemId: currentProblem.id,
-        userEmail: user?.email || 'student@college.edu',
-        userId: user?.id,
-        code: userCode,
-        score: 100,
-        status: 'Correct',
-        timeComplexity: dynamicReview.timeComplexity,
-        englishAdvice: dynamicReview.englishAdvice,
-        tanglishAdvice: dynamicReview.tanglishAdvice
-      });
-    }
-
-    setIsRunning(false);
   };
 
   // --- RENDER 1: CLEAN CODING SETUP PAGE ---
@@ -586,7 +680,7 @@ export const CodingView: React.FC = () => {
 
   // --- RENDER 2: LEETCODE / HACKERRANK STYLE DUAL PANEL CODING CHALLENGE PAGE ---
   return (
-    <div ref={mainContainerRef} className="flex-1 w-[94%] sm:w-[96%] max-w-7xl mx-auto flex flex-col h-[calc(100vh-130px)] space-y-3 pb-2 animate-in fade-in select-none overflow-hidden">
+    <div ref={mainContainerRef} className="flex-1 w-[94%] sm:w-[96%] max-w-7xl mx-auto flex flex-col h-[calc(100vh-130px)] space-y-3 pb-2 animate-in fade-in select-none overflow-hidden relative">
       
       {/* Session Resume Modal */}
       <SessionResumeModal
@@ -601,7 +695,7 @@ export const CodingView: React.FC = () => {
         onExit={handleExitCoding}
       />
 
-      {/* Requirement 4: Slim Progress Bar at top showing coding progress */}
+      {/* Slim Progress Bar at top showing coding progress */}
       <div className="w-full bg-slate-800/80 h-1.5 rounded-full overflow-hidden shrink-0">
         <div
           className="bg-emerald-500 h-full transition-all duration-500 rounded-full"
@@ -609,7 +703,7 @@ export const CodingView: React.FC = () => {
         />
       </div>
 
-      {/* Requirement 9: Sticky Header Navigation Bar */}
+      {/* Sticky Header Navigation Bar */}
       <div className="glass-card rounded-2xl p-3 border flex flex-wrap items-center justify-between gap-3 shrink-0 sticky top-0 z-20 backdrop-blur-md bg-slate-950/80">
         <div className="flex items-center gap-3">
           <button
@@ -629,7 +723,7 @@ export const CodingView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Requirement 9: Next Question Button disabled until code evaluated */}
+          {/* Next Question Button */}
           <button
             onClick={handleNextQuestion}
             disabled={isGenerating || !hasEvaluated}
@@ -649,7 +743,7 @@ export const CodingView: React.FC = () => {
             )}
           </button>
 
-          {/* Requirement 1: Exit Button with White/Transparent default & smooth red hover */}
+          {/* Exit Button */}
           <button
             onClick={() => setActiveTab('dashboard')}
             className="px-3 py-1.5 rounded-xl border border-slate-700/80 bg-transparent text-slate-300 hover:bg-red-500 hover:text-white hover:border-red-500 text-xs font-bold flex items-center gap-1.5 transition-all duration-300 cursor-pointer"
@@ -667,7 +761,6 @@ export const CodingView: React.FC = () => {
         {/* ================= LEFT PANEL (45% - lg:col-span-5): Question Details ================= */}
         <div className="lg:col-span-5 h-full flex flex-col glass-card rounded-2xl border p-5 overflow-y-auto space-y-4 scrollbar-thin scrollbar-thumb-slate-700">
           
-          {/* Error Banner when Gemini API fails */}
           {generationError ? (
             <div className="p-6 rounded-2xl bg-red-500/10 border border-red-500/30 text-center space-y-3 my-auto">
               <AlertCircle className="w-8 h-8 text-red-500 mx-auto" />
@@ -691,11 +784,7 @@ export const CodingView: React.FC = () => {
             </div>
           ) : currentProblem ? (
             <>
-              {/* Requirement 1 & 8: Left Panel hierarchy (No duplicate language/difficulty badges) */}
-              
-              {/* 1. Problem Statement Card (Title, Question #, Muted Problem ID, Description) */}
               <div className="space-y-3 border-b border-slate-200 dark:border-slate-800 pb-4">
-                
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-extrabold text-emerald-400 uppercase tracking-wider">
                     Question #{questionCount}
@@ -712,7 +801,6 @@ export const CodingView: React.FC = () => {
                   {isGenerating && <RefreshCw className="w-4 h-4 text-emerald-500 animate-spin shrink-0" />}
                 </h2>
 
-                {/* Requirement 2: Small Muted Problem ID below title */}
                 <span className="text-[10px] text-slate-500 font-mono block -mt-1">
                   ID: {currentProblem.id}
                 </span>
@@ -722,7 +810,6 @@ export const CodingView: React.FC = () => {
                 </div>
               </div>
 
-              {/* 2. Input Format */}
               {currentProblem.inputFormat && (
                 <div className="space-y-1.5">
                   <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
@@ -734,7 +821,6 @@ export const CodingView: React.FC = () => {
                 </div>
               )}
 
-              {/* 3. Output Format */}
               {currentProblem.outputFormat && (
                 <div className="space-y-1.5">
                   <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
@@ -746,7 +832,6 @@ export const CodingView: React.FC = () => {
                 </div>
               )}
 
-              {/* 4. Constraints */}
               {currentProblem.constraints && currentProblem.constraints.length > 0 && (
                 <div className="space-y-1.5">
                   <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
@@ -763,7 +848,6 @@ export const CodingView: React.FC = () => {
                 </div>
               )}
 
-              {/* 5. Sample Input */}
               {currentProblem.sampleInput && (
                 <div className="space-y-1.5">
                   <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
@@ -775,7 +859,6 @@ export const CodingView: React.FC = () => {
                 </div>
               )}
 
-              {/* 6. Sample Output */}
               {currentProblem.sampleOutput && (
                 <div className="space-y-1.5">
                   <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
@@ -787,7 +870,6 @@ export const CodingView: React.FC = () => {
                 </div>
               )}
 
-              {/* 7. Explanation */}
               {currentProblem.explanation && (
                 <div className="space-y-1.5">
                   <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
@@ -805,15 +887,13 @@ export const CodingView: React.FC = () => {
               </div>
             </>
           ) : null}
-
         </div>
 
-        {/* ================= RIGHT PANEL (55% - lg:col-span-7): Code Editor & AI Feedback Overlay ================= */}
+        {/* ================= RIGHT PANEL (55% - lg:col-span-7): Code Editor ================= */}
         <div className="lg:col-span-7 h-full flex flex-col space-y-4 overflow-hidden">
-          
           <div className="glass-card rounded-2xl p-5 border flex-1 flex flex-col space-y-3 overflow-hidden">
             
-            {/* Requirement 2: Setup Indicator Header (ALWAYS VISIBLE AT TOP) */}
+            {/* Setup Indicator Header */}
             <div className="flex items-center justify-between gap-2.5 px-1 pb-2 border-b border-slate-800/60 shrink-0">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-semibold text-slate-400">Setup:</span>
@@ -827,14 +907,13 @@ export const CodingView: React.FC = () => {
               </div>
             </div>
 
-            {/* Requirement 2: Editor Action Header (ALWAYS VISIBLE AT TOP) */}
+            {/* Editor Action Header */}
             <div className="flex items-center justify-between gap-3 shrink-0">
               <span className="text-xs font-bold text-slate-400">
-                {executionResult ? 'AI Feedback Overview:' : 'Type your solution logic below:'}
+                Type your solution logic below:
               </span>
 
               <div className="flex items-center gap-2">
-                {/* Reset Code Button */}
                 <button
                   onClick={handleResetCode}
                   className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs flex items-center gap-1.5 border border-slate-700 transition-all cursor-pointer"
@@ -844,7 +923,6 @@ export const CodingView: React.FC = () => {
                   <span>Reset Code</span>
                 </button>
 
-                {/* Run & Evaluate Code Flow Button */}
                 <button
                   onClick={handleRunCode}
                   disabled={isRunning}
@@ -865,180 +943,187 @@ export const CodingView: React.FC = () => {
               </div>
             </div>
 
-            {/* Requirement 2 & 6: Dynamic Area Below Setup Bar (Toggles between Code Editor & AI Feedback Overlay) */}
-            {!executionResult ? (
-              <textarea
-                ref={editorRef}
-                value={userCode}
-                onChange={(e) => setUserCode(e.target.value)}
-                placeholder="Start typing your solution here..."
-                className="flex-1 min-h-0 w-full p-4 rounded-2xl bg-[#0f172a] border border-slate-800/90 font-mono text-emerald-400 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/60 leading-relaxed shadow-inner resize-none overflow-y-auto scrollbar-thin scrollbar-thumb-slate-800 animate-in fade-in"
-              />
+            {/* Code Editor */}
+            <textarea
+              ref={editorRef}
+              value={userCode}
+              onChange={(e) => setUserCode(e.target.value)}
+              placeholder="Start typing your solution here..."
+              className="flex-1 min-h-0 w-full p-4 rounded-2xl bg-[#0f172a] border border-slate-800/90 font-mono text-emerald-400 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/60 leading-relaxed shadow-inner resize-none overflow-y-auto scrollbar-thin scrollbar-thumb-slate-800 animate-in fade-in"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* ================= COMPACT HORIZONTAL RECTANGULAR CARD OVERLAY ================= */}
+      {isEvaluatingOverlay && (
+        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 overflow-y-auto animate-in fade-in duration-300">
+          <div className="glass-card rounded-[26px] p-5 sm:p-7 max-w-4xl w-full max-h-[88vh] overflow-y-auto border border-emerald-500/40 bg-slate-900/95 shadow-2xl relative text-slate-100 animate-in zoom-in-95 duration-200 scrollbar-thin scrollbar-thumb-slate-800">
+            
+            {/* Background Lighting Glow */}
+            <div className="absolute -top-12 -left-12 w-48 h-48 bg-emerald-500/15 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-12 -right-12 w-48 h-48 bg-teal-500/15 rounded-full blur-3xl pointer-events-none" />
+
+            {evaluationError ? (
+              /* STATE A: ERROR STATE */
+              <div className="text-center space-y-4 py-6">
+                <div className="w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-400 flex items-center justify-center mx-auto">
+                  <AlertCircle className="w-8 h-8" />
+                </div>
+                <h3 className="text-xl font-bold text-white">Evaluation Error</h3>
+                <p className="text-xs text-slate-300">{evaluationError}</p>
+                <button
+                  type="button"
+                  onClick={handleCloseEvaluationOverlayToEdit}
+                  className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition-all cursor-pointer border border-slate-700"
+                >
+                  Return to Editor
+                </button>
+              </div>
             ) : (
-              /* AI Feedback Overlay Panel covering editor area below Setup bar */
-              <div className="flex-1 min-h-0 w-full rounded-2xl bg-slate-900/95 border border-slate-800 p-5 space-y-4 overflow-y-auto animate-in fade-in zoom-in-95 scrollbar-thin scrollbar-thumb-slate-800">
+              /* STATE B: COMPACT HORIZONTAL 2-COLUMN EVALUATION RECTANGULAR CARD */
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center animate-in fade-in zoom-in-95 duration-300">
                 
-                {/* Header with single Edit Code button */}
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-emerald-400" />
-                    <h3 className="text-xs font-black uppercase tracking-wider text-slate-200">
-                      AI Feedback
-                    </h3>
+                {/* LEFT COLUMN: AI ROBOT & REPLAY VOICE */}
+                <div className="md:col-span-5 flex flex-col items-center justify-center space-y-3 border-b md:border-b-0 md:border-r border-slate-800/80 pb-4 md:pb-0 md:pr-6">
+                  <div className="flex flex-col items-center justify-center pointer-events-none scale-90 sm:scale-95 md:scale-100 shrink-0">
+                    <AIRobotLoader
+                      title=""
+                      subtitle=""
+                      details=""
+                      overlay={false}
+                      isSpeaking={isRobotSpeaking}
+                      isDone={true}
+                    />
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    {/* Requirement 3: Single Edit Code Button */}
+                  {robotVoiceMessage && (
                     <button
-                      onClick={handleReopenEditor}
-                      className="flex items-center gap-1.5 text-xs text-emerald-400 hover:text-white bg-emerald-500/10 hover:bg-emerald-600 px-3 py-1.5 rounded-xl border border-emerald-500/30 shadow transition-all cursor-pointer font-extrabold"
-                      title="Return to editor & modify code"
+                      type="button"
+                      onClick={() => speakRobotFeedback(robotVoiceMessage)}
+                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-extrabold text-xs flex items-center justify-center gap-2 border border-slate-700/80 shadow-md transition-all cursor-pointer"
+                      title="Replay Voice Feedback"
                     >
-                      <Edit3 className="w-3.5 h-3.5" />
-                      <span>Edit Code</span>
+                      <Volume2 className="w-4 h-4 text-emerald-400" />
+                      <span>Replay Voice</span>
                     </button>
-
-                    <span
-                      className={`text-[11px] font-extrabold px-2.5 py-0.5 rounded-full ${
-                        executionResult.status === 'Success'
-                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
-                          : 'bg-red-500/10 text-red-400 border border-red-500/30'
-                      }`}
-                    >
-                      {executionResult.status === 'Success' ? 'Correct' : executionResult.status === 'Compilation Error' ? 'Compilation Error' : 'Wrong'}
-                    </span>
-                  </div>
+                  )}
                 </div>
 
-                {/* Success XP banner if applicable */}
-                {executionResult.status === 'Success' && (
-                  <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between gap-3 shadow-md">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-extrabold text-sm border border-emerald-500/30">
-                        ✓
+                {/* RIGHT COLUMN: EVALUATION CONTENT & ACTION BUTTONS */}
+                <div className="md:col-span-7 space-y-4">
+                  {/* Header */}
+                  <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                        <Sparkles className="w-5 h-5" />
                       </div>
                       <div>
-                        <h4 className="text-xs font-black text-emerald-400">Correct Answer</h4>
-                        <p className="text-[11px] font-bold text-amber-400 flex items-center gap-1">
-                          <Zap className="w-3 h-3 fill-amber-400 text-amber-400" />
-                          <span>+100 XP Earned</span>
-                        </p>
+                        <h3 className="text-base font-extrabold text-white tracking-wide font-['Space_Grotesk']">
+                          Code Evaluation Complete
+                        </h3>
+                        <span className="text-[11px] text-slate-400 font-medium">
+                          Language: {selectedLang} • Difficulty: {difficulty}
+                        </span>
                       </div>
                     </div>
 
-                    <button
-                      onClick={handleNextQuestion}
-                      className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs flex items-center gap-1 transition-all cursor-pointer"
+                    <span
+                      className={`text-xs font-black px-3 py-1 rounded-full border ${
+                        (evaluationMetrics?.correctnessPercent || 0) >= 80
+                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                          : (evaluationMetrics?.correctnessPercent || 0) > 0
+                          ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                          : 'bg-red-500/10 text-red-400 border-red-500/30'
+                      }`}
                     >
-                      <span>Next Question</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                )}
-
-                {/* Dynamic AI Feedback Details */}
-                <div className="space-y-3 text-xs">
-                  
-                  {/* Result & Language Toggle Bar */}
-                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950 border border-slate-800">
-                    <span className="font-extrabold text-slate-300 flex items-center gap-1.5">
-                      <span>✅ Result:</span>
-                      <strong className={executionResult.status === 'Success' ? 'text-emerald-400' : 'text-red-400'}>
-                        {executionResult.status === 'Success' ? 'Correct' : executionResult.status === 'Compilation Error' ? 'Compilation Error' : 'Wrong'}
-                      </strong>
+                      {evaluationMetrics?.correctnessPercent}% Correct
                     </span>
-
-                    <button
-                      onClick={() => setAdviceLanguage(adviceLanguage === 'Tanglish' ? 'English' : 'Tanglish')}
-                      className="text-[10px] font-bold underline text-amber-400 cursor-pointer"
-                    >
-                      Switch to {adviceLanguage === 'Tanglish' ? 'English' : 'Tanglish'}
-                    </button>
                   </div>
 
-                  {executionResult.errorMessage && (
-                    <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 font-mono text-xs">
-                      {executionResult.errorMessage}
+                  {/* Clean Evaluation Results Content */}
+                  {evaluationMetrics && (
+                    <div className="space-y-3 text-xs">
+                      {/* Metrics Bar */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+                          <span className="text-slate-400 font-bold">Correctness:</span>
+                          <span className="font-extrabold text-emerald-400 text-sm">
+                            {evaluationMetrics.correctnessPercent}%
+                          </span>
+                        </div>
+
+                        <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+                          <span className="text-slate-400 font-bold">Test Cases:</span>
+                          <span className="font-extrabold text-slate-200 text-sm">
+                            {evaluationMetrics.passedTestCasesCount} / {evaluationMetrics.totalTestCasesCount} Passed
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Mistakes List */}
+                      <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 space-y-1.5">
+                        <span className="font-extrabold text-amber-400 block text-[11px] uppercase tracking-wider">
+                          ⚠ Mistakes
+                        </span>
+                        <ul className="space-y-1 text-slate-300 font-medium leading-relaxed">
+                          {evaluationMetrics.mistakes.map((m, idx) => (
+                            <li key={idx} className="flex items-start gap-1.5">
+                              <span className="text-amber-400">•</span>
+                              <span>{m}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      {/* How to Improve List */}
+                      <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 space-y-1.5">
+                        <span className="font-extrabold text-emerald-400 block text-[11px] uppercase tracking-wider">
+                          💡 How to Improve
+                        </span>
+                        <ul className="space-y-1 text-slate-300 font-medium leading-relaxed">
+                          {evaluationMetrics.howToImprove.map((imp, idx) => (
+                            <li key={idx} className="flex items-start gap-1.5">
+                              <span className="text-emerald-400">•</span>
+                              <span>{imp}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
                     </div>
                   )}
 
-                  {/* Tanglish / English Advice Banner */}
-                  <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-slate-200 font-medium leading-relaxed">
-                    <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block mb-1">
-                      💡 Explanation ({adviceLanguage})
-                    </span>
-                    <span>
-                      {adviceLanguage === 'Tanglish'
-                        ? dynamicAiFeedback?.tanglishAdvice || executionResult.aiCodeReview?.tanglishAdvice
-                        : dynamicAiFeedback?.englishAdvice || executionResult.aiCodeReview?.englishAdvice}
-                    </span>
+                  {/* EXACTLY TWO ACTION BUTTONS */}
+                  <div className="grid grid-cols-2 gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={handleCloseEvaluationOverlayToEdit}
+                      className="py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 border border-slate-700 transition-all cursor-pointer"
+                    >
+                      <Edit3 className="w-4 h-4 text-slate-300" />
+                      <span>Edit Code</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleNextQuestion}
+                      className="py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition-all cursor-pointer"
+                    >
+                      <span>Next Question</span>
+                      <ArrowRight className="w-4 h-4 text-white" />
+                    </button>
                   </div>
-
-                  {/* Structured Feedback Cards */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1">
-                      <span className="font-extrabold text-emerald-400 block text-[11px]">
-                        ⭐ Strengths
-                      </span>
-                      <p className="text-slate-300 font-medium text-[11px] leading-relaxed">
-                        {dynamicAiFeedback?.strengths || 'Clean structural approach adhering to candidate constraints.'}
-                      </p>
-                    </div>
-
-                    <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1">
-                      <span className="font-extrabold text-amber-400 block text-[11px]">
-                        ⚠ Mistakes
-                      </span>
-                      <p className="text-slate-300 font-medium text-[11px] leading-relaxed">
-                        {dynamicAiFeedback?.mistakes || 'Validate zero/null boundary conditions and edge inputs.'}
-                      </p>
-                    </div>
-
-                    <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1 sm:col-span-2">
-                      <span className="font-extrabold text-purple-400 block text-[11px]">
-                        💡 Better Approach
-                      </span>
-                      <p className="text-slate-300 font-medium text-[11px] leading-relaxed">
-                        {dynamicAiFeedback?.betterApproach || 'Using optimal pointer traversal reduces lookup overhead.'}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Complexities */}
-                  <div className="grid grid-cols-2 gap-2.5 pt-1">
-                    <div className="p-2.5 rounded-xl bg-slate-950 font-mono border border-slate-800">
-                      <span className="text-slate-400 block text-[10px] mb-0.5">⏱ Time Complexity:</span>
-                      <strong className="text-emerald-400 text-xs">
-                        {dynamicAiFeedback?.timeComplexity || executionResult.aiCodeReview?.timeComplexity || 'O(N)'}
-                      </strong>
-                    </div>
-                    <div className="p-2.5 rounded-xl bg-slate-950 font-mono border border-slate-800">
-                      <span className="text-slate-400 block text-[10px] mb-0.5">💾 Space Complexity:</span>
-                      <strong className="text-purple-400 text-xs">
-                        {dynamicAiFeedback?.spaceComplexity || executionResult.aiCodeReview?.spaceComplexity || 'O(1)'}
-                      </strong>
-                    </div>
-                  </div>
-
-                  {/* Interview Tip */}
-                  <div className="p-3 rounded-xl bg-slate-950/90 border border-slate-800 text-slate-300">
-                    <span className="font-extrabold text-teal-400 block text-[11px] mb-0.5">
-                      🎯 Interview Tip
-                    </span>
-                    <p className="text-slate-300 font-medium text-[11px]">
-                      {dynamicAiFeedback?.interviewTip || 'State your algorithmic time complexity clearly before writing code.'}
-                    </p>
-                  </div>
-
                 </div>
 
               </div>
             )}
 
           </div>
-
         </div>
-      </div>
+      )}
+
     </div>
   );
 };
+
+export default CodingView;

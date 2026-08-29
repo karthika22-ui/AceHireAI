@@ -93,6 +93,73 @@ async function extractTextWithPdfJs(arrayBuffer: ArrayBuffer): Promise<string> {
   }
 }
 
+async function extractImagesFromPdfJs(arrayBuffer: ArrayBuffer): Promise<string | undefined> {
+  try {
+    const loadingTask = pdfjsLib.getDocument({
+      data: new Uint8Array(arrayBuffer),
+      useSystemFonts: true
+    });
+    const pdfDoc = await loadingTask.promise;
+    if (pdfDoc.numPages < 1) return undefined;
+
+    const page = await pdfDoc.getPage(1);
+    const viewport = page.getViewport({ scale: 1.5 });
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    if (!context) return undefined;
+    canvas.height = viewport.height;
+    canvas.width = viewport.width;
+
+    await page.render({ canvasContext: context, viewport, canvas } as any).promise;
+
+    let extractedDataUrl: string | undefined = undefined;
+    try {
+      const opList = await page.getOperatorList();
+      for (let i = 0; i < opList.fnArray.length; i++) {
+        const fn = opList.fnArray[i];
+        if (fn === pdfjsLib.OPS.paintImageXObject || fn === pdfjsLib.OPS.paintInlineImageXObject) {
+          const imgName = opList.argsArray[i][0];
+          page.objs.get(imgName, (imgData: any) => {
+            if (imgData && imgData.width >= 30 && imgData.height >= 30) {
+              const imgCanvas = document.createElement('canvas');
+              imgCanvas.width = imgData.width;
+              imgCanvas.height = imgData.height;
+              const imgCtx = imgCanvas.getContext('2d');
+              if (imgCtx && imgData.data) {
+                const imageDataObj = imgCtx.createImageData(imgData.width, imgData.height);
+                if (imgData.data.length === imgData.width * imgData.height * 4) {
+                  imageDataObj.data.set(imgData.data);
+                } else if (imgData.data.length === imgData.width * imgData.height * 3) {
+                  for (let j = 0, k = 0; j < imgData.data.length; j += 3, k += 4) {
+                    imageDataObj.data[k] = imgData.data[j];
+                    imageDataObj.data[k + 1] = imgData.data[j + 1];
+                    imageDataObj.data[k + 2] = imgData.data[j + 2];
+                    imageDataObj.data[k + 3] = 255;
+                  }
+                }
+                imgCtx.putImageData(imageDataObj, 0, 0);
+                extractedDataUrl = imgCanvas.toDataURL('image/png');
+              }
+            }
+          });
+          if (extractedDataUrl) break;
+        }
+      }
+    } catch (opErr) {
+      console.warn('PDF operator image extraction notice:', opErr);
+    }
+
+    if (!extractedDataUrl && canvas.width > 0 && canvas.height > 0) {
+      extractedDataUrl = canvas.toDataURL('image/png');
+    }
+
+    return extractedDataUrl;
+  } catch (e) {
+    console.warn('pdfjs image extraction error:', e);
+    return undefined;
+  }
+}
+
 interface ATSAnalyzerViewProps {
   onBackToSelection?: () => void;
   initialResumeData?: ResumeData;
@@ -562,7 +629,25 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
     const sizeInMB = (file.size / (1024 * 1024)).toFixed(1);
     const ext = file.name.split('.').pop()?.toUpperCase() || 'PDF';
 
+    let imagePhotoUrl: string | undefined = undefined;
+    if (file.type && file.type.startsWith('image/')) {
+      imagePhotoUrl = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => resolve((ev.target?.result as string) || '');
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(file);
+      });
+    } else if (file.name.toLowerCase().endsWith('.pdf') || file.type.includes('pdf')) {
+      try {
+        const pdfArrayBuffer = await file.arrayBuffer();
+        imagePhotoUrl = await extractImagesFromPdfJs(pdfArrayBuffer);
+      } catch (err) {
+        console.warn('PDF photo extraction error:', err);
+      }
+    }
+
     const extractedText = await extractReadableTextFromPdfOrFile(file);
+    const preservedPhoto = imagePhotoUrl || editedResumeData?.photoUrl || user?.avatarUrl || undefined;
 
     const fileObj = {
       name: file.name,
@@ -570,9 +655,15 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
       type: `${ext} Document`,
       extractedText: extractedText || '',
       fileSizeRaw: file.size,
-      lastModified: file.lastModified
+      lastModified: file.lastModified,
+      photoUrl: preservedPhoto
     };
     setUploadedFile(fileObj);
+
+    if (preservedPhoto && editedResumeData) {
+      setEditedResumeData((prev) => prev ? { ...prev, photoUrl: preservedPhoto } : prev);
+    }
+
     setAnalysisResult(null);
     setOriginalAtsScore(null);
     setGeneratedResumeAtsScore(null);
@@ -703,8 +794,12 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
         skills: res.keywordBoosts,
         education: [],
         experience: [],
-        projects: []
+        projects: [],
+        photoUrl: (uploadedFile as any)?.photoUrl || editedResumeData?.photoUrl || user?.avatarUrl
       };
+      if (defaultData && !defaultData.photoUrl) {
+        defaultData.photoUrl = (uploadedFile as any)?.photoUrl || editedResumeData?.photoUrl || user?.avatarUrl;
+      }
       setEditedResumeData(defaultData);
 
       // Mark all Fix Issues recommendations as completed!
@@ -784,6 +879,17 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
       let y = 15;
       const leftMargin = 15;
       const pageWidth = 180;
+
+      // Render candidate's preserved original profile photo if present
+      const candidatePhoto = editedResumeData.photoUrl || (uploadedFile as any)?.photoUrl || user?.avatarUrl;
+      if (candidatePhoto) {
+        try {
+          const imgType = candidatePhoto.includes('image/png') ? 'PNG' : 'JPEG';
+          pdf.addImage(candidatePhoto, imgType, 162, 10, 26, 26);
+        } catch (e) {
+          console.warn('PDF profile photo render notice:', e);
+        }
+      }
 
       pdf.setFont('helvetica', 'bold');
       pdf.setFontSize(18);
