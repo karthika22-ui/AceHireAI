@@ -1278,6 +1278,41 @@ export class SupabaseService {
     }
   }
 
+  static async savePushSubscription(subData: {
+    userId: string;
+    endpoint: string;
+    p256dh: string;
+    auth: string;
+    userAgent: string;
+    createdAt: string;
+  }) {
+    if (!isSupabaseConfigured() || !subData.userId) {
+      // Local storage fallback for unconfigured Supabase
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('acehire_mobile_push_subscription', JSON.stringify(subData));
+        } catch (e) {}
+      }
+      return true;
+    }
+
+    try {
+      const payload = {
+        user_id: subData.userId,
+        endpoint: subData.endpoint,
+        p256dh: subData.p256dh,
+        auth: subData.auth,
+        user_agent: subData.userAgent,
+        created_at: subData.createdAt
+      };
+      await supabase.from('push_subscriptions').upsert(payload, { onConflict: 'endpoint' });
+      return true;
+    } catch (e) {
+      console.warn('Supabase savePushSubscription error:', e);
+      return false;
+    }
+  }
+
   // Synchronous Legacy Fallbacks (Preserved for compatibility)
   static getProfile(email?: string): UserProfile {
     return getInitialProfileForEmail(email || 'student@college.edu');

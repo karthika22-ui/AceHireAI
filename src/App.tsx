@@ -56,15 +56,15 @@ const MainContent: React.FC = () => {
         <CommunicationView />
       </div>
 
-      <div className={activeTab === 'roadmap' ? 'flex-1 flex flex-col h-full overflow-hidden' : 'hidden'}>
+      <div className={activeTab === 'roadmap' ? 'flex-1 flex flex-col h-full min-h-0 overflow-hidden' : 'hidden'}>
         <RoadmapView />
       </div>
 
-      <div className={activeTab === 'profile' ? 'flex-1 flex flex-col h-full overflow-hidden' : 'hidden'}>
+      <div className={activeTab === 'profile' ? 'flex-1 flex flex-col h-full min-h-0 overflow-hidden' : 'hidden'}>
         <ProfileView />
       </div>
 
-      <div className={activeTab === 'settings' ? 'flex-1 flex flex-col h-full overflow-hidden' : 'hidden'}>
+      <div className={activeTab === 'settings' ? 'flex-1 flex flex-col h-full min-h-0 overflow-hidden' : 'hidden'}>
         <SettingsView />
       </div>
     </main>

@@ -45,9 +45,9 @@ export const SettingsView: React.FC = () => {
   };
 
   return (
-    <div className="w-full space-y-6 relative animate-in fade-in">
+    <div className="flex-1 flex flex-col h-full overflow-hidden space-y-6 relative animate-in fade-in">
       {/* Top Banner */}
-      <div className="glass-card rounded-3xl p-6 sm:p-8 border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="glass-card rounded-3xl p-6 sm:p-8 border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shrink-0">
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 text-xs font-bold mb-2">
             <Settings className="w-4 h-4" />
@@ -68,9 +68,9 @@ export const SettingsView: React.FC = () => {
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-        {/* Left Col: Settings Navigation Tabs */}
-        <div className="md:col-span-4 space-y-2">
+      <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-6 min-h-0 overflow-hidden pb-4">
+        {/* Left Col: Settings Navigation Tabs (FIXED SIDEBAR - NO SCROLL) */}
+        <div className="md:col-span-4 space-y-2 shrink-0">
           {[
             { id: 'notifications' as const, label: 'Notifications & Alerts', icon: <Bell className="w-4 h-4 text-blue-500" /> },
             { id: 'language' as const, label: 'Explanation Language', icon: <Languages className="w-4 h-4 text-amber-500" /> },
@@ -93,8 +93,8 @@ export const SettingsView: React.FC = () => {
           ))}
         </div>
 
-        {/* Right Col: Settings Panels */}
-        <div className="md:col-span-8 glass-card rounded-3xl p-6 sm:p-8 border space-y-6">
+        {/* Right Col: Settings Panels (ONLY THIS AREA SCROLLS) */}
+        <div className="md:col-span-8 flex flex-col h-full min-h-0 overflow-y-auto overflow-x-hidden glass-card rounded-3xl p-6 sm:p-8 border space-y-6 pr-2 pb-20">
           
           {/* Notifications Panel */}
           {activeSubTab === 'notifications' && (
@@ -163,6 +163,61 @@ export const SettingsView: React.FC = () => {
                     </div>
                   );
                 })}
+              </div>
+
+              {/* MOBILE PHONE WEB PUSH NOTIFICATION TEST CONTROL PANEL */}
+              <div className="p-6 rounded-3xl bg-slate-900 text-white border border-blue-500/40 space-y-4 shadow-xl">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] font-black uppercase text-cyan-400 tracking-wider block">
+                      📱 Mobile Device Push Testing
+                    </span>
+                    <h4 className="text-base font-extrabold text-white font-['Space_Grotesk']">
+                      Mobile Phone Real Web Push Test
+                    </h4>
+                  </div>
+                  <span className="text-xs font-mono font-bold text-slate-400 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">
+                    Web Push API
+                  </span>
+                </div>
+
+                <p className="text-xs text-slate-300 leading-relaxed font-medium">
+                  Test whether HasHire AI can send a REAL PUSH NOTIFICATION to your mobile phone's system notification tray. After clicking <strong>Send Test Notification</strong>, leave, minimize, or close the web app to verify the notification arrives in your phone's notification bar.
+                </p>
+
+                <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400 font-semibold">Test Title:</span>
+                    <span className="font-extrabold text-cyan-300">🔔 HasHire AI — Today's Learning Reminder</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400 font-semibold">Test Message:</span>
+                    <span className="font-extrabold text-purple-300">🎯 Complete your Today's Goal and today's session.</span>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const { sendMobileTestPushNotification } = await import('../../utils/webPushHelper');
+                      const res = await sendMobileTestPushNotification(user?.id);
+                      if (res.success) {
+                        triggerToast(res.message);
+                      } else {
+                        alert(res.message);
+                      }
+                    }}
+                    className="w-full sm:w-auto px-6 py-3.5 rounded-2xl bg-gradient-to-r from-blue-500 to-cyan-400 hover:from-blue-400 hover:to-cyan-300 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 cursor-pointer transition-all hover:scale-[1.02]"
+                  >
+                    <Bell className="w-4 h-4 text-white animate-pulse" />
+                    <span>Send Test Notification</span>
+                  </button>
+
+                  <span className="text-[11px] text-slate-400 font-medium">
+                    ⚡ Works on Android Chrome / iOS Safari (PWA)
+                  </span>
+                </div>
               </div>
             </div>
           )}

@@ -1,1093 +1,1016 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Map,
   Sparkles,
   CheckCircle2,
   Calendar,
-  Target,
   Bot,
   Award,
-  BookOpen,
   ChevronRight,
   Check,
   Brain,
-  X,
-  RefreshCw,
-  AlertCircle,
   Code,
   FileText,
   MessageSquare,
   Video,
   CheckSquare,
   LayoutDashboard,
-  TrendingUp,
-  BarChart3
+  BarChart3,
+  PartyPopper,
+  Bell,
+  BookOpen,
+  Clock,
+  Info
 } from 'lucide-react';
-import { useApp, ActiveTab } from '../../context/AppContext';
-import { SupabaseService } from '../../services/supabaseClient';
+import { useApp } from '../../context/AppContext';
 
 export type UserLevel = 'Beginner' | 'Intermediate' | 'Advanced';
 export type DailyTime = '30 min' | '1 hour' | '2 hours' | '3+ hours';
-export type SupportedModuleKey = 'coding' | 'aptitude' | 'communication' | 'interview' | 'resume';
+export type RealModuleTab = 'resume' | 'aptitude' | 'coding' | 'communication' | 'interview';
 
-export interface AppModuleSkillGap {
-  moduleKey: SupportedModuleKey;
+export interface RealModuleSkillGap {
+  moduleKey: RealModuleTab;
   moduleName: string;
-  statusTag: 'Strong' | 'Needs Improvement' | 'Priority Improvement' | 'No Activity Yet';
+  statusTag: 'Strong' | 'Needs Improvement' | 'Weak' | 'Not Started';
+  priorityTag: 'HIGH PRIORITY' | 'MEDIUM PRIORITY' | 'LOW PRIORITY' | 'NOT STARTED';
+  realScoreText: string;
   reason: string;
 }
 
-export interface AppModuleRoadmapCard {
-  id: string;
-  moduleKey: SupportedModuleKey;
+export interface RealAppPhase {
+  phaseNumber: number;
+  title: string;
+  moduleKey: RealModuleTab;
   moduleName: string;
-  priority: 'High' | 'Medium' | 'Standard';
-  whyRecommended: string;
+  description: string;
+  priority: 'HIGH PRIORITY' | 'MEDIUM PRIORITY' | 'LOW PRIORITY' | 'NOT STARTED';
+  estimatedHours: string;
   statusLabel: string;
-  progress: number;
+  realScoreVal: number;
   hasActivity: boolean;
-  estimatedMinutes: string;
   actionLabel: string;
-  suggestedTasks: string[];
+  supportedFeatures: string[];
 }
 
-export interface DailyGoalTask {
+export interface TodayGoalTask {
   id: string;
-  taskName: string;
+  goalTitle: string;
+  reason: string;
   estimatedTime: string;
-  completed: boolean;
-  moduleKey: SupportedModuleKey;
+  moduleKey: RealModuleTab;
   moduleName: string;
+  status: 'not_started' | 'in_progress' | 'completed';
 }
 
-export interface WeeklyScheduleDay {
-  dayName: 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday';
-  focusModule: string;
-  moduleKey: SupportedModuleKey;
+export interface TodaySessionInfo {
+  dayName: string;
+  moduleKey: RealModuleTab;
+  moduleName: string;
   taskDetails: string;
+  status: 'not_started' | 'in_progress' | 'completed';
+  startedAtTimestamp?: number;
 }
 
-export interface RebuiltPersonalizedRoadmapState {
-  customGoalInput: string;
-  userLevel: UserLevel;
-  dailyTime: DailyTime;
-  skillGaps: AppModuleSkillGap[];
-  moduleCards: AppModuleRoadmapCard[];
-  todayGoals: DailyGoalTask[];
-  weeklySchedule: WeeklyScheduleDay[];
+export interface RebuiltRoadmapState {
+  skillGaps: RealModuleSkillGap[];
+  phases: RealAppPhase[];
+  todayGoals: TodayGoalTask[];
+  todaySession: TodaySessionInfo;
   aiRecommendation: string;
-  careerReadinessScore: number;
+  overallProgressScore: number;
+  hasRecordedActivity: boolean;
   lastUpdated: string;
 }
 
-const LOCAL_STORAGE_KEY = 'acehire_ai_roadmap_state_v7';
+const LOCAL_STORAGE_KEY = 'acehire_ai_roadmap_state_v14';
+const STORAGE_KEY_LAST_GOALS_DATE = 'acehire_roadmap_last_goals_date';
+const STORAGE_KEY_LAST_NOTIF_DATE = 'acehire_roadmap_last_notif_date';
 
-const CAREER_GOAL_OPTIONS = [
-  'Software Developer',
-  'Frontend Developer',
-  'Backend Developer',
-  'Full Stack Developer',
-  'AI / ML Engineer',
-  'Data Analyst'
-];
+// Helper to check if a real practice activity was completed for a target module in recentActivities
+function hasCompletedRecentActivityForModule(
+  moduleKey: RealModuleTab,
+  recentActivities: Array<{ id: string; title: string; type: string; score: string; time: string }>,
+  startedAtTimestamp?: number
+): boolean {
+  if (!recentActivities || recentActivities.length === 0) return false;
 
-// Helper to analyze REAL user performance data from AppContext and prioritize the 5 REAL app modules:
-// 1. Coding Practice ('coding')
-// 2. Aptitude Practice ('aptitude')
-// 3. Communication Hub ('communication')
-// 4. AI Mock Interview ('interview')
-// 5. Resume Builder & ATS ('resume')
-function buildPersonalizedPlacementRoadmap(
-  goalText: string,
-  userLevel: UserLevel,
-  dailyTime: DailyTime,
-  readinessScore: { overall: number; interview: number; resume: number; coding: number; aptitude: number; communication: number },
-  recentActivitiesCount: number
+  const keyLower = moduleKey.toLowerCase();
+  
+  return recentActivities.some((act) => {
+    const titleLower = (act.title || '').toLowerCase();
+    const typeLower = (act.type || '').toLowerCase();
+
+    const matchesModule =
+      (keyLower === 'communication' && (typeLower.includes('communication') || titleLower.includes('communication') || typeLower.includes('grammar') || titleLower.includes('grammar'))) ||
+      (keyLower === 'coding' && (typeLower.includes('coding') || titleLower.includes('coding') || typeLower.includes('code') || titleLower.includes('code'))) ||
+      (keyLower === 'aptitude' && (typeLower.includes('aptitude') || titleLower.includes('aptitude') || typeLower.includes('quant') || titleLower.includes('logical'))) ||
+      (keyLower === 'interview' && (typeLower.includes('interview') || titleLower.includes('interview') || typeLower.includes('mock'))) ||
+      (keyLower === 'resume' && (typeLower.includes('resume') || titleLower.includes('resume') || typeLower.includes('ats') || titleLower.includes('ats')));
+
+    if (!matchesModule) return false;
+
+    // If activity time is 'Just now', it was completed in the current active session
+    if (act.time === 'Just now') return true;
+
+    // Extract timestamp from activity id (format: 'act-1725002000000')
+    if (startedAtTimestamp && act.id && act.id.startsWith('act-')) {
+      const actTs = parseInt(act.id.replace('act-', ''), 10);
+      if (!isNaN(actTs) && actTs >= startedAtTimestamp - 5000) {
+        return true;
+      }
+    }
+
+    return true;
+  });
+}
+
+// Single Unified Function for Performance, Skill Gap, and Priority Evaluation
+function getUnifiedModulePerformance(
+  score: number,
+  hasActivity: boolean,
+  moduleName: string
 ): {
-  skillGaps: AppModuleSkillGap[];
-  moduleCards: AppModuleRoadmapCard[];
-  todayGoals: DailyGoalTask[];
-  weeklySchedule: WeeklyScheduleDay[];
-  aiRecommendation: string;
-  careerReadinessScore: number;
+  statusTag: 'Strong' | 'Needs Improvement' | 'Weak' | 'Not Started';
+  priorityTag: 'HIGH PRIORITY' | 'MEDIUM PRIORITY' | 'LOW PRIORITY' | 'NOT STARTED';
+  scoreText: string;
+  reasonText: string;
 } {
-  const goal = goalText.trim() || 'Software Developer';
-  const gLower = goal.toLowerCase();
+  if (!hasActivity && score === 0) {
+    return {
+      statusTag: 'Not Started',
+      priorityTag: 'NOT STARTED',
+      scoreText: 'Not Started',
+      reasonText: `No practice sessions recorded in ${moduleName} yet. Complete your first session to establish your baseline performance.`
+    };
+  }
 
-  // Extract real scores (0 if no activity recorded yet)
-  const codingScore = readinessScore.coding || 0;
+  if (score >= 75) {
+    return {
+      statusTag: 'Strong',
+      priorityTag: 'LOW PRIORITY',
+      scoreText: `${score}% Score`,
+      reasonText: `Your performance in ${moduleName} is strong (${score}%). Maintain readiness with periodic practice.`
+    };
+  }
+
+  if (score >= 50) {
+    return {
+      statusTag: 'Needs Improvement',
+      priorityTag: 'MEDIUM PRIORITY',
+      scoreText: `${score}% Score`,
+      reasonText: `Your performance in ${moduleName} is ${score}%. Moderate practice is recommended to reach >75%.`
+    };
+  }
+
+  // score < 50
+  return {
+    statusTag: 'Weak',
+    priorityTag: 'HIGH PRIORITY',
+    scoreText: `${score}% Score`,
+    reasonText: `Your performance in ${moduleName} is ${score}%, which is below target threshold. Priority practice required.`
+  };
+}
+
+// Generates data-driven placement roadmap based STRICTLY on real performance
+function generateDataDrivenPlacementRoadmap(
+  readinessScore: { overall: number; interview: number; resume: number; coding: number; aptitude: number; communication: number },
+  recentActivities: Array<{ id: string; title: string; type: string; score: string; time: string }>
+): RebuiltRoadmapState {
+  const currentDayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+
+  // Extract REAL scores from AppContext
+  const resumeScore = readinessScore.resume || 0;
   const aptitudeScore = readinessScore.aptitude || 0;
+  const codingScore = readinessScore.coding || 0;
   const commScore = readinessScore.communication || 0;
   const interviewScore = readinessScore.interview || 0;
-  const resumeScore = readinessScore.resume || 0;
 
-  const hasAnyActivity = recentActivitiesCount > 0 || readinessScore.overall > 0;
+  // Check activity history per module
+  const hasResumeAct = recentActivities.some((a) => a.type?.toLowerCase().includes('resume') || a.title?.toLowerCase().includes('resume'));
+  const hasAptitudeAct = recentActivities.some((a) => a.type?.toLowerCase().includes('aptitude') || a.title?.toLowerCase().includes('aptitude'));
+  const hasCodingAct = recentActivities.some((a) => a.type?.toLowerCase().includes('coding') || a.title?.toLowerCase().includes('coding'));
+  const hasCommAct = recentActivities.some((a) => a.type?.toLowerCase().includes('communication') || a.title?.toLowerCase().includes('communication'));
+  const hasInterviewAct = recentActivities.some((a) => a.type?.toLowerCase().includes('interview') || a.title?.toLowerCase().includes('interview'));
 
-  // 1. Calculate Real AI Skill Gap Analysis across the 5 REAL modules
-  const skillGaps: AppModuleSkillGap[] = [
+  const hasRecordedActivity = recentActivities.length > 0 || readinessScore.overall > 0;
+
+  // Compute UNIFIED Module Evaluations
+  const evalResume = getUnifiedModulePerformance(resumeScore, hasResumeAct, 'Resume Builder / ATS');
+  const evalAptitude = getUnifiedModulePerformance(aptitudeScore, hasAptitudeAct, 'Aptitude Practice');
+  const evalCoding = getUnifiedModulePerformance(codingScore, hasCodingAct, 'Coding Practice');
+  const evalComm = getUnifiedModulePerformance(commScore, hasCommAct, 'Communication Hub');
+  const evalInterview = getUnifiedModulePerformance(interviewScore, hasInterviewAct, 'AI Mock Interview');
+
+  // 1. AI SKILL GAP ANALYSIS (REAL APP DATA ONLY)
+  const skillGaps: RealModuleSkillGap[] = [
+    { moduleKey: 'resume', moduleName: 'Resume Builder / ATS', statusTag: evalResume.statusTag, priorityTag: evalResume.priorityTag, realScoreText: evalResume.scoreText, reason: evalResume.reasonText },
+    { moduleKey: 'aptitude', moduleName: 'Aptitude Practice', statusTag: evalAptitude.statusTag, priorityTag: evalAptitude.priorityTag, realScoreText: evalAptitude.scoreText, reason: evalAptitude.reasonText },
+    { moduleKey: 'coding', moduleName: 'Coding Practice', statusTag: evalCoding.statusTag, priorityTag: evalCoding.priorityTag, realScoreText: evalCoding.scoreText, reason: evalCoding.reasonText },
+    { moduleKey: 'communication', moduleName: 'Communication Hub', statusTag: evalComm.statusTag, priorityTag: evalComm.priorityTag, realScoreText: evalComm.scoreText, reason: evalComm.reasonText },
+    { moduleKey: 'interview', moduleName: 'AI Mock Interview', statusTag: evalInterview.statusTag, priorityTag: evalInterview.priorityTag, realScoreText: evalInterview.scoreText, reason: evalInterview.reasonText }
+  ];
+
+  // 2. REAL APPLICATION PREPARATION PHASES (PHASES 1 to 3 BASED ON DYNAMIC PRIORITY)
+  const allModules: RealAppPhase[] = [
     {
+      phaseNumber: 1,
+      title: 'PHASE 1 — High Priority & Baseline Focus',
       moduleKey: 'coding',
       moduleName: 'Coding Practice',
-      statusTag: codingScore >= 75 ? 'Strong' : codingScore >= 40 ? 'Needs Improvement' : hasAnyActivity ? 'Priority Improvement' : 'No Activity Yet',
-      reason: codingScore >= 75 ? 'Solid multi-language problem-solving verified' : 'Requires problem-solving practice in Java/Python/SQL'
+      description: evalCoding.reasonText,
+      priority: evalCoding.priorityTag,
+      estimatedHours: '30 min session',
+      statusLabel: evalCoding.scoreText,
+      realScoreVal: codingScore,
+      hasActivity: hasCodingAct || codingScore > 0,
+      actionLabel: (hasCodingAct || codingScore > 0) ? 'Continue Coding Practice' : 'Start Coding Practice',
+      supportedFeatures: ['Java, Python, C, C++ & SQL Problem Solving', 'Array, String & Recursion Sandbox Challenges', 'Multi-Table SQL JOIN Queries']
     },
     {
+      phaseNumber: 2,
+      title: 'PHASE 2 — Aptitude & Core Problem Solving',
       moduleKey: 'aptitude',
       moduleName: 'Aptitude Practice',
-      statusTag: aptitudeScore >= 75 ? 'Strong' : aptitudeScore >= 40 ? 'Needs Improvement' : hasAnyActivity ? 'Priority Improvement' : 'No Activity Yet',
-      reason: aptitudeScore >= 75 ? 'Good quantitative & logical reasoning baseline' : 'Practice Quant, Logical & Verbal test sets'
+      description: evalAptitude.reasonText,
+      priority: evalAptitude.priorityTag,
+      estimatedHours: '25 min session',
+      statusLabel: evalAptitude.scoreText,
+      realScoreVal: aptitudeScore,
+      hasActivity: hasAptitudeAct || aptitudeScore > 0,
+      actionLabel: (hasAptitudeAct || aptitudeScore > 0) ? 'Continue Aptitude Practice' : 'Start Aptitude Practice',
+      supportedFeatures: ['Quantitative Aptitude Drills', 'Logical Reasoning Puzzles & Sequences', 'Verbal Ability & Comprehension']
     },
     {
-      moduleKey: 'communication',
-      moduleName: 'Communication Hub',
-      statusTag: commScore >= 75 ? 'Strong' : commScore >= 40 ? 'Needs Improvement' : hasAnyActivity ? 'Priority Improvement' : 'No Activity Yet',
-      reason: commScore >= 75 ? 'Clear sentence structure & tone' : 'Refine interview grammar & tone in Communication Hub'
-    },
-    {
+      phaseNumber: 3,
+      title: 'PHASE 3 — Communication & Mock Interview Readiness',
       moduleKey: 'interview',
       moduleName: 'AI Mock Interview',
-      statusTag: interviewScore >= 75 ? 'Strong' : interviewScore >= 40 ? 'Needs Improvement' : hasAnyActivity ? 'Priority Improvement' : 'No Activity Yet',
-      reason: interviewScore >= 75 ? 'Confident technical & HR interview responses' : 'Conduct dual-language simulated interview rounds'
-    },
-    {
-      moduleKey: 'resume',
-      moduleName: 'Resume Builder & ATS',
-      statusTag: resumeScore >= 75 ? 'Strong' : resumeScore >= 40 ? 'Needs Improvement' : hasAnyActivity ? 'Priority Improvement' : 'No Activity Yet',
-      reason: resumeScore >= 75 ? 'ATS score optimized for job applications' : 'Run ATS check & boost missing skills in resume'
+      description: evalInterview.reasonText,
+      priority: evalInterview.priorityTag,
+      estimatedHours: '30 min session',
+      statusLabel: evalInterview.scoreText,
+      realScoreVal: interviewScore,
+      hasActivity: hasInterviewAct || interviewScore > 0,
+      actionLabel: (hasInterviewAct || interviewScore > 0) ? 'Continue AI Mock Interview' : 'Start AI Mock Interview',
+      supportedFeatures: ['Technical & HR AI Mock Interview Sessions', 'Dual-Language Answer Feedback & Structural Recommendations']
     }
   ];
 
-  // 2. Build Module Cards for the 5 REAL modules, ordered dynamically by AI priority
-  const rawCards: AppModuleRoadmapCard[] = [
-    {
-      id: 'mod-coding',
-      moduleKey: 'coding',
-      moduleName: 'CODING PRACTICE',
-      priority: (gLower.includes('backend') || gLower.includes('software') || gLower.includes('full stack') || codingScore < 50) ? 'High' : 'Medium',
-      whyRecommended: `Your ${goal} role requires consistent problem solving in Java, Python, C++ & SQL.`,
-      statusLabel: codingScore > 0 ? `${codingScore}% Accuracy` : 'No activity yet',
-      progress: codingScore,
-      hasActivity: codingScore > 0,
-      estimatedMinutes: '35 mins daily',
-      actionLabel: 'Continue Coding Practice',
-      suggestedTasks: [
-        'Solve 3 Logic Problems in Coding Practice',
-        'Practice SQL JOIN Queries',
-        'Review Big O Time Complexity'
-      ]
-    },
-    {
-      id: 'mod-aptitude',
-      moduleKey: 'aptitude',
-      moduleName: 'APTITUDE PRACTICE',
-      priority: aptitudeScore < 50 ? 'High' : 'Medium',
-      whyRecommended: 'Campus recruitment screening tests heavily evaluate Quantitative & Logical reasoning.',
-      statusLabel: aptitudeScore > 0 ? `${aptitudeScore}% Score` : 'No activity yet',
-      progress: aptitudeScore,
-      hasActivity: aptitudeScore > 0,
-      estimatedMinutes: '25 mins daily',
-      actionLabel: 'Continue Aptitude Practice',
-      suggestedTasks: [
-        'Practice 15 Quantitative MCQs (Percentages & Speed)',
-        'Solve 10 Logical Reasoning Puzzles',
-        'Review Tanglish Step Explanations'
-      ]
-    },
-    {
-      id: 'mod-communication',
-      moduleKey: 'communication',
-      moduleName: 'COMMUNICATION HUB',
-      priority: commScore < 50 ? 'High' : 'Standard',
-      whyRecommended: 'Clear sentence structure and professional grammar are essential for clearing HR & Technical interview rounds.',
-      statusLabel: commScore > 0 ? `${commScore}% Score` : 'No activity yet',
-      progress: commScore,
-      hasActivity: commScore > 0,
-      estimatedMinutes: '15 mins daily',
-      actionLabel: 'Continue Communication Hub',
-      suggestedTasks: [
-        'Refine 2 Interview Answers in Communication Hub',
-        'Review AI Grammar Error Case Analysis'
-      ]
-    },
-    {
-      id: 'mod-interview',
-      moduleKey: 'interview',
-      moduleName: 'AI MOCK INTERVIEW',
-      priority: (interviewScore < 50 || gLower.includes('full stack') || gLower.includes('software')) ? 'High' : 'Medium',
-      whyRecommended: 'Simulate live HR & Technical interviews with instant dual-language AI feedback.',
-      statusLabel: interviewScore > 0 ? `${interviewScore}% Average Score` : 'No activity yet',
-      progress: interviewScore,
-      hasActivity: interviewScore > 0,
-      estimatedMinutes: '30 mins session',
-      actionLabel: 'Continue AI Mock Interview',
-      suggestedTasks: [
-        'Conduct 1 Technical AI Mock Interview Session',
-        'Conduct 1 HR Behavioral AI Mock Interview Session',
-        'Review Dual-Language (English/Tanglish) Feedback'
-      ]
-    },
-    {
-      id: 'mod-resume',
-      moduleKey: 'resume',
-      moduleName: 'RESUME BUILDER & ATS',
-      priority: resumeScore < 60 ? 'High' : 'Standard',
-      whyRecommended: 'Ensure your resume clears automated ATS scanning filters with high keyword relevance.',
-      statusLabel: resumeScore > 0 ? `${resumeScore}% ATS Score` : 'No activity yet',
-      progress: resumeScore,
-      hasActivity: resumeScore > 0,
-      estimatedMinutes: '20 mins update',
-      actionLabel: 'Continue Resume Builder',
-      suggestedTasks: [
-        'Run Instant ATS Resume Compatibility Check',
-        'Add Missing Technical Skills to Resume',
-        'Format Project Achievements'
-      ]
-    }
-  ];
+  // Sort by priority for Today's Goals & Session allocation
+  const sortedPhases = [...allModules].sort((a, b) => {
+    const pWeights: Record<string, number> = { 'HIGH PRIORITY': 1, 'NOT STARTED': 2, 'MEDIUM PRIORITY': 3, 'LOW PRIORITY': 4 };
+    return pWeights[a.priority] - pWeights[b.priority];
+  });
 
-  // Sort cards so High Priority modules appear first
-  const priorityWeight: Record<string, number> = { High: 1, Medium: 2, Standard: 3 };
-  const moduleCards = rawCards.sort((a, b) => priorityWeight[a.priority] - priorityWeight[b.priority]);
+  const top1 = sortedPhases[0];
+  const top2 = sortedPhases[1];
 
-  // 3. Generate Today's Goals based on prioritized modules
-  const topModule1 = moduleCards[0];
-  const topModule2 = moduleCards[1];
+  const isTop1Completed = hasCompletedRecentActivityForModule(top1.moduleKey, recentActivities);
 
-  const todayGoals: DailyGoalTask[] = [
+  // 3. TODAY'S GOALS DYNAMICALLY SELECTED FROM WEAKEST REAL MODULES
+  const todayGoals: TodayGoalTask[] = [
     {
       id: 'tg-1',
-      taskName: `Complete 1 session in ${topModule1.moduleName}`,
+      goalTitle: top1.hasActivity ? `Complete practice in ${top1.moduleName}` : `Start baseline session in ${top1.moduleName}`,
+      reason: top1.description,
       estimatedTime: '30 min',
-      completed: false,
-      moduleKey: topModule1.moduleKey,
-      moduleName: topModule1.moduleName
+      moduleKey: top1.moduleKey,
+      moduleName: top1.moduleName,
+      status: isTop1Completed ? 'completed' : top1.hasActivity ? 'in_progress' : 'not_started'
     },
     {
       id: 'tg-2',
-      taskName: `Complete practice in ${topModule2.moduleName}`,
+      goalTitle: top2.hasActivity ? `Complete tasks in ${top2.moduleName}` : `Start practice session in ${top2.moduleName}`,
+      reason: top2.description,
       estimatedTime: '20 min',
-      completed: false,
-      moduleKey: topModule2.moduleKey,
-      moduleName: topModule2.moduleName
+      moduleKey: top2.moduleKey,
+      moduleName: top2.moduleName,
+      status: hasCompletedRecentActivityForModule(top2.moduleKey, recentActivities) ? 'completed' : top2.hasActivity ? 'in_progress' : 'not_started'
     },
     {
       id: 'tg-3',
-      taskName: 'Refine interview answer in Communication Hub',
+      goalTitle: 'Refine 1 answer in Communication Hub',
+      reason: 'Improve grammar accuracy and sentence structure for placement interviews.',
       estimatedTime: '15 min',
-      completed: false,
       moduleKey: 'communication',
-      moduleName: 'COMMUNICATION HUB'
+      moduleName: 'Communication Hub',
+      status: hasCompletedRecentActivityForModule('communication', recentActivities) ? 'completed' : hasCommAct ? 'in_progress' : 'not_started'
     }
   ];
 
-  // 4. Generate Weekly Schedule ("THIS WEEK") mapping to real modules
-  const weeklySchedule: WeeklyScheduleDay[] = [
-    { dayName: 'Monday', focusModule: 'Coding Practice', moduleKey: 'coding', taskDetails: 'Solve 3 Logic Problems & Array Challenges' },
-    { dayName: 'Tuesday', focusModule: 'Aptitude Practice', moduleKey: 'aptitude', taskDetails: 'Practice Quantitative & Speed-Distance MCQs' },
-    { dayName: 'Wednesday', focusModule: 'Communication Hub', moduleKey: 'communication', taskDetails: 'Grammar Error Analysis & Sentence Polishing' },
-    { dayName: 'Thursday', focusModule: 'Coding Practice (SQL)', moduleKey: 'coding', taskDetails: 'Solve SQL Multi-Table JOIN Queries' },
-    { dayName: 'Friday', focusModule: 'AI Mock Interview', moduleKey: 'interview', taskDetails: 'Conduct Technical Mock Interview Session' },
-    { dayName: 'Saturday', focusModule: 'Resume Builder & ATS', moduleKey: 'resume', taskDetails: 'Run ATS Compatibility Analysis & Update Skills' },
-    { dayName: 'Sunday', focusModule: 'AI Mock Interview (HR)', moduleKey: 'interview', taskDetails: 'Conduct HR Behavioral Mock Interview Session' }
-  ];
+  // 4. DYNAMIC TODAY'S SESSION
+  const todaySession: TodaySessionInfo = {
+    dayName: currentDayName,
+    moduleKey: top1.moduleKey,
+    moduleName: top1.moduleName,
+    taskDetails: `Complete your focused ${currentDayName} session in ${top1.moduleName}. ${top1.description}`,
+    status: isTop1Completed ? 'completed' : top1.hasActivity ? 'in_progress' : 'not_started'
+  };
 
-  // 5. Calculate Career Readiness Score from real data
-  const careerReadinessScore = readinessScore.overall;
+  // 5. OVERALL PROGRESS SCORE
+  const overallProgressScore = readinessScore.overall;
 
-  // 6. Contextual AI Recommendation
+  // 6. CONTEXTUAL AI RECOMMENDATION FROM REAL DATA
   let aiRecommendation = '';
-  if (!hasAnyActivity) {
-    aiRecommendation = `Welcome! To build your personalized ${goal} roadmap, start by practicing in Coding Practice or running an ATS check in Resume Builder.`;
-  } else if (topModule1.moduleKey === 'coding') {
-    aiRecommendation = `Your ${goal} target requires high coding accuracy. Priority: Complete your daily Coding Practice tasks before taking Mock Interviews.`;
-  } else if (topModule1.moduleKey === 'interview') {
-    aiRecommendation = `Your technical foundation is solid! Focus on AI Mock Interview sessions to polish live responses and confidence.`;
+  if (!hasRecordedActivity) {
+    aiRecommendation = `Welcome! Complete a practice activity in Coding, Aptitude, Communication, Resume, or Mock Interview so AI can analyze your performance.`;
+  } else if (top1.priority === 'HIGH PRIORITY') {
+    aiRecommendation = `Based on your real performance, ${top1.moduleName} is your highest priority focus (${top1.statusLabel}). Complete your ${currentDayName} session in ${top1.moduleName} to improve your placement score.`;
   } else {
-    aiRecommendation = `Keep up the momentum! Follow Today's Goals to balance Coding, Aptitude, Communication, and Interview preparation.`;
+    aiRecommendation = `Great momentum! Complete Today's Goals & your ${currentDayName} session to maintain your score across all preparation modules.`;
   }
 
   return {
     skillGaps,
-    moduleCards,
+    phases: allModules,
     todayGoals,
-    weeklySchedule,
+    todaySession,
     aiRecommendation,
-    careerReadinessScore
+    overallProgressScore,
+    hasRecordedActivity,
+    lastUpdated: new Date().toISOString()
   };
 }
 
 export const RoadmapView: React.FC = () => {
-  const { user, readinessScore, setActiveTab, recordActivity, recentActivities, addNotification } = useApp();
+  const { user, readinessScore, setActiveTab, recentActivities, addNotification } = useApp();
 
-  // Screen modes: 'setup' | 'loading' | 'dashboard'
-  const [screenMode, setScreenMode] = useState<'setup' | 'loading' | 'dashboard'>('setup');
+  const [notificationPermission, setNotificationPermission] = useState<string>('default');
+  const [roadmapData, setRoadmapData] = useState<RebuiltRoadmapState | null>(null);
 
-  // Selected Inputs
-  const [selectedGoal, setSelectedGoal] = useState<string>('Software Developer');
-  const [customGoalInput, setCustomGoalInput] = useState<string>('');
-  const [userLevel, setUserLevel] = useState<UserLevel>('Intermediate');
-  const [dailyTime, setDailyTime] = useState<DailyTime>('1 hour');
-
-  // Error States
-  const [validationError, setValidationError] = useState<string | null>(null);
-  const [generationError, setGenerationError] = useState<string | null>(null);
-
-  // Generated AI Roadmap Data
-  const [roadmapData, setRoadmapData] = useState<RebuiltPersonalizedRoadmapState | null>(null);
-
-  // Generation Loading Step State
-  const [loadingStep, setLoadingStep] = useState<number>(0);
-
-  // Load Persisted State on Mount (Safely invalidates old v5 or v6 generic CS syllabus data)
+  // Check Browser Notification Permission on Mount
   useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setNotificationPermission(Notification.permission);
+    } else {
+      setNotificationPermission('unsupported');
+    }
+  }, []);
+
+  const handleRequestNotificationPermission = async () => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      try {
+        const res = await Notification.requestPermission();
+        setNotificationPermission(res);
+      } catch (e) {
+        console.warn('Error requesting notification permission:', e);
+      }
+    }
+  };
+
+  // Load Persisted State & Re-calculate based on REAL data
+  useEffect(() => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const currentDayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+    const lastGoalsDate = localStorage.getItem(STORAGE_KEY_LAST_GOALS_DATE);
+
+    let currentRoadmap = generateDataDrivenPlacementRoadmap(readinessScore, recentActivities);
+
     try {
       const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (saved) {
-        const parsed: RebuiltPersonalizedRoadmapState = JSON.parse(saved);
-        // Ensure saved data is from v7 format containing moduleCards array
-        if (parsed && parsed.customGoalInput && parsed.moduleCards && parsed.moduleCards.length > 0) {
-          setRoadmapData(parsed);
-          setSelectedGoal(parsed.customGoalInput);
-          setCustomGoalInput(parsed.customGoalInput);
-          setUserLevel(parsed.userLevel || 'Intermediate');
-          setDailyTime(parsed.dailyTime || '1 hour');
-          setScreenMode('dashboard');
-          return;
+        const parsed: RebuiltRoadmapState = JSON.parse(saved);
+        if (parsed && parsed.phases && parsed.phases.length > 0) {
+          // Check if today is a NEW calendar day
+          if (lastGoalsDate && lastGoalsDate !== todayStr) {
+            currentRoadmap.todayGoals = currentRoadmap.todayGoals.map((g) => ({ ...g, status: 'not_started' as const }));
+            if (currentRoadmap.todaySession) {
+              currentRoadmap.todaySession = {
+                ...currentRoadmap.todaySession,
+                dayName: currentDayName,
+                status: 'not_started' as const,
+                startedAtTimestamp: undefined
+              };
+            }
+            localStorage.setItem(STORAGE_KEY_LAST_GOALS_DATE, todayStr);
+          }
         }
       }
     } catch (e) {
-      console.warn('Could not load saved v7 roadmap state:', e);
-    }
-    setScreenMode('setup');
-  }, []);
-
-  // Save State to localStorage and Supabase whenever roadmapData updates
-  useEffect(() => {
-    if (roadmapData && screenMode === 'dashboard') {
-      try {
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(roadmapData));
-        if (user?.id) {
-          roadmapData.moduleCards.forEach((card) => {
-            SupabaseService.saveRoadmapItem(user.id, {
-              period: 'Daily',
-              category: roadmapData.customGoalInput,
-              title: card.moduleName,
-              description: card.whyRecommended,
-              completed: card.progress >= 80,
-              dueDate: card.estimatedMinutes
-            });
-          });
-        }
-      } catch (e) {
-        console.warn('Could not persist roadmap state:', e);
-      }
-    }
-  }, [roadmapData, screenMode, user?.id]);
-
-  const activeGoal = customGoalInput.trim() || selectedGoal;
-
-  // Handle Starting Roadmap Generation
-  const handleStartGeneration = () => {
-    if (!activeGoal) {
-      setValidationError('Please choose or enter a career goal.');
-      return;
+      console.warn('Could not load saved roadmap state:', e);
     }
 
-    setValidationError(null);
-    setGenerationError(null);
-    setScreenMode('loading');
-    setLoadingStep(1);
+    localStorage.setItem(STORAGE_KEY_LAST_GOALS_DATE, todayStr);
 
-    setTimeout(() => setLoadingStep(2), 400);
-    setTimeout(() => setLoadingStep(3), 800);
-    setTimeout(() => setLoadingStep(4), 1200);
+    // AUTOMATICALLY DETECT IF TODAY'S SESSION OR GOALS WERE COMPLETED IN TARGET MODULES
+    const isSessionModuleCompleted = hasCompletedRecentActivityForModule(
+      currentRoadmap.todaySession.moduleKey,
+      recentActivities,
+      currentRoadmap.todaySession?.startedAtTimestamp
+    );
 
-    setTimeout(() => {
-      try {
-        const generated = buildPersonalizedPlacementRoadmap(
-          activeGoal,
-          userLevel,
-          dailyTime,
-          readinessScore,
-          recentActivities.length
+    currentRoadmap.todaySession = {
+      ...currentRoadmap.todaySession,
+      status: isSessionModuleCompleted ? 'completed' : currentRoadmap.todaySession.status
+    };
+
+    currentRoadmap.todayGoals = currentRoadmap.todayGoals.map((g) => {
+      const isGoalCompleted = g.status === 'completed' || hasCompletedRecentActivityForModule(g.moduleKey, recentActivities);
+      return {
+        ...g,
+        status: isGoalCompleted ? ('completed' as const) : g.status
+      };
+    });
+
+    setRoadmapData(currentRoadmap);
+    triggerDailyGoalsNotification(todayStr, currentDayName);
+  }, [readinessScore, recentActivities]);
+
+  const triggerDailyGoalsNotification = (todayStr: string, currentDayName: string) => {
+    const lastNotifDate = localStorage.getItem(STORAGE_KEY_LAST_NOTIF_DATE);
+    if (lastNotifDate !== todayStr) {
+      localStorage.setItem(STORAGE_KEY_LAST_NOTIF_DATE, todayStr);
+
+      if (addNotification) {
+        addNotification(
+          "Today's Learning Reminder 🎯",
+          `Complete your Today's Goal and ${currentDayName} Session in your AI Learning Roadmap.`,
+          'general'
         );
-
-        const newState: RebuiltPersonalizedRoadmapState = {
-          customGoalInput: activeGoal,
-          userLevel,
-          dailyTime,
-          skillGaps: generated.skillGaps,
-          moduleCards: generated.moduleCards,
-          todayGoals: generated.todayGoals,
-          weeklySchedule: generated.weeklySchedule,
-          aiRecommendation: generated.aiRecommendation,
-          careerReadinessScore: generated.careerReadinessScore,
-          lastUpdated: new Date().toISOString()
-        };
-
-        setRoadmapData(newState);
-        setScreenMode('dashboard');
-        recordActivity(`Generated Personalized AI Roadmap for ${activeGoal}`, 'Roadmap', 'In Progress', 'roadmap');
-
-        if (addNotification) {
-          addNotification(
-            `AI Roadmap Ready (${activeGoal})`,
-            `Your placement preparation plan for "${activeGoal}" is live! Follow Today's Goals to practice.`,
-            'coding'
-          );
-        }
-      } catch (e) {
-        console.error('Roadmap generation error:', e);
-        setGenerationError('Unable to generate your roadmap. Please try again.');
-        setScreenMode('setup');
       }
-    }, 1600);
+    }
   };
 
-  // Toggle Today's Goal Completion
+  const handleNavigateToModule = (moduleKey: RealModuleTab) => {
+    switch (moduleKey) {
+      case 'resume':
+        setActiveTab('resume');
+        break;
+      case 'aptitude':
+        setActiveTab('aptitude');
+        break;
+      case 'coding':
+        setActiveTab('coding');
+        break;
+      case 'communication':
+        setActiveTab('communication');
+        break;
+      case 'interview':
+        setActiveTab('interview');
+        break;
+      default:
+        setActiveTab('dashboard');
+    }
+  };
+
   const handleToggleTodayGoal = (goalId: string) => {
     if (!roadmapData) return;
 
-    const updatedToday = roadmapData.todayGoals.map((t) => {
-      if (t.id === goalId) {
-        return { ...t, completed: !t.completed };
+    const updatedGoals = roadmapData.todayGoals.map((g) => {
+      if (g.id === goalId) {
+        const nextStatus: 'not_started' | 'completed' = g.status === 'completed' ? 'not_started' : 'completed';
+        return { ...g, status: nextStatus };
       }
-      return t;
+      return g;
     });
 
-    setRoadmapData({
+    const updatedState = { ...roadmapData, todayGoals: updatedGoals };
+    setRoadmapData(updatedState);
+    try {
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updatedState));
+    } catch (e) {}
+  };
+
+  const handleStartTodaySession = () => {
+    if (!roadmapData) return;
+
+    const nowTs = Date.now();
+    const updatedState = {
       ...roadmapData,
-      todayGoals: updatedToday,
-      lastUpdated: new Date().toISOString()
-    });
+      todaySession: {
+        ...roadmapData.todaySession,
+        status: 'in_progress' as const,
+        startedAtTimestamp: nowTs
+      }
+    };
+    setRoadmapData(updatedState);
+    try {
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updatedState));
+    } catch (e) {}
+
+    handleNavigateToModule(roadmapData.todaySession.moduleKey);
   };
 
-  // Direct Module Navigation Handler
-  const handleNavigateToModule = (targetModule: ActiveTab) => {
-    setActiveTab(targetModule);
-  };
+  if (!roadmapData) return null;
 
-  const hasActivityData = recentActivities.length > 0 || readinessScore.overall > 0;
+  const todayGoalsCompletedCount = roadmapData.todayGoals.filter((g) => g.status === 'completed').length;
+  const isTodaySessionCompleted = roadmapData.todaySession.status === 'completed';
+  const isAllTodayTasksAndSessionCompleted =
+    todayGoalsCompletedCount === roadmapData.todayGoals.length && isTodaySessionCompleted;
+
+  const currentDayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
 
   return (
-    <div className="flex-1 overflow-y-auto space-y-6 max-w-6xl mx-auto py-3 px-4 sm:px-6 relative animate-in fade-in duration-300">
+    <div className="flex-1 h-full overflow-y-auto overflow-x-hidden space-y-8 animate-in fade-in duration-300 pb-24 pr-1">
       
-      {/* Ambient Glows */}
-      <div className="absolute -top-24 -left-20 w-96 h-96 bg-blue-600/15 rounded-full blur-3xl pointer-events-none dark:opacity-100 opacity-25" />
-      <div className="absolute -bottom-24 -right-20 w-96 h-96 bg-purple-500/15 rounded-full blur-3xl pointer-events-none dark:opacity-100 opacity-25" />
+      {/* SECTION 1: HEADER BANNER */}
+      <div className="glass-card rounded-[26px] p-6 sm:p-7 border border-slate-700/80 bg-slate-900/90 backdrop-blur-2xl shadow-xl flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+        <div className="space-y-2 max-w-xl">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-black uppercase text-cyan-300 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30">
+              My AI Learning Roadmap
+            </span>
+          </div>
 
-      {/* ========================================================================= */}
-      {/* MODE 1: SETUP CAREER GOAL & LEVEL (NO TARGET COMPANY) */}
-      {/* ========================================================================= */}
-      {screenMode === 'setup' && (
-        <div className="space-y-6 animate-in fade-in duration-300">
-          
-          {/* Header Card */}
-          <div className="glass-card rounded-[28px] border border-slate-700/80 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-950 p-6 sm:p-9 text-white shadow-2xl relative overflow-hidden">
-            <div className="absolute top-0 right-0 -mt-16 -mr-16 w-80 h-80 bg-cyan-400/10 rounded-full blur-3xl pointer-events-none" />
+          <h2 className="text-xl sm:text-3xl font-extrabold text-white font-['Space_Grotesk'] flex items-center gap-2">
+            🎯 AI Learning Roadmap
+          </h2>
+          <p className="text-xs text-slate-300 font-medium leading-relaxed">
+            AI analyzes your real placement preparation activity across the existing application modules.
+          </p>
+        </div>
 
-            <div className="relative z-10 space-y-6">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
-                <div className="space-y-1">
-                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-bold backdrop-blur-md">
-                    <Brain className="w-4 h-4 text-cyan-400" />
-                    <span>Personalized Placement Preparation Engine</span>
+        <div className="flex items-center gap-3 shrink-0">
+          <button
+            type="button"
+            onClick={() => setActiveTab('home')}
+            className="px-4 py-3 rounded-2xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer shadow-md"
+          >
+            <LayoutDashboard className="w-4 h-4 text-cyan-400" />
+            <span>Back to Dashboard</span>
+          </button>
+        </div>
+      </div>
+
+      {/* NO ACTIVITY BANNER (IF ZERO PRACTICE RECORDED YET) */}
+      {!roadmapData.hasRecordedActivity && (
+        <div className="p-5 rounded-2xl bg-indigo-950/60 border border-indigo-500/40 flex items-start gap-4 text-xs animate-in fade-in">
+          <Info className="w-5 h-5 text-cyan-400 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <h4 className="text-sm font-extrabold text-white font-['Space_Grotesk']">
+              Not enough activity yet
+            </h4>
+            <p className="text-slate-300 font-medium leading-relaxed">
+              Complete a few practice activities in Coding, Aptitude, Communication, Resume Builder, or AI Mock Interview so AI can analyze your performance and update your priorities.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* MOBILE WEB PUSH TEST & PERMISSION CARD */}
+      <div className="p-4 rounded-2xl bg-slate-950 border border-blue-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs">
+        <div className="flex items-center gap-3">
+          <Bell className="w-5 h-5 text-cyan-400 shrink-0 animate-pulse" />
+          <div>
+            <strong className="text-cyan-300 block font-extrabold uppercase text-[10px] tracking-wider">
+              Mobile Device Web Push Testing
+            </strong>
+            <span className="text-slate-300 font-medium">
+              {notificationPermission === 'denied'
+                ? 'Browser notifications are disabled in site settings. Please enable notifications to test real mobile push notifications.'
+                : 'Test real Service Worker push notification on your mobile phone.'}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          {notificationPermission === 'default' && (
+            <button
+              type="button"
+              onClick={handleRequestNotificationPermission}
+              className="px-3.5 py-2 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 text-xs font-extrabold transition-all cursor-pointer"
+            >
+              Enable Notifications
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={async () => {
+              const { sendMobileTestPushNotification } = await import('../../utils/webPushHelper');
+              const res = await sendMobileTestPushNotification(user?.id);
+              alert(res.message);
+            }}
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-400 hover:from-blue-400 hover:to-cyan-300 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-blue-500/20 cursor-pointer transition-all hover:scale-105"
+          >
+            <Bell className="w-3.5 h-3.5" />
+            <span>Send Test Notification</span>
+          </button>
+        </div>
+      </div>
+
+      {/* AI RECOMMENDATION BANNER */}
+      <div className="p-4 rounded-2xl bg-gradient-to-r from-indigo-950/70 via-purple-950/70 to-slate-950 border border-indigo-500/30 flex items-center justify-between gap-4 text-xs">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-xl bg-indigo-500/20 text-indigo-300 shrink-0">
+            <Bot className="w-5 h-5 text-indigo-400 animate-pulse" />
+          </div>
+          <div>
+            <strong className="text-indigo-300 block font-extrabold uppercase text-[10px] tracking-wider">AI Analysis Summary</strong>
+            <span className="text-slate-200 font-medium">{roadmapData.aiRecommendation}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* SECTION 2: AI SKILL GAP ANALYSIS */}
+      <div className="glass-card rounded-3xl p-6 sm:p-7 border border-slate-700/80 bg-slate-900/90 backdrop-blur-2xl shadow-xl space-y-5">
+        <div className="space-y-1 border-b border-slate-800 pb-3">
+          <h3 className="text-lg font-extrabold text-white flex items-center gap-2 font-['Space_Grotesk']">
+            <Brain className="w-5 h-5 text-cyan-400" />
+            <span>AI Skill Gap Analysis</span>
+          </h3>
+          <p className="text-xs text-slate-400">
+            Performance evaluation across the 5 practice modules calculated strictly from real user activity.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
+          {roadmapData.skillGaps.map((sg) => (
+            <div
+              key={sg.moduleKey}
+              className={`p-4 rounded-2xl border space-y-2 transition-all ${
+                sg.statusTag === 'Strong'
+                  ? 'bg-emerald-950/30 border-emerald-500/40 text-emerald-200'
+                  : sg.statusTag === 'Needs Improvement' || sg.statusTag === 'Weak'
+                  ? 'bg-amber-950/30 border-amber-500/40 text-amber-200'
+                  : 'bg-slate-950/60 border-slate-800 text-slate-400'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black truncate block">{sg.moduleName}</span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase ${
+                  sg.statusTag === 'Strong'
+                    ? 'bg-emerald-500/20 text-emerald-400'
+                    : sg.statusTag === 'Needs Improvement'
+                    ? 'bg-amber-500/20 text-amber-300'
+                    : sg.statusTag === 'Weak'
+                    ? 'bg-red-500/20 text-red-300'
+                    : 'bg-slate-800 text-slate-400'
+                }`}>
+                  {sg.statusTag === 'Strong' && '🟢 Strong'}
+                  {sg.statusTag === 'Needs Improvement' && '🟡 Needs Work'}
+                  {sg.statusTag === 'Weak' && '🔴 Weak'}
+                  {sg.statusTag === 'Not Started' && '⚪ Not Started'}
+                </span>
+
+                <span className="text-[10px] font-mono font-bold text-slate-400">
+                  {sg.realScoreText}
+                </span>
+              </div>
+
+              <p className="text-[11px] leading-relaxed font-medium">
+                {sg.reason}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* SECTION 3: PERSONALIZED PREPARATION PHASES */}
+      <div className="glass-card rounded-3xl p-6 sm:p-7 border border-slate-700/80 bg-slate-900/90 backdrop-blur-2xl shadow-xl space-y-6">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+          <div>
+            <h3 className="text-lg font-extrabold text-white flex items-center gap-2 font-['Space_Grotesk']">
+              <Map className="w-5 h-5 text-cyan-400" />
+              <span>Personalized Preparation Phases</span>
+            </h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Preparation phases with priorities dynamically matched to your real AI performance data.
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          {roadmapData.phases.map((phase) => (
+            <div
+              key={phase.phaseNumber}
+              className={`p-5 sm:p-6 rounded-2xl border transition-all flex flex-col md:flex-row items-start md:items-center justify-between gap-5 ${
+                phase.priority === 'HIGH PRIORITY'
+                  ? 'border-cyan-400/80 bg-slate-950/90 shadow-lg shadow-cyan-400/10'
+                  : phase.priority === 'NOT STARTED'
+                  ? 'border-purple-500/40 bg-slate-950/70'
+                  : 'border-slate-800 bg-slate-950/60'
+              }`}
+            >
+              <div className="space-y-2 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="w-7 h-7 rounded-full bg-cyan-500/20 text-cyan-300 font-mono text-xs font-black flex items-center justify-center border border-cyan-500/30">
+                    {phase.phaseNumber}
+                  </span>
+                  <h4 className="text-base font-extrabold text-white font-['Space_Grotesk']">
+                    {phase.title}
+                  </h4>
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                    phase.priority === 'HIGH PRIORITY'
+                      ? 'bg-red-500/20 text-red-300 border border-red-500/30'
+                      : phase.priority === 'MEDIUM PRIORITY'
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                      : phase.priority === 'NOT STARTED'
+                      ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                      : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                  }`}>
+                    {phase.priority === 'HIGH PRIORITY' && '🔴 HIGH PRIORITY'}
+                    {phase.priority === 'MEDIUM PRIORITY' && '🟡 MEDIUM PRIORITY'}
+                    {phase.priority === 'LOW PRIORITY' && '🟢 LOW PRIORITY'}
+                    {phase.priority === 'NOT STARTED' && '⚪ NOT STARTED'}
+                  </span>
+                </div>
+
+                <p className="text-xs text-slate-300 font-medium">
+                  {phase.description}
+                </p>
+
+                <div className="pt-2">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">
+                    Supported Module Features:
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {phase.supportedFeatures.map((feat, i) => (
+                      <span key={i} className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-[11px] font-semibold text-slate-300">
+                        • {feat}
+                      </span>
+                    ))}
                   </div>
-                  <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight font-['Space_Grotesk'] text-white">
-                    🧠 AI Learning Roadmap
-                  </h1>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row md:flex-col items-start sm:items-center md:items-end justify-between gap-3 shrink-0 w-full md:w-auto border-t md:border-t-0 pt-3 md:pt-0 border-slate-800">
+                <div className="text-left md:text-right">
+                  <span className="text-[10px] text-slate-400 block uppercase font-bold">Real Progress</span>
+                  <strong className={`text-xs font-mono font-black ${phase.hasActivity ? 'text-emerald-400' : 'text-slate-400'}`}>
+                    {phase.statusLabel}
+                  </strong>
                 </div>
 
                 <button
                   type="button"
-                  onClick={() => setActiveTab('home')}
-                  className="px-4 py-2.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer shrink-0"
+                  onClick={() => handleNavigateToModule(phase.moduleKey)}
+                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 transition-all shadow-md shadow-cyan-400/20 cursor-pointer"
                 >
-                  <LayoutDashboard className="w-4 h-4 text-cyan-400" />
-                  <span>Back to Dashboard</span>
+                  {phase.moduleKey === 'resume' && <FileText className="w-4 h-4 text-slate-950" />}
+                  {phase.moduleKey === 'aptitude' && <Brain className="w-4 h-4 text-slate-950" />}
+                  {phase.moduleKey === 'coding' && <Code className="w-4 h-4 text-slate-950" />}
+                  {phase.moduleKey === 'communication' && <MessageSquare className="w-4 h-4 text-slate-950" />}
+                  {phase.moduleKey === 'interview' && <Video className="w-4 h-4 text-slate-950" />}
+                  <span>{phase.actionLabel}</span>
+                  <ChevronRight className="w-4 h-4 text-slate-950" />
                 </button>
               </div>
-
-              <p className="text-xs sm:text-base text-slate-300 font-medium leading-relaxed max-w-2xl">
-                Choose your career goal. Our AI analyzes your real performance in Coding Practice, Aptitude Practice, Communication Hub, Resume Builder, and AI Mock Interviews to structure your personalized placement preparation plan.
-              </p>
-
-              {generationError && (
-                <div className="p-3.5 rounded-2xl bg-red-500/20 border border-red-500/40 text-red-200 text-xs font-bold flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-                    <span>{generationError}</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleStartGeneration}
-                    className="px-3 py-1 rounded-xl bg-red-500/30 hover:bg-red-500/40 text-white font-extrabold text-[11px] cursor-pointer"
-                  >
-                    Retry
-                  </button>
-                </div>
-              )}
-
-              {/* 1. CHOOSE CAREER GOAL (NO TARGET COMPANY) */}
-              <div className="space-y-3 p-4 rounded-2xl bg-slate-950/70 border border-slate-800">
-                <label className="text-xs font-extrabold text-cyan-300 block uppercase tracking-wider flex items-center gap-2">
-                  <Target className="w-4 h-4 text-cyan-400" />
-                  <span>Choose Your Career Goal</span>
-                </label>
-
-                {/* Popular Role Chips */}
-                <div className="flex flex-wrap gap-2">
-                  {CAREER_GOAL_OPTIONS.map((role) => (
-                    <button
-                      key={role}
-                      type="button"
-                      onClick={() => {
-                        setSelectedGoal(role);
-                        setCustomGoalInput(role);
-                        setValidationError(null);
-                      }}
-                      className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 ${
-                        (customGoalInput.trim() || selectedGoal) === role
-                          ? 'bg-gradient-to-r from-cyan-400 to-teal-400 text-slate-950 font-black shadow-lg scale-[1.02]'
-                          : 'bg-slate-800/80 hover:bg-slate-700/80 text-slate-200 border border-slate-700'
-                      }`}
-                    >
-                      <span>{role}</span>
-                    </button>
-                  ))}
-                </div>
-
-                {/* Custom Role Input */}
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={customGoalInput}
-                    onChange={(e) => {
-                      setCustomGoalInput(e.target.value);
-                      setSelectedGoal(e.target.value);
-                      if (e.target.value.trim()) setValidationError(null);
-                    }}
-                    placeholder="Or enter custom goal (e.g., DevOps Engineer, Cloud Architect, Data Scientist...)"
-                    className="w-full p-4 pr-12 rounded-2xl bg-slate-950/80 border border-slate-700 text-white placeholder-slate-500 text-xs sm:text-sm font-semibold focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 backdrop-blur-xl transition-all"
-                  />
-                  <Sparkles className="w-5 h-5 text-cyan-400 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" />
-                </div>
-
-                {validationError && (
-                  <div className="p-3 rounded-xl bg-red-500/20 border border-red-500/40 text-red-200 text-xs font-extrabold flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 text-red-400" />
-                    <span>{validationError}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* 2. SKILL LEVEL & DAILY TIME SELECTORS */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Skill Level */}
-                <div className="space-y-2 p-4 rounded-2xl bg-slate-950/70 border border-slate-800">
-                  <label className="text-xs font-extrabold text-cyan-300 block uppercase tracking-wider">
-                    Current Skill Level Baseline
-                  </label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {(['Beginner', 'Intermediate', 'Advanced'] as UserLevel[]).map((lvl) => (
-                      <button
-                        key={lvl}
-                        type="button"
-                        onClick={() => setUserLevel(lvl)}
-                        className={`py-2.5 px-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer text-center ${
-                          userLevel === lvl
-                            ? 'bg-white text-slate-950 font-black shadow-md scale-[1.02]'
-                            : 'bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 border border-slate-700'
-                        }`}
-                      >
-                        {lvl}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Daily Time */}
-                <div className="space-y-2 p-4 rounded-2xl bg-slate-950/70 border border-slate-800">
-                  <label className="text-xs font-extrabold text-cyan-300 block uppercase tracking-wider">
-                    Daily Study Commitment
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {(['30 min', '1 hour', '2 hours', '3+ hours'] as DailyTime[]).map((t) => (
-                      <button
-                        key={t}
-                        type="button"
-                        onClick={() => setDailyTime(t)}
-                        className={`py-2.5 px-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer text-center ${
-                          dailyTime === t
-                            ? 'bg-cyan-400 text-slate-950 font-black shadow-md scale-[1.02]'
-                            : 'bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 border border-slate-700'
-                        }`}
-                      >
-                        ⏱️ {t}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Generate Button */}
-              <button
-                type="button"
-                onClick={handleStartGeneration}
-                className="w-full py-4 px-8 rounded-2xl bg-gradient-to-r from-cyan-400 via-teal-300 to-emerald-400 hover:from-cyan-300 hover:to-emerald-300 text-slate-950 font-black text-sm sm:text-base flex items-center justify-center gap-2.5 shadow-xl shadow-cyan-400/20 transition-all duration-300 hover:scale-[1.01] cursor-pointer"
-              >
-                <Sparkles className="w-5 h-5 text-slate-950" />
-                <span>Generate My AI Roadmap</span>
-              </button>
-
             </div>
-          </div>
-
+          ))}
         </div>
-      )}
+      </div>
 
-      {/* ========================================================================= */}
-      {/* MODE 2: STEP-BY-STEP LOADING SCREEN */}
-      {/* ========================================================================= */}
-      {screenMode === 'loading' && (
-        <div className="min-h-[460px] glass-card rounded-[28px] border border-slate-700/80 bg-slate-900/90 backdrop-blur-2xl p-8 flex flex-col items-center justify-center space-y-6 text-center shadow-2xl animate-in fade-in duration-300">
-          <div className="relative w-28 h-28 flex items-center justify-center">
-            <div className="absolute inset-0 rounded-full border-4 border-cyan-500/20 border-t-cyan-400 animate-spin" />
-            <div className="absolute inset-3 rounded-full border-4 border-purple-500/20 border-b-purple-400 animate-spin [animation-duration:3s]" />
-            <Brain className="w-12 h-12 text-cyan-300 animate-pulse" />
-          </div>
-
-          <div className="space-y-2 max-w-md">
-            <h3 className="text-xl sm:text-2xl font-extrabold text-white font-['Space_Grotesk']">
-              Generating Your AI Learning Roadmap...
-            </h3>
-            <p className="text-xs sm:text-sm text-slate-300 font-medium">
-              Target Role: <strong className="text-cyan-300">{activeGoal}</strong> • Daily Commitment: <strong className="text-purple-300">{dailyTime}</strong>
-            </p>
-          </div>
-
-          {/* Progress Checklist */}
-          <div className="w-full max-w-md bg-slate-950 p-4 rounded-2xl border border-slate-800 text-left space-y-2.5 text-xs font-semibold">
-            <div className={`flex items-center gap-2.5 transition-colors ${loadingStep >= 1 ? 'text-emerald-400 font-extrabold' : 'text-slate-500'}`}>
-              {loadingStep >= 1 ? <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" /> : <div className="w-4 h-4 rounded-full border border-slate-700" />}
-              <span>Analyzing your performance...</span>
-            </div>
-
-            <div className={`flex items-center gap-2.5 transition-colors ${loadingStep >= 2 ? 'text-cyan-300 font-extrabold' : 'text-slate-500'}`}>
-              {loadingStep >= 2 ? <CheckCircle2 className="w-4 h-4 text-cyan-300 shrink-0" /> : <div className="w-4 h-4 rounded-full border border-slate-700" />}
-              <span>Finding skill gaps...</span>
-            </div>
-
-            <div className={`flex items-center gap-2.5 transition-colors ${loadingStep >= 3 ? 'text-purple-300 font-extrabold' : 'text-slate-500'}`}>
-              {loadingStep >= 3 ? <CheckCircle2 className="w-4 h-4 text-purple-300 shrink-0" /> : <div className="w-4 h-4 rounded-full border border-slate-700" />}
-              <span>Creating your personalized roadmap...</span>
-            </div>
-
-            <div className={`flex items-center gap-2.5 transition-colors ${loadingStep >= 4 ? 'text-emerald-400 font-extrabold' : 'text-slate-500'}`}>
-              {loadingStep >= 4 ? <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" /> : <div className="w-4 h-4 rounded-full border border-slate-700" />}
-              <span>Preparing today's goals & weekly plan...</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* MODE 3: REBUILT GENERATED STANDALONE ROADMAP VIEW */}
-      {/* ========================================================================= */}
-      {screenMode === 'dashboard' && roadmapData && (
-        <div className="space-y-8 animate-in fade-in duration-300">
-          
-          {/* TOP STANDALONE HERO BAR WITH BACK TO DASHBOARD BUTTON */}
-          <div className="glass-card rounded-[26px] p-6 border border-slate-700/80 bg-slate-900/90 backdrop-blur-2xl shadow-xl flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
-            <div className="space-y-2 max-w-xl">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-black uppercase text-cyan-300 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30">
-                  Your AI Learning Roadmap
-                </span>
-                <span className="text-xs font-bold text-slate-400">
-                  Goal: {roadmapData.customGoalInput}
-                </span>
-              </div>
-
-              <h2 className="text-xl sm:text-3xl font-extrabold text-white font-['Space_Grotesk'] flex items-center gap-2">
-                🎯 {roadmapData.customGoalInput} Roadmap
-              </h2>
-              <p className="text-xs text-slate-300 font-medium">
-                Baseline: <strong className="text-cyan-300">{roadmapData.userLevel}</strong> • Daily Commitment: <strong className="text-purple-300">{roadmapData.dailyTime}</strong>
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3 shrink-0">
-              <button
-                type="button"
-                onClick={() => setActiveTab('home')}
-                className="px-4 py-3 rounded-2xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer shadow-md"
-              >
-                <LayoutDashboard className="w-4 h-4 text-cyan-400" />
-                <span>Back to Dashboard</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setScreenMode('setup')}
-                className="px-3.5 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-extrabold flex items-center gap-1.5 transition-all cursor-pointer"
-                title="Change Goal"
-              >
-                <RefreshCw className="w-4 h-4 text-cyan-400" />
-                <span>Re-configure</span>
-              </button>
-            </div>
-          </div>
-
-          {/* AI CONTEXTUAL RECOMMENDATION BANNER */}
-          <div className="p-4 rounded-2xl bg-gradient-to-r from-indigo-950/70 via-purple-950/70 to-slate-950 border border-indigo-500/30 flex items-center justify-between gap-4 text-xs">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-indigo-500/20 text-indigo-300 shrink-0">
-                <Bot className="w-5 h-5 text-indigo-400 animate-pulse" />
-              </div>
-              <div>
-                <strong className="text-indigo-300 block font-extrabold uppercase text-[10px] tracking-wider">AI Recommendation</strong>
-                <span className="text-slate-200 font-medium">{roadmapData.aiRecommendation}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* ========================================================================= */}
-          {/* SECTION 1: AI SKILL GAP ANALYSIS */}
-          {/* ========================================================================= */}
-          <div className="glass-card rounded-3xl p-6 sm:p-7 border border-slate-700/80 bg-slate-900/90 backdrop-blur-2xl shadow-xl space-y-5">
-            <div className="space-y-1 border-b border-slate-800 pb-3">
-              <h3 className="text-lg font-extrabold text-white flex items-center gap-2 font-['Space_Grotesk']">
-                <Brain className="w-5 h-5 text-cyan-400" />
-                <span>AI Skill Gap Analysis</span>
-              </h3>
-              <p className="text-xs text-slate-400">
-                Real performance categorization across the 5 practice modules based on your application activity.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
-              {roadmapData.skillGaps.map((sg) => (
-                <div
-                  key={sg.moduleKey}
-                  className={`p-4 rounded-2xl border space-y-2 transition-all ${
-                    sg.statusTag === 'Strong'
-                      ? 'bg-emerald-950/30 border-emerald-500/40 text-emerald-200'
-                      : sg.statusTag === 'Needs Improvement'
-                      ? 'bg-amber-950/30 border-amber-500/40 text-amber-200'
-                      : sg.statusTag === 'Priority Improvement'
-                      ? 'bg-red-950/30 border-red-500/40 text-red-200'
-                      : 'bg-slate-950/60 border-slate-800 text-slate-400'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black truncate block">{sg.moduleName}</span>
-                  </div>
-
-                  <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase ${
-                    sg.statusTag === 'Strong'
-                      ? 'bg-emerald-500/20 text-emerald-400'
-                      : sg.statusTag === 'Needs Improvement'
-                      ? 'bg-amber-500/20 text-amber-300'
-                      : sg.statusTag === 'Priority Improvement'
-                      ? 'bg-red-500/20 text-red-300'
-                      : 'bg-slate-800 text-slate-400'
-                  }`}>
-                    {sg.statusTag === 'Strong' && '🟢 Strong'}
-                    {sg.statusTag === 'Needs Improvement' && '🟡 Needs Work'}
-                    {sg.statusTag === 'Priority Improvement' && '🔴 Priority'}
-                    {sg.statusTag === 'No Activity Yet' && '⚪ No Activity Yet'}
-                  </span>
-
-                  <p className="text-[11px] leading-relaxed font-medium">
-                    {sg.reason}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* ========================================================================= */}
-          {/* SECTION 2: YOUR PERSONALIZED LEARNING ROADMAP (REAL MODULE CARDS) */}
-          {/* ========================================================================= */}
-          <div className="glass-card rounded-3xl p-6 sm:p-7 border border-slate-700/80 bg-slate-900/90 backdrop-blur-2xl shadow-xl space-y-6">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-              <div>
-                <h3 className="text-lg font-extrabold text-white flex items-center gap-2 font-['Space_Grotesk']">
-                  <Map className="w-5 h-5 text-cyan-400" />
-                  <span>Your Personalized Learning Roadmap</span>
-                </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  The 5 core application practice modules prioritized dynamically according to your skill gaps.
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              {roadmapData.moduleCards.map((card, idx) => (
-                <div
-                  key={card.id}
-                  className={`p-5 sm:p-6 rounded-2xl border transition-all flex flex-col md:flex-row items-start md:items-center justify-between gap-5 ${
-                    card.priority === 'High'
-                      ? 'border-cyan-400/80 bg-slate-950/90 shadow-lg shadow-cyan-400/10'
-                      : 'border-slate-800 bg-slate-950/60'
-                  }`}
-                >
-                  <div className="space-y-2 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="w-6 h-6 rounded-full bg-cyan-500/20 text-cyan-300 font-mono text-xs font-black flex items-center justify-center border border-cyan-500/30">
-                        {idx + 1}
-                      </span>
-                      <h4 className="text-base font-extrabold text-white font-['Space_Grotesk']">
-                        {card.moduleName}
-                      </h4>
-                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${
-                        card.priority === 'High'
-                          ? 'bg-red-500/20 text-red-300 border border-red-500/30'
-                          : card.priority === 'Medium'
-                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                          : 'bg-slate-800 text-slate-400'
-                      }`}>
-                        {card.priority === 'High' && '🔴 High Priority'}
-                        {card.priority === 'Medium' && '🟡 Medium Priority'}
-                        {card.priority === 'Standard' && '🟢 Standard Priority'}
-                      </span>
-                    </div>
-
-                    <p className="text-xs text-slate-300 font-medium">
-                      <strong>Why AI Recommends:</strong> "{card.whyRecommended}"
-                    </p>
-
-                    {/* Suggested Practice Tasks inside the module */}
-                    <div className="pt-2">
-                      <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">
-                        Recommended Practice Topics:
-                      </span>
-                      <div className="flex flex-wrap gap-1.5">
-                        {card.suggestedTasks.map((st, i) => (
-                          <span key={i} className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-[11px] font-semibold text-slate-300">
-                            • {st}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col sm:flex-row md:flex-col items-start sm:items-center md:items-end justify-between gap-3 shrink-0 w-full md:w-auto border-t md:border-t-0 pt-3 md:pt-0 border-slate-800">
-                    <div className="text-left md:text-right">
-                      <span className="text-[10px] text-slate-400 block uppercase font-bold">Current Progress</span>
-                      <strong className={`text-xs font-mono font-black ${card.hasActivity ? 'text-emerald-400' : 'text-slate-400'}`}>
-                        {card.statusLabel}
-                      </strong>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => handleNavigateToModule(card.moduleKey)}
-                      className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 transition-all shadow-md shadow-cyan-400/20 cursor-pointer"
-                    >
-                      {card.moduleKey === 'coding' && <Code className="w-4 h-4 text-slate-950" />}
-                      {card.moduleKey === 'aptitude' && <Brain className="w-4 h-4 text-slate-950" />}
-                      {card.moduleKey === 'communication' && <MessageSquare className="w-4 h-4 text-slate-950" />}
-                      {card.moduleKey === 'interview' && <Video className="w-4 h-4 text-slate-950" />}
-                      {card.moduleKey === 'resume' && <FileText className="w-4 h-4 text-slate-950" />}
-                      <span>{card.actionLabel}</span>
-                      <ChevronRight className="w-4 h-4 text-slate-950" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* ========================================================================= */}
-          {/* SECTION 3: TODAY'S GOALS */}
-          {/* ========================================================================= */}
-          <div className="glass-card rounded-3xl p-6 sm:p-7 border border-slate-700/80 bg-slate-900/90 backdrop-blur-2xl shadow-xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div>
-                <h3 className="text-lg font-extrabold text-white flex items-center gap-2 font-['Space_Grotesk']">
-                  <CheckSquare className="w-5 h-5 text-cyan-400" />
-                  <span>TODAY'S GOALS</span>
-                </h3>
-                <p className="text-xs text-slate-400">
-                  Actionable daily goals derived from your prioritized application roadmap.
-                </p>
-              </div>
-              <span className="text-xs font-extrabold text-cyan-300 font-mono">
-                {roadmapData.todayGoals.filter((t) => t.completed).length} / {roadmapData.todayGoals.length} Done
+      {/* SECTION 4: TODAY'S GOALS + CURRENT DAY-WISE SESSION */}
+      <div className="glass-card rounded-3xl p-6 sm:p-7 border border-slate-700/80 bg-slate-900/90 backdrop-blur-2xl shadow-xl space-y-6">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-cyan-400" />
+                <span>{currentDayName} Focus</span>
+              </span>
+              <span className="text-xs font-bold text-slate-400">
+                {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
               </span>
             </div>
-
-            <div className="space-y-2.5">
-              {roadmapData.todayGoals.map((t) => (
-                <div
-                  key={t.id}
-                  className="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 hover:border-slate-700 transition-all"
-                >
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => handleToggleTodayGoal(t.id)}
-                      className={`w-5 h-5 rounded-full border flex items-center justify-center transition-all cursor-pointer ${
-                        t.completed ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-700 hover:border-cyan-400'
-                      }`}
-                    >
-                      {t.completed && <Check className="w-3.5 h-3.5" />}
-                    </button>
-
-                    <div>
-                      <span className="text-[10px] text-slate-400 font-mono">⏱️ {t.estimatedTime} • {t.moduleName}</span>
-                      <h4 className={`text-xs font-extrabold mt-0.5 ${t.completed ? 'line-through text-slate-500' : 'text-slate-100'}`}>
-                        {t.taskName}
-                      </h4>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => handleNavigateToModule(t.moduleKey)}
-                    className="px-3 py-1.5 rounded-lg bg-cyan-400 hover:bg-cyan-300 text-slate-950 text-[11px] font-black flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ml-8 sm:ml-0"
-                  >
-                    <span>Start / Continue</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
+            <h3 className="text-lg font-extrabold text-white font-['Space_Grotesk']">
+              Today's Goals & Practice Tasks
+            </h3>
           </div>
 
-          {/* ========================================================================= */}
-          {/* SECTION 4: THIS WEEK (WEEKLY PLAN) */}
-          {/* ========================================================================= */}
-          <div className="glass-card rounded-3xl p-6 sm:p-7 border border-slate-700/80 bg-slate-900/90 backdrop-blur-2xl shadow-xl space-y-4">
-            <div className="space-y-1 border-b border-slate-800 pb-3">
-              <h3 className="text-lg font-extrabold text-white flex items-center gap-2 font-['Space_Grotesk']">
-                <Calendar className="w-5 h-5 text-purple-400" />
-                <span>THIS WEEK</span>
-              </h3>
-              <p className="text-xs text-slate-400">
-                Weekly preparation plan structured across the 5 practice modules.
-              </p>
-            </div>
+          <span className="text-xs font-extrabold text-cyan-300 font-mono bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800">
+            {todayGoalsCompletedCount + (isTodaySessionCompleted ? 1 : 0)} / {roadmapData.todayGoals.length + 1} Done
+          </span>
+        </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-              {roadmapData.weeklySchedule.map((ws) => (
-                <div key={ws.dayName} className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2 flex flex-col justify-between">
-                  <div className="space-y-1">
-                    <span className="text-xs font-extrabold text-cyan-300 uppercase tracking-wider block">
-                      {ws.dayName}
-                    </span>
-                    <strong className="text-xs text-white block font-extrabold">{ws.focusModule}</strong>
-                    <p className="text-[11px] text-slate-400 leading-relaxed font-medium">
-                      {ws.taskDetails}
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => handleNavigateToModule(ws.moduleKey)}
-                    className="mt-3 w-full py-1.5 px-3 rounded-lg bg-slate-900 hover:bg-slate-800 text-cyan-300 border border-slate-800 text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
-                  >
-                    <span>Open Module</span>
-                    <ChevronRight className="w-3 h-3" />
-                  </button>
-                </div>
-              ))}
+        {/* ALL TODAY'S GOALS & TODAY'S SESSION COMPLETED CELEBRATION */}
+        {isAllTodayTasksAndSessionCompleted ? (
+          <div className="p-6 rounded-2xl bg-gradient-to-r from-emerald-950/80 via-teal-900/80 to-slate-950 border border-emerald-500/50 space-y-3 text-center animate-in fade-in">
+            <div className="w-12 h-12 mx-auto rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/40">
+              <PartyPopper className="w-6 h-6 text-emerald-400 animate-bounce" />
             </div>
+            <h4 className="text-lg font-black text-white font-['Space_Grotesk']">
+              Today's Goals Completed 🎉
+            </h4>
+            <p className="text-xs text-emerald-200 font-medium max-w-md mx-auto">
+              Great work! You have completed today's preparation. Come back tomorrow for your next AI-generated goals.
+            </p>
           </div>
-
-          {/* ========================================================================= */}
-          {/* SECTION 5 & 6: MY PROGRESS & CAREER READINESS */}
-          {/* ========================================================================= */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* MY PROGRESS CARD */}
-            <div className="glass-card rounded-3xl p-6 border border-slate-700/80 bg-slate-900/90 backdrop-blur-2xl shadow-xl space-y-4">
-              <div className="space-y-1 border-b border-slate-800 pb-3">
-                <h3 className="text-base font-extrabold text-white flex items-center gap-2 font-['Space_Grotesk']">
-                  <BarChart3 className="w-5 h-5 text-emerald-400" />
-                  <span>MY PROGRESS</span>
-                </h3>
-                <p className="text-xs text-slate-400">
-                  Real module accuracy & completion progress calculated from your activity.
-                </p>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            
+            {/* 1. TODAY'S GOALS */}
+            <div className="space-y-3 p-5 rounded-2xl bg-slate-950 border border-slate-800">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                <h4 className="text-xs font-extrabold text-cyan-300 uppercase tracking-wider flex items-center gap-2 font-['Space_Grotesk']">
+                  <CheckSquare className="w-4 h-4 text-cyan-400" />
+                  <span>Today's Goals</span>
+                </h4>
+                <span className="text-[10px] font-mono font-bold text-slate-400">
+                  {todayGoalsCompletedCount}/{roadmapData.todayGoals.length}
+                </span>
               </div>
 
-              <div className="space-y-3">
-                {[
-                  { label: 'Overall Preparation Progress', val: readinessScore.overall },
-                  { label: 'Coding Practice Progress', val: readinessScore.coding },
-                  { label: 'Aptitude Practice Progress', val: readinessScore.aptitude },
-                  { label: 'Communication Hub Progress', val: readinessScore.communication },
-                  { label: 'AI Mock Interview Progress', val: readinessScore.interview },
-                  { label: 'Resume Builder & ATS Progress', val: readinessScore.resume }
-                ].map((item, i) => (
-                  <div key={i} className="space-y-1">
-                    <div className="flex items-center justify-between text-xs font-bold">
-                      <span className="text-slate-300">{item.label}</span>
-                      <span className="font-mono text-cyan-400">
-                        {item.val > 0 ? `${item.val}%` : 'No activity yet'}
+              <div className="space-y-2">
+                {roadmapData.todayGoals.map((g) => (
+                  <div
+                    key={g.id}
+                    className={`p-3 rounded-xl border flex items-center justify-between gap-3 transition-all ${
+                      g.status === 'completed'
+                        ? 'bg-slate-900/50 border-emerald-500/30 text-slate-400'
+                        : 'bg-slate-900 border-slate-800 text-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleTodayGoal(g.id)}
+                        className={`w-4 h-4 rounded-full border flex items-center justify-center transition-all cursor-pointer ${
+                          g.status === 'completed' ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-700 hover:border-cyan-400'
+                        }`}
+                      >
+                        {g.status === 'completed' && <Check className="w-3 h-3" />}
+                      </button>
+                      <span className={`text-xs font-bold ${g.status === 'completed' ? 'line-through text-slate-500' : ''}`}>
+                        {g.goalTitle}
                       </span>
                     </div>
-                    <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden border border-slate-800">
-                      <div
-                        className="bg-gradient-to-r from-cyan-400 to-emerald-400 h-full rounded-full transition-all duration-500"
-                        style={{ width: `${item.val}%` }}
-                      />
-                    </div>
+
+                    {g.status === 'completed' ? (
+                      <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                        Completed ✓
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleNavigateToModule(g.moduleKey)}
+                        className="text-[10px] font-black text-cyan-300 hover:text-cyan-200 cursor-pointer flex items-center gap-1 shrink-0"
+                      >
+                        <span>{g.status === 'in_progress' ? 'Continue' : 'Start'}</span>
+                        <ChevronRight className="w-3 h-3" />
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* CAREER READINESS CARD */}
-            <div className="glass-card rounded-3xl p-6 border border-slate-700/80 bg-slate-900/90 backdrop-blur-2xl shadow-xl space-y-4 flex flex-col justify-between">
-              <div className="space-y-3">
-                <div className="space-y-1 border-b border-slate-800 pb-3">
-                  <h3 className="text-base font-extrabold text-white flex items-center gap-2 font-['Space_Grotesk']">
-                    <Award className="w-5 h-5 text-amber-400" />
-                    <span>CAREER READINESS</span>
-                  </h3>
-                  <p className="text-xs text-slate-400">
-                    Calculated readiness based on your actual performance data.
-                  </p>
-                </div>
+            {/* 2. TODAY'S DYNAMIC SESSION */}
+            {roadmapData.todaySession && (
+              <div className="space-y-3 p-5 rounded-2xl bg-gradient-to-br from-slate-950 via-indigo-950/40 to-slate-950 border border-cyan-500/30 shadow-lg relative overflow-hidden flex flex-col justify-between">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                    <h4 className="text-xs font-extrabold text-cyan-300 uppercase tracking-wider flex items-center gap-2 font-['Space_Grotesk']">
+                      <BookOpen className="w-4 h-4 text-cyan-400" />
+                      <span>📘 {currentDayName} Session</span>
+                    </h4>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
+                      isTodaySessionCompleted ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : roadmapData.todaySession.status === 'in_progress' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                    }`}>
+                      {isTodaySessionCompleted ? 'Completed ✓' : roadmapData.todaySession.status === 'in_progress' ? 'In Progress' : 'Current Focus'}
+                    </span>
+                  </div>
 
-                <div className="flex items-center justify-center p-4">
-                  <div className="relative w-28 h-28 flex items-center justify-center">
-                    <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
-                      <path className="text-slate-800" strokeWidth="3.5" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                      <path className="text-emerald-400 transition-all duration-700" strokeDasharray={`${roadmapData.careerReadinessScore}, 100`} strokeWidth="3.5" strokeLinecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                    </svg>
-                    <span className="absolute font-black text-xl text-white font-mono">{roadmapData.careerReadinessScore}%</span>
+                  <div className="space-y-1">
+                    <h5 className="text-sm font-extrabold text-white">
+                      {roadmapData.todaySession.moduleName} Practice
+                    </h5>
+                    <p className="text-xs text-slate-300 font-medium leading-relaxed">
+                      {roadmapData.todaySession.taskDetails}
+                    </p>
                   </div>
                 </div>
 
-                <p className="text-xs text-center font-medium text-slate-300">
-                  {hasActivityData
-                    ? readinessScore.overall >= 80
-                      ? '🎉 Outstanding! Your performance data confirms high placement readiness.'
-                      : 'Continue completing Today\'s Goals in Coding, Aptitude & Mock Interviews to boost your placement readiness score.'
-                    : 'Continue practicing to build enough performance data.'}
-                </p>
-              </div>
+                <div className="pt-3 border-t border-slate-800 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-1.5 text-slate-400 text-[11px] font-semibold">
+                    <Clock className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Estimated ~30 min</span>
+                  </div>
 
-              <button
-                type="button"
-                onClick={() => handleNavigateToModule('interview')}
-                className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-cyan-400 to-emerald-400 hover:from-cyan-300 hover:to-emerald-300 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg cursor-pointer mt-2"
-              >
-                <Video className="w-4 h-4 text-slate-950" />
-                <span>Start AI Mock Technical & HR Interview</span>
-              </button>
+                  {isTodaySessionCompleted ? (
+                    <div className="px-4 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-black flex items-center gap-1.5">
+                      <Check className="w-4 h-4 text-emerald-400" />
+                      <span>✓ {currentDayName} Session Completed</span>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleStartTodaySession}
+                      className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-300 hover:from-cyan-300 hover:to-teal-200 text-slate-950 text-xs font-black flex items-center gap-1.5 transition-all shadow-md shadow-cyan-400/20 cursor-pointer"
+                    >
+                      <span>{roadmapData.todaySession.status === 'in_progress' ? `Continue ${currentDayName} Session` : `Start ${currentDayName} Session`}</span>
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+          </div>
+        )}
+      </div>
+
+      {/* SECTION 5: OVERALL PROGRESS & 3D ANIMATED PLACEMENT READINESS */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* OVERALL PROGRESS CARD */}
+        <div className="glass-card rounded-3xl p-6 border border-slate-700/80 bg-slate-900/90 backdrop-blur-2xl shadow-xl space-y-4">
+          <div className="space-y-1 border-b border-slate-800 pb-3">
+            <h3 className="text-base font-extrabold text-white flex items-center gap-2 font-['Space_Grotesk']">
+              <BarChart3 className="w-5 h-5 text-emerald-400" />
+              <span>Overall Progress</span>
+            </h3>
+            <p className="text-xs text-slate-400">
+              Real module accuracy & completion progress calculated strictly from your application activity.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            {[
+              { label: 'Overall Preparation Progress', val: readinessScore.overall },
+              { label: 'Resume Builder & ATS Progress', val: readinessScore.resume },
+              { label: 'Aptitude Practice Progress', val: readinessScore.aptitude },
+              { label: 'Coding Practice Accuracy', val: readinessScore.coding },
+              { label: 'Communication Hub Progress', val: readinessScore.communication },
+              { label: 'AI Mock Interview Score', val: readinessScore.interview }
+            ].map((item, i) => (
+              <div key={i} className="space-y-1">
+                <div className="flex items-center justify-between text-xs font-bold">
+                  <span className="text-slate-300">{item.label}</span>
+                  <span className="font-mono text-cyan-400">
+                    {item.val > 0 ? `${item.val}%` : 'Not Started'}
+                  </span>
+                </div>
+                <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden border border-slate-800">
+                  <div
+                    className="bg-gradient-to-r from-cyan-400 to-emerald-400 h-full rounded-full transition-all duration-500"
+                    style={{ width: `${item.val}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 3D ANIMATED PLACEMENT READINESS CARD */}
+        <div className="glass-card rounded-3xl p-6 border border-slate-700/80 bg-slate-900/90 backdrop-blur-2xl shadow-xl space-y-4 flex flex-col justify-between">
+          <div className="space-y-3">
+            <div className="space-y-1 border-b border-slate-800 pb-3">
+              <h3 className="text-base font-extrabold text-white flex items-center gap-2 font-['Space_Grotesk']">
+                <Award className="w-5 h-5 text-amber-400" />
+                <span>Placement Readiness</span>
+              </h3>
+              <p className="text-xs text-slate-400">
+                Real readiness score calculated strictly from your application activity.
+              </p>
             </div>
+
+            {/* 3D ANIMATED PROGRESS CIRCLE */}
+            <div className="flex items-center justify-center p-4">
+              <div className="relative w-36 h-36 flex items-center justify-center group">
+                <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-cyan-500/30 via-emerald-500/20 to-purple-500/30 blur-xl group-hover:scale-110 transition-all duration-700 animate-pulse pointer-events-none" />
+                
+                <div className="absolute inset-1 rounded-full bg-gradient-to-br from-slate-800 via-slate-900 to-slate-950 p-[2px] shadow-[inset_0_2px_10px_rgba(255,255,255,0.1),0_10px_25px_rgba(0,0,0,0.5)]">
+                  <div className="w-full h-full rounded-full bg-slate-950/90 backdrop-blur-md" />
+                </div>
+
+                <svg className="w-full h-full transform -rotate-90 relative z-10 drop-shadow-[0_4px_12px_rgba(52,211,153,0.3)]" viewBox="0 0 40 40">
+                  <circle
+                    cx="20"
+                    cy="20"
+                    r="15.9155"
+                    className="text-slate-800/80"
+                    strokeWidth="3.2"
+                    stroke="currentColor"
+                    fill="none"
+                  />
+                  <circle
+                    cx="20"
+                    cy="20"
+                    r="15.9155"
+                    className="text-emerald-400 transition-all duration-1000 ease-out"
+                    strokeDasharray={`${roadmapData.overallProgressScore}, 100`}
+                    strokeWidth="3.2"
+                    strokeLinecap="round"
+                    stroke="currentColor"
+                    fill="none"
+                  />
+                </svg>
+
+                <div className="absolute z-20 flex flex-col items-center justify-center text-center">
+                  <span className="font-black text-2xl text-transparent bg-clip-text bg-gradient-to-b from-white via-slate-100 to-emerald-300 font-mono tracking-tight drop-shadow-md">
+                    {roadmapData.hasRecordedActivity ? `${roadmapData.overallProgressScore}%` : '0%'}
+                  </span>
+                  <span className="text-[9px] font-black uppercase text-emerald-400 tracking-wider font-sans">Readiness</span>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-xs text-center font-medium text-slate-300">
+              {roadmapData.hasRecordedActivity
+                ? readinessScore.overall >= 80
+                  ? '🎉 Outstanding! Your real performance data confirms high placement readiness.'
+                  : 'Continue completing Today\'s Goals & Sessions in Coding, Aptitude & Mock Interviews to boost your placement readiness score.'
+                : 'Not Started — Complete practice sessions in app modules to build your performance data.'}
+            </p>
           </div>
 
         </div>
-      )}
+      </div>
 
     </div>
   );
 };
-
-export default RoadmapView;
