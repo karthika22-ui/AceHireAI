@@ -568,14 +568,7 @@ export const ResumeBuilderWizard: React.FC<ResumeBuilderWizardProps> = ({ onBack
     });
   }, [user?.id]);
 
-  // REGISTER GLOBAL EXIT GUARD FOR RESUME BUILDER
-  useEffect(() => {
-    const isDirty = !isResumeCreated && (currentStep > 1 || !!formData.fullName || !!formData.summary);
-    registerWorkflowGuard('Resume Builder', isDirty);
-    return () => {
-      clearWorkflowGuard('Resume Builder');
-    };
-  }, [currentStep, formData.fullName, formData.summary, isResumeCreated, registerWorkflowGuard, clearWorkflowGuard]);
+
 
   // AUTO-SAVE DRAFT TO PERSISTENT STORAGE WHENEVER FORM, STEP OR CREATED STATE CHANGES (REQUIREMENT 2 & 3)
   useEffect(() => {
@@ -733,12 +726,10 @@ export const ResumeBuilderWizard: React.FC<ResumeBuilderWizardProps> = ({ onBack
 
   // Clear Saved Draft and Reset Form
   const handleClearDraftAndReset = () => {
-    if (window.confirm('Are you sure you want to clear your saved draft and start fresh?')) {
-      localStorage.removeItem(LOCAL_STORAGE_KEY);
-      setFormData(defaultEmptyFormData);
-      setCurrentStep(1);
-      setIsResumeCreated(false);
-    }
+    localStorage.removeItem(LOCAL_STORAGE_KEY);
+    setFormData(defaultEmptyFormData);
+    setCurrentStep(1);
+    setIsResumeCreated(false);
   };
 
   // Direct Client-Side PDF Generator (jsPDF + html2canvas on True A4 Canvas)

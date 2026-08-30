@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Code2,
   Play,
@@ -19,12 +19,13 @@ import {
 import { useApp } from '../../context/AppContext';
 import { generateQuestions, STARTER_TEMPLATES, generateAICodeReview, DynamicAICodeReview } from '../../services/aiEngine';
 import { CodingLanguage, DifficultyLevel, CodingSubmissionResult, CodingChallenge } from '../../types';
-import { SessionResumeModal } from '../Common/SessionResumeModal';
+
 import { AIRobotLoader } from '../Common/AIRobotLoader';
 import { SupabaseService } from '../../services/supabaseClient';
+import ttsService from '../../services/ttsService';
 
 export const CodingView: React.FC = () => {
-  const { recordUserActivity, user, setActiveTab, registerWorkflowGuard, clearWorkflowGuard } = useApp();
+  const { recordUserActivity, user, setActiveTab, registerSessionGuard, unregisterSessionGuard } = useApp();
 
   const [hasStartedChallenge, setHasStartedChallenge] = useState<boolean>(false);
   const [selectedLang, setSelectedLang] = useState<CodingLanguage>('Python');
@@ -59,23 +60,7 @@ export const CodingView: React.FC = () => {
     howToImprove: string[];
   } | null>(null);
 
-  // REGISTER GLOBAL EXIT GUARD FOR CODING PRACTICE
-  useEffect(() => {
-    const isDirty = hasStartedChallenge && userCode.trim().length > 0;
-    registerWorkflowGuard('Coding Practice', isDirty);
-    return () => {
-      clearWorkflowGuard('Coding Practice');
-    };
-  }, [hasStartedChallenge, userCode, registerWorkflowGuard, clearWorkflowGuard]);
 
-  // Session Persistence States
-  const [showCodingModal, setShowCodingModal] = useState<boolean>(false);
-  const [pendingCodingSession, setPendingCodingSession] = useState<{
-    selectedLang: CodingLanguage;
-    difficulty: DifficultyLevel;
-    userCode: string;
-    problemTitle: string;
-  } | null>(null);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -92,59 +77,15 @@ export const CodingView: React.FC = () => {
     }
   }, [hasStartedChallenge]);
 
-  // Helper for Web Speech API TTS with female voice selection & mouth sync
+  // Helper for TTSService with natural Tamil female voice synthesis & mouth sync
   const speakRobotFeedback = (text: string) => {
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      try {
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 0.82;
-        utterance.pitch = 1.0;
-
-        const setVoiceAndPlay = () => {
-          const voices = window.speechSynthesis.getVoices();
-          if (voices && voices.length > 0) {
-            const femaleVoice = voices.find(
-              (v) =>
-                v.name.toLowerCase().includes('female') ||
-                v.name.toLowerCase().includes('zira') ||
-                v.name.toLowerCase().includes('google us english') ||
-                v.name.toLowerCase().includes('samantha') ||
-                v.name.toLowerCase().includes('victoria') ||
-                v.name.toLowerCase().includes('natural') ||
-                v.name.toLowerCase().includes('karen') ||
-                v.name.toLowerCase().includes('moira')
-            );
-            if (femaleVoice) {
-              utterance.voice = femaleVoice;
-            }
-          }
-
-          utterance.onstart = () => {
-            setIsRobotSpeaking(true);
-          };
-          utterance.onend = () => {
-            setIsRobotSpeaking(false);
-          };
-          utterance.onerror = () => {
-            setIsRobotSpeaking(false);
-          };
-
-          window.speechSynthesis.speak(utterance);
-        };
-
-        if (window.speechSynthesis.getVoices().length === 0) {
-          window.speechSynthesis.onvoiceschanged = () => {
-            setVoiceAndPlay();
-          };
-        } else {
-          setVoiceAndPlay();
-        }
-      } catch (e) {
-        console.warn('TTS error:', e);
-        setIsRobotSpeaking(false);
-      }
-    }
+    ttsService.speak({
+      text,
+      language: user.preferredLanguage === 'Tanglish' ? 'Tanglish' : 'English',
+      onStart: () => setIsRobotSpeaking(true),
+      onEnd: () => setIsRobotSpeaking(false),
+      onError: () => setIsRobotSpeaking(false),
+    });
   };
 
   // Language Icon Helper
@@ -308,22 +249,7 @@ export const CodingView: React.FC = () => {
     setIsGenerating(false);
   };
 
-  const handleContinueCoding = () => {
-    if (pendingCodingSession) {
-      setSelectedLang(pendingCodingSession.selectedLang);
-      setDifficulty(pendingCodingSession.difficulty);
-      setUserCode(pendingCodingSession.userCode);
-      setHasStartedChallenge(true);
-    }
-    setShowCodingModal(false);
-    setPendingCodingSession(null);
-  };
 
-  const handleExitCoding = () => {
-    setShowCodingModal(false);
-    setPendingCodingSession(null);
-    setUserCode('');
-  };
 
   // NEXT QUESTION: Clears all previous evaluation states completely
   const handleNextQuestion = () => {
@@ -350,6 +276,28 @@ export const CodingView: React.FC = () => {
     setRobotVoiceMessage(null);
   };
 
+  const handleDirectExitCoding = useCallback(() => {
+    setHasStartedChallenge(false);
+    setUserCode('');
+    setCurrentProblem(null);
+    setExecutionResult(null);
+    setDynamicAiFeedback(null);
+    setEvaluationMetrics(null);
+    setHasEvaluated(false);
+    setIsEvaluatingOverlay(false);
+  }, []);
+
+  useEffect(() => {
+    registerSessionGuard({
+      moduleTab: 'coding',
+      isSessionActive: hasStartedChallenge,
+      clearSessionCallback: handleDirectExitCoding
+    });
+    return () => {
+      unregisterSessionGuard('coding');
+    };
+  }, [hasStartedChallenge, registerSessionGuard, unregisterSessionGuard, handleDirectExitCoding]);
+
   // EDIT CODE: Closes overlay & preserves user code
   const handleCloseEvaluationOverlayToEdit = () => {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -363,21 +311,19 @@ export const CodingView: React.FC = () => {
 
   // RUN & EVALUATE CODE FLOW WITH DIRECT AI ROBOT FEEDBACK (NO INTERMEDIATE LOADING SCREEN)
   const handleRunCode = async () => {
-    if (isRunning) return;
-    setIsRunning(true);
-    setIsEvaluatingOverlay(false);
-    setIsEvaluationLoading(true);
-    setEvaluationError(null);
-    setRobotVoiceMessage(null);
-    setEvaluationMetrics(null);
-
-    const userName = user.name ? user.name.split(' ')[0] : 'Student';
-    const isTanglish = user.preferredLanguage === 'Tanglish';
-    const trimmedCode = userCode.trim();
-    const problemTitle = currentProblem?.title || 'Coding Challenge';
-    const problemDesc = currentProblem?.description || '';
-
     try {
+      setIsRunning(true);
+      setIsEvaluationLoading(true);
+      setEvaluationError(null);
+      setEvaluationMetrics(null);
+      setRobotVoiceMessage('');
+      setDynamicAiFeedback(null);
+      ttsService.stop();
+
+      const userName = user?.name ? user.name.split(' ')[0] : 'Student';
+      const trimmedCode = userCode.trim();
+      const isTanglish = user.preferredLanguage === 'Tanglish';
+
       // Step 1: Empty Code Check
       if (!trimmedCode) {
         await new Promise((res) => setTimeout(res, 1200));
@@ -400,7 +346,7 @@ export const CodingView: React.FC = () => {
         setIsEvaluationLoading(false);
         setIsRunning(false);
         setIsEvaluatingOverlay(true);
-        speakRobotFeedback(emptyMessage);
+        ttsService.stop();
         return;
       }
 
@@ -411,15 +357,15 @@ export const CodingView: React.FC = () => {
 
         const syntaxMistake = `Invalid ${selectedLang} code syntax. Please check syntax rules.`;
         const syntaxMessage = isTanglish
-          ? `${userName}, unga code-la konjam mistakes irukku. Innum konjam practice pannunga. Mainly indha areas-la improve panna try pannunga.`
-          : `${userName}, there are a few mistakes in your code. Keep practicing and focus on the areas mentioned in the feedback.`;
+          ? `${userName}, unga code-la konjam mistakes irukku. Innum konjam practice pannunga.`
+          : `${userName}, there are a few mistakes in your code. Keep practicing.`;
 
         const metrics = {
           correctnessPercent: 0,
           passedTestCasesCount: 0,
           totalTestCasesCount: 1,
           mistakes: [syntaxMistake],
-          howToImprove: [`Write syntactically correct ${selectedLang} code with proper keywords and structure.`]
+          howToImprove: ['Check brackets, semicolons, function signatures, and language syntax.']
         };
 
         setEvaluationMetrics(metrics);
@@ -428,26 +374,15 @@ export const CodingView: React.FC = () => {
         setIsEvaluationLoading(false);
         setIsRunning(false);
         setIsEvaluatingOverlay(true);
-        speakRobotFeedback(syntaxMessage);
-
-        if (currentProblem) {
-          await SupabaseService.updateCodingProgress({
-            problemId: currentProblem.id,
-            userEmail: user?.email || 'student@college.edu',
-            userId: user?.id,
-            code: userCode,
-            score: 0,
-            status: 'Compilation Error',
-            timeComplexity: 'N/A',
-            englishAdvice: syntaxMistake,
-            tanglishAdvice: syntaxMessage
-          });
-        }
+        ttsService.stop();
         return;
       }
 
-      // Step 3: Valid Code -> Generate Actual AI Review
-      const dynamicReview = await generateAICodeReview({
+      // Step 3: AI Code Review
+      const problemTitle = currentProblem?.title || 'Coding Challenge';
+      const problemDesc = currentProblem?.description || '';
+
+      const dynamicReview: DynamicAICodeReview = await generateAICodeReview({
         problemTitle,
         description: problemDesc,
         code: trimmedCode,
@@ -463,12 +398,12 @@ export const CodingView: React.FC = () => {
       let robotMsg = '';
       if (isCorrect) {
         robotMsg = isTanglish
-          ? `Hi ${userName}! Neenga coding-a perfect-ah write pannirukeenga. Very good! Ippadiye continue pannunga. Indha problem-a neenga easy-ah crack panniteenga.`
-          : `Hi ${userName}! You wrote the code perfectly. Great job! Keep continuing like this. You solved this problem very well.`;
+          ? `${userName}, unga code sariyaaga velai seigiradhu. Mikavum nanraaga seidhirukkireergal. Idhe madhiri thodarnthu practice seiyungal.`
+          : `${userName}, your code works perfectly! Excellent job. Keep practicing like this.`;
       } else {
         robotMsg = isTanglish
-          ? `${userName}, good attempt! Unga code-la sila parts correct-ah irukku, but konjam corrections thevai. Feedback-a check panni next attempt-la improve pannunga.`
-          : `Hi ${userName}! Good attempt! Some parts of your code are correct, but a few adjustments are needed. Check the feedback to improve on your next attempt.`;
+          ? `${userName}, unga code-la sila parts correct-ah irukku, but konjam corrections thevai. Feedback-a check panni next attempt-la improve pannunga.`
+          : `${userName}, good attempt! Some parts of your code are correct, but a few adjustments are needed. Check the feedback to improve on your next attempt.`;
       }
 
       const mistakesList = dynamicReview.mistakes && dynamicReview.mistakes !== 'None'
@@ -512,7 +447,7 @@ export const CodingView: React.FC = () => {
       setIsEvaluationLoading(false);
       setIsRunning(false);
       setIsEvaluatingOverlay(true);
-      speakRobotFeedback(robotMsg);
+      ttsService.stop();
 
     } catch (err: any) {
       console.error('Error evaluating code:', err);
@@ -528,18 +463,7 @@ export const CodingView: React.FC = () => {
     return (
       <div ref={mainContainerRef} className="flex-1 overflow-y-auto space-y-6 w-[92%] sm:w-[94%] max-w-7xl mx-auto pb-12 pr-1 animate-in fade-in relative select-none">
         
-        {/* Session Resume Modal */}
-        <SessionResumeModal
-          isOpen={showCodingModal && !!pendingCodingSession}
-          moduleName="Coding Practice"
-          progressText={
-            pendingCodingSession
-              ? `Language: ${pendingCodingSession.selectedLang} • Problem: ${pendingCodingSession.problemTitle}`
-              : ''
-          }
-          onContinue={handleContinueCoding}
-          onExit={handleExitCoding}
-        />
+
 
         {/* Top Header Section */}
         <div className="glass-card rounded-3xl p-6 sm:p-8 border text-center relative overflow-hidden space-y-3">
@@ -682,18 +606,7 @@ export const CodingView: React.FC = () => {
   return (
     <div ref={mainContainerRef} className="flex-1 w-[94%] sm:w-[96%] max-w-7xl mx-auto flex flex-col h-[calc(100vh-130px)] space-y-3 pb-2 animate-in fade-in select-none overflow-hidden relative">
       
-      {/* Session Resume Modal */}
-      <SessionResumeModal
-        isOpen={showCodingModal && !!pendingCodingSession}
-        moduleName="Coding Practice"
-        progressText={
-          pendingCodingSession
-            ? `Language: ${pendingCodingSession.selectedLang} • Problem: ${pendingCodingSession.problemTitle}`
-            : ''
-        }
-        onContinue={handleContinueCoding}
-        onExit={handleExitCoding}
-      />
+
 
       {/* Slim Progress Bar at top showing coding progress */}
       <div className="w-full bg-slate-800/80 h-1.5 rounded-full overflow-hidden shrink-0">
@@ -707,7 +620,7 @@ export const CodingView: React.FC = () => {
       <div className="glass-card rounded-2xl p-3 border flex flex-wrap items-center justify-between gap-3 shrink-0 sticky top-0 z-20 backdrop-blur-md bg-slate-950/80">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => setHasStartedChallenge(false)}
+            onClick={handleDirectExitCoding}
             className="px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/80 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
             title="Back to Setup"
           >
@@ -745,9 +658,9 @@ export const CodingView: React.FC = () => {
 
           {/* Exit Button */}
           <button
-            onClick={() => setActiveTab('dashboard')}
+            onClick={handleDirectExitCoding}
             className="px-3 py-1.5 rounded-xl border border-slate-700/80 bg-transparent text-slate-300 hover:bg-red-500 hover:text-white hover:border-red-500 text-xs font-bold flex items-center gap-1.5 transition-all duration-300 cursor-pointer"
-            title="Exit to Dashboard"
+            title="Exit Challenge"
           >
             <LogOut className="w-3.5 h-3.5" />
             <span>Exit</span>
@@ -981,138 +894,121 @@ export const CodingView: React.FC = () => {
                 </button>
               </div>
             ) : (
-              /* STATE B: COMPACT HORIZONTAL 2-COLUMN EVALUATION RECTANGULAR CARD */
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center animate-in fade-in zoom-in-95 duration-300">
+              /* STATE B: CLEAN TEXT EVALUATION RESULT CARD */
+              <div className="space-y-4 animate-in fade-in zoom-in-95 duration-300">
                 
-                {/* LEFT COLUMN: AI ROBOT & REPLAY VOICE */}
-                <div className="md:col-span-5 flex flex-col items-center justify-center space-y-3 border-b md:border-b-0 md:border-r border-slate-800/80 pb-4 md:pb-0 md:pr-6">
-                  <div className="flex flex-col items-center justify-center pointer-events-none scale-90 sm:scale-95 md:scale-100 shrink-0">
-                    <AIRobotLoader
-                      title=""
-                      subtitle=""
-                      details=""
-                      overlay={false}
-                      isSpeaking={isRobotSpeaking}
-                      isDone={true}
-                    />
+                {/* Header */}
+                <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                      <Sparkles className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-extrabold text-white tracking-wide font-['Space_Grotesk']">
+                        Code Evaluation Complete
+                      </h3>
+                      <span className="text-xs text-slate-400 font-medium">
+                        Language: {selectedLang} • Difficulty: {difficulty}
+                      </span>
+                    </div>
                   </div>
 
-                  {robotVoiceMessage && (
-                    <button
-                      type="button"
-                      onClick={() => speakRobotFeedback(robotVoiceMessage)}
-                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-extrabold text-xs flex items-center justify-center gap-2 border border-slate-700/80 shadow-md transition-all cursor-pointer"
-                      title="Replay Voice Feedback"
-                    >
-                      <Volume2 className="w-4 h-4 text-emerald-400" />
-                      <span>Replay Voice</span>
-                    </button>
-                  )}
+                  <span
+                    className={`text-xs sm:text-sm font-black px-3.5 py-1.5 rounded-full border ${
+                      (evaluationMetrics?.correctnessPercent || 0) >= 80
+                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                        : (evaluationMetrics?.correctnessPercent || 0) > 0
+                        ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                        : 'bg-red-500/10 text-red-400 border-red-500/30'
+                    }`}
+                  >
+                    {evaluationMetrics?.correctnessPercent}% Correct
+                  </span>
                 </div>
 
-                {/* RIGHT COLUMN: EVALUATION CONTENT & ACTION BUTTONS */}
-                <div className="md:col-span-7 space-y-4">
-                  {/* Header */}
-                  <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-                    <div className="flex items-center gap-2.5">
-                      <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                        <Sparkles className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h3 className="text-base font-extrabold text-white tracking-wide font-['Space_Grotesk']">
-                          Code Evaluation Complete
-                        </h3>
-                        <span className="text-[11px] text-slate-400 font-medium">
-                          Language: {selectedLang} • Difficulty: {difficulty}
-                        </span>
-                      </div>
-                    </div>
-
-                    <span
-                      className={`text-xs font-black px-3 py-1 rounded-full border ${
-                        (evaluationMetrics?.correctnessPercent || 0) >= 80
-                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                          : (evaluationMetrics?.correctnessPercent || 0) > 0
-                          ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-                          : 'bg-red-500/10 text-red-400 border-red-500/30'
-                      }`}
-                    >
-                      {evaluationMetrics?.correctnessPercent}% Correct
+                {/* AI Text Feedback Box */}
+                {robotVoiceMessage && (
+                  <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-1.5">
+                    <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block">
+                      AI Feedback Summary ({user.preferredLanguage})
                     </span>
+                    <p className="text-xs sm:text-sm text-slate-200 font-medium leading-relaxed">
+                      {robotVoiceMessage}
+                    </p>
                   </div>
+                )}
 
-                  {/* Clean Evaluation Results Content */}
-                  {evaluationMetrics && (
-                    <div className="space-y-3 text-xs">
-                      {/* Metrics Bar */}
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
-                          <span className="text-slate-400 font-bold">Correctness:</span>
-                          <span className="font-extrabold text-emerald-400 text-sm">
-                            {evaluationMetrics.correctnessPercent}%
-                          </span>
-                        </div>
-
-                        <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
-                          <span className="text-slate-400 font-bold">Test Cases:</span>
-                          <span className="font-extrabold text-slate-200 text-sm">
-                            {evaluationMetrics.passedTestCasesCount} / {evaluationMetrics.totalTestCasesCount} Passed
-                          </span>
-                        </div>
+                {/* Clean Evaluation Results Content */}
+                {evaluationMetrics && (
+                  <div className="space-y-3.5 text-xs">
+                    {/* Metrics Bar */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+                        <span className="text-slate-400 font-bold">Correctness:</span>
+                        <span className="font-extrabold text-emerald-400 text-sm sm:text-base">
+                          {evaluationMetrics.correctnessPercent}%
+                        </span>
                       </div>
 
-                      {/* Mistakes List */}
-                      <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 space-y-1.5">
-                        <span className="font-extrabold text-amber-400 block text-[11px] uppercase tracking-wider">
-                          ⚠ Mistakes
+                      <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+                        <span className="text-slate-400 font-bold">Test Cases:</span>
+                        <span className="font-extrabold text-slate-200 text-sm sm:text-base">
+                          {evaluationMetrics.passedTestCasesCount} / {evaluationMetrics.totalTestCasesCount} Passed
                         </span>
-                        <ul className="space-y-1 text-slate-300 font-medium leading-relaxed">
-                          {evaluationMetrics.mistakes.map((m, idx) => (
-                            <li key={idx} className="flex items-start gap-1.5">
-                              <span className="text-amber-400">•</span>
-                              <span>{m}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-
-                      {/* How to Improve List */}
-                      <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 space-y-1.5">
-                        <span className="font-extrabold text-emerald-400 block text-[11px] uppercase tracking-wider">
-                          💡 How to Improve
-                        </span>
-                        <ul className="space-y-1 text-slate-300 font-medium leading-relaxed">
-                          {evaluationMetrics.howToImprove.map((imp, idx) => (
-                            <li key={idx} className="flex items-start gap-1.5">
-                              <span className="text-emerald-400">•</span>
-                              <span>{imp}</span>
-                            </li>
-                          ))}
-                        </ul>
                       </div>
                     </div>
-                  )}
 
-                  {/* EXACTLY TWO ACTION BUTTONS */}
-                  <div className="grid grid-cols-2 gap-3 pt-2">
-                    <button
-                      type="button"
-                      onClick={handleCloseEvaluationOverlayToEdit}
-                      className="py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 border border-slate-700 transition-all cursor-pointer"
-                    >
-                      <Edit3 className="w-4 h-4 text-slate-300" />
-                      <span>Edit Code</span>
-                    </button>
+                    {/* Mistakes List */}
+                    <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2">
+                      <span className="font-extrabold text-amber-400 block text-xs uppercase tracking-wider">
+                        ⚠ Mistakes
+                      </span>
+                      <ul className="space-y-1.5 text-slate-300 font-medium leading-relaxed">
+                        {evaluationMetrics.mistakes.map((m, idx) => (
+                          <li key={idx} className="flex items-start gap-2">
+                            <span className="text-amber-400">•</span>
+                            <span>{m}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
 
-                    <button
-                      type="button"
-                      onClick={handleNextQuestion}
-                      className="py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition-all cursor-pointer"
-                    >
-                      <span>Next Question</span>
-                      <ArrowRight className="w-4 h-4 text-white" />
-                    </button>
+                    {/* How to Improve List */}
+                    <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2">
+                      <span className="font-extrabold text-emerald-400 block text-xs uppercase tracking-wider">
+                        💡 How to Improve
+                      </span>
+                      <ul className="space-y-1.5 text-slate-300 font-medium leading-relaxed">
+                        {evaluationMetrics.howToImprove.map((imp, idx) => (
+                          <li key={idx} className="flex items-start gap-2">
+                            <span className="text-emerald-400">•</span>
+                            <span>{imp}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   </div>
+                )}
+
+                {/* EXACTLY TWO ACTION BUTTONS */}
+                <div className="grid grid-cols-2 gap-3 pt-3">
+                  <button
+                    type="button"
+                    onClick={handleCloseEvaluationOverlayToEdit}
+                    className="py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 border border-slate-700 transition-all cursor-pointer"
+                  >
+                    <Edit3 className="w-4 h-4 text-slate-300" />
+                    <span>Edit Code</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleNextQuestion}
+                    className="py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition-all cursor-pointer"
+                  >
+                    <span>Next Question</span>
+                    <ArrowRight className="w-4 h-4 text-white" />
+                  </button>
                 </div>
 
               </div>

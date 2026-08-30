@@ -185,7 +185,7 @@ export const ProfileView: React.FC = () => {
   );
 
   return (
-    <div className="flex-1 overflow-y-auto max-h-full space-y-6 max-w-4xl mx-auto py-4 px-4 sm:px-6 relative animate-in fade-in duration-300">
+    <div className="w-full space-y-6 relative animate-in fade-in duration-300">
       
       {/* Ambient Background Glows */}
       <div className="absolute -top-20 -left-20 w-80 h-80 bg-purple-600/15 rounded-full blur-3xl pointer-events-none dark:opacity-100 opacity-30" />

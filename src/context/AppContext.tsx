@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import {
   UserProfile,
   LanguagePreference,
@@ -80,12 +80,23 @@ interface AppContextType {
   updateSettings: (newSettings: Partial<UserSettings>) => void;
   recalculatePlacementScore: () => void;
   resetAllProgress: () => void;
-  activeWorkflowGuard: { workflowName: string; isDirty: boolean } | null;
   registerWorkflowGuard: (workflowName: string, isDirty: boolean) => void;
   clearWorkflowGuard: (workflowName?: string) => void;
-  confirmExitWorkflow: () => void;
-  cancelExitWorkflow: () => void;
+  sessionGuards: Record<string, SessionGuard>;
+  registerSessionGuard: (guard: SessionGuard) => void;
+  unregisterSessionGuard: (moduleTab: ActiveTab) => void;
   isExitModalOpen: boolean;
+  confirmExitSession: () => void;
+  cancelExitSession: () => void;
+  activeDrawer: 'profile' | 'settings' | null;
+  setActiveDrawer: (drawer: 'profile' | 'settings' | null) => void;
+  closeDrawer: () => void;
+}
+
+export interface SessionGuard {
+  moduleTab: ActiveTab;
+  isSessionActive: boolean;
+  clearSessionCallback?: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -116,79 +127,85 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activeTab, setActiveTabDirectly] = useState<ActiveTab>('home');
   const [pendingTargetTab, setPendingTargetTab] = useState<ActiveTab | null>(null);
 
-  // Global Exit Confirmation Guard States
-  const [activeWorkflowGuard, setActiveWorkflowGuardState] = useState<{ workflowName: string; isDirty: boolean } | null>(null);
+  const [sessionGuards, setSessionGuards] = useState<Record<string, SessionGuard>>({});
   const [isExitModalOpen, setIsExitModalOpen] = useState<boolean>(false);
-  const [pendingTab, setPendingTab] = useState<ActiveTab | null>(null);
 
-  const registerWorkflowGuard = (workflowName: string, isDirty: boolean) => {
-    if (isDirty) {
-      setActiveWorkflowGuardState({ workflowName, isDirty: true });
-    } else {
-      setActiveWorkflowGuardState((prev) => {
-        if (prev?.workflowName === workflowName) {
-          return null;
-        }
-        return prev;
-      });
-    }
-  };
+  const [activeDrawer, setActiveDrawer] = useState<'profile' | 'settings' | null>(null);
 
-  const clearWorkflowGuard = (workflowName?: string) => {
-    if (!workflowName || activeWorkflowGuard?.workflowName === workflowName) {
-      setActiveWorkflowGuardState(null);
-    }
-  };
+  const closeDrawer = useCallback(() => {
+    setActiveDrawer(null);
+  }, []);
+
+  const registerSessionGuard = useCallback((guard: SessionGuard) => {
+    setSessionGuards((prev) => ({
+      ...prev,
+      [guard.moduleTab]: guard
+    }));
+  }, []);
+
+  const unregisterSessionGuard = useCallback((moduleTab: ActiveTab) => {
+    setSessionGuards((prev) => {
+      const next = { ...prev };
+      delete next[moduleTab];
+      return next;
+    });
+  }, []);
+
+  const registerWorkflowGuard = (_workflowName: string, _isDirty: boolean) => {};
+  const clearWorkflowGuard = (_workflowName?: string) => {};
 
   const setActiveTab = (targetTab: ActiveTab) => {
-    if (targetTab === activeTab) return;
+    if (targetTab === activeTab) {
+      if (activeDrawer) setActiveDrawer(null);
+      return;
+    }
 
-    if (activeWorkflowGuard && activeWorkflowGuard.isDirty) {
-      setPendingTab(targetTab);
+    // Context-aware Profile & Settings Navigation Flow:
+    // If targetTab is 'profile' or 'settings' AND user is inside a practice module,
+    // open the right-side drawer overlay without triggering exit modal or unmounting active module!
+    if (targetTab === 'profile' || targetTab === 'settings') {
+      const isPracticeModule = ['interview', 'coding', 'aptitude', 'resume', 'communication', 'roadmap'].includes(activeTab);
+      if (isPracticeModule) {
+        setActiveDrawer(targetTab);
+        return;
+      }
+    }
+
+    // Close drawer when navigating elsewhere
+    setActiveDrawer(null);
+
+    const currentGuard = sessionGuards[activeTab];
+    if (currentGuard && currentGuard.isSessionActive) {
+      setPendingTargetTab(targetTab);
       setIsExitModalOpen(true);
     } else {
       setActiveTabDirectly(targetTab);
     }
   };
 
-  const confirmExitWorkflow = () => {
-    const target = pendingTab;
+  const confirmExitSession = () => {
+    const target = pendingTargetTab;
+    const currentGuard = sessionGuards[activeTab];
     setIsExitModalOpen(false);
-    setPendingTab(null);
-    setActiveWorkflowGuardState(null);
+    setPendingTargetTab(null);
+
+    if (currentGuard && currentGuard.clearSessionCallback) {
+      try {
+        currentGuard.clearSessionCallback();
+      } catch (e) {
+        console.warn('Error clearing active session:', e);
+      }
+    }
+
     if (target) {
       setActiveTabDirectly(target);
     }
   };
 
-  const cancelExitWorkflow = () => {
+  const cancelExitSession = () => {
     setIsExitModalOpen(false);
-    setPendingTab(null);
+    setPendingTargetTab(null);
   };
-
-  // Browser Back Button & Reload Interception
-  useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (activeWorkflowGuard && activeWorkflowGuard.isDirty) {
-        e.preventDefault();
-        e.returnValue = '';
-      }
-    };
-
-    const handlePopState = (e: PopStateEvent) => {
-      if (activeWorkflowGuard && activeWorkflowGuard.isDirty) {
-        window.history.pushState(null, '', window.location.href);
-        setIsExitModalOpen(true);
-      }
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    window.addEventListener('popstate', handlePopState);
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      window.removeEventListener('popstate', handlePopState);
-    };
-  }, [activeWorkflowGuard]);
 
   // Splash / Welcome Page State
   const [showSplash, setShowSplash] = useState<boolean>(true);
@@ -914,17 +931,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateSettings,
         recalculatePlacementScore,
         resetAllProgress,
-        activeWorkflowGuard,
         registerWorkflowGuard,
         clearWorkflowGuard,
-        confirmExitWorkflow,
-        cancelExitWorkflow,
-        isExitModalOpen
+        sessionGuards,
+        registerSessionGuard,
+        unregisterSessionGuard,
+        isExitModalOpen,
+        confirmExitSession,
+        cancelExitSession,
+        activeDrawer,
+        setActiveDrawer,
+        closeDrawer
       }}
     >
       {children}
 
-      {/* GLOBAL EXIT CONFIRMATION MODAL */}
+      {/* ONE COMMON REUSABLE SESSION EXIT POPUP */}
       {isExitModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200 select-none">
           <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-5 relative text-left">
@@ -943,19 +965,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             </div>
 
             <p className="text-xs sm:text-sm text-slate-300 font-medium leading-relaxed">
-              You're currently working on <strong className="text-white font-extrabold">{activeWorkflowGuard?.workflowName || 'an active session'}</strong>. Do you want to stay here or leave this session?
+              You have an active session in progress. Do you want to stay here or leave this session?
             </p>
 
             <div className="flex items-center justify-end gap-3 pt-2">
               <button
-                onClick={cancelExitWorkflow}
+                onClick={cancelExitSession}
                 className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-extrabold text-xs transition-all cursor-pointer border border-slate-700"
               >
                 Stay
               </button>
 
               <button
-                onClick={confirmExitWorkflow}
+                onClick={confirmExitSession}
                 className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-extrabold text-xs shadow-lg shadow-red-600/20 transition-all cursor-pointer"
               >
                 Exit

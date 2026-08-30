@@ -74,6 +74,7 @@ export type AnswerEvaluationStatus = 'Correct' | 'Partially Correct' | 'Incorrec
 export interface DetailedMistake {
   type: string;
   explanation: string;
+  tanglishExplanation?: string;
 }
 
 export type GrammarEvaluationCase = 
@@ -123,8 +124,10 @@ export interface DualLanguageFeedback {
   // AI Evaluation Status & Explanation
   status: AnswerEvaluationStatus;
   statusExplanation: string;
+  tanglishStatusExplanation?: string;
   mistakes: DetailedMistake[];
   correctProfessionalAnswer: string;
+  tanglishProfessionalAnswer?: string;
   explanationText: string;
   grammarReport: DetailedGrammarReport;
   grammarDetail?: GrammarMistakeDetail[];

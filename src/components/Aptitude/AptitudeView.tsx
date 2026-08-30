@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   BrainCircuit,
   CheckCircle2,
@@ -18,12 +18,12 @@ import {
 import { useApp } from '../../context/AppContext';
 import { fetchOrGenerateAptitudeQuiz, normalizeQuestionText, hashQuestionText, APTITUDE_BANK } from '../../services/aiEngine';
 import { AptitudeCategory, AptitudeQuestion, DifficultyLevel } from '../../types';
-import { SessionResumeModal } from '../Common/SessionResumeModal';
+
 import { formatTanglishAddressing } from '../../utils/addressing';
 import { SupabaseService } from '../../services/supabaseClient';
 
 export const AptitudeView: React.FC = () => {
-  const { user, recordUserActivity, setActiveTab, registerWorkflowGuard, clearWorkflowGuard } = useApp();
+  const { user, recordUserActivity, setActiveTab, registerSessionGuard, unregisterSessionGuard } = useApp();
 
   const [category, setCategory] = useState<AptitudeCategory>('Quantitative');
   const [difficulty, setDifficulty] = useState<DifficultyLevel>('Easy');
@@ -63,30 +63,7 @@ export const AptitudeView: React.FC = () => {
   const [userAnswers, setUserAnswers] = useState<Array<{ isCorrect: boolean; selectedIdx: number | null }>>([]);
   const [isQuizCompleted, setIsQuizCompleted] = useState<boolean>(false);
 
-  // REGISTER GLOBAL EXIT GUARD FOR APTITUDE PRACTICE
-  useEffect(() => {
-    const isDirty = isQuizStarted && !isQuizCompleted;
-    registerWorkflowGuard('Aptitude Practice', isDirty);
-    return () => {
-      clearWorkflowGuard('Aptitude Practice');
-    };
-  }, [isQuizStarted, isQuizCompleted, registerWorkflowGuard, clearWorkflowGuard]);
-
   const [quizStartTime, setQuizStartTime] = useState<number>(() => Date.now());
-
-  // Session Persistence States
-  const [showContinuePrompt, setShowContinuePrompt] = useState<boolean>(false);
-  const [pendingSession, setPendingSession] = useState<{
-    category: AptitudeCategory;
-    difficulty: DifficultyLevel;
-    currentIdx: number;
-    timer: number;
-    userAnswers: Array<{ isCorrect: boolean; selectedIdx: number | null }>;
-    isQuizStarted: boolean;
-    selectedIndex: number | null;
-    showExplanation: boolean;
-    quizStartTime: number;
-  } | null>(null);
 
   // Prevent multiple timer interval execution
   const timeUpLockRef = useRef<boolean>(false);
@@ -99,50 +76,36 @@ export const AptitudeView: React.FC = () => {
     setLangView(user.preferredLanguage);
   }, [user.preferredLanguage]);
 
-  const loadQuizQuestions = async (cat: AptitudeCategory, diff: DifficultyLevel, forceFresh: boolean = false) => {
+  const loadQuizQuestions = async (cat: AptitudeCategory, diff: DifficultyLevel, forceFresh: boolean = false): Promise<AptitudeQuestion[]> => {
     setIsGenerating(true);
     const conf = getSessionConfig(diff);
     const usedHashes = SupabaseService.getStoredAptitudeUsedQuestions(user?.id, cat, diff);
     
     try {
-      const questions = await fetchOrGenerateAptitudeQuiz(cat, diff, conf.totalQuestions, forceFresh ? usedHashes : []);
+      const fetchPromise = fetchOrGenerateAptitudeQuiz(cat, diff, conf.totalQuestions, forceFresh ? usedHashes : []);
+      const timeoutPromise = new Promise<AptitudeQuestion[]>((resolve) => setTimeout(() => resolve([]), 4000));
+      let questions = await Promise.race([fetchPromise, timeoutPromise]);
+      
+      if (!questions || questions.length === 0) {
+        const fallbackPool = APTITUDE_BANK.filter(q => q.category === cat && q.difficulty === diff);
+        questions = fallbackPool.length >= conf.totalQuestions ? fallbackPool.slice(0, conf.totalQuestions) : APTITUDE_BANK.slice(0, conf.totalQuestions);
+      }
       setQuizQuestions(questions);
+      return questions;
     } catch (err) {
       console.warn('Error fetching quiz questions:', err);
+      const fallbackQs = APTITUDE_BANK.filter(q => q.category === cat && q.difficulty === diff).slice(0, conf.totalQuestions);
+      setQuizQuestions(fallbackQs);
+      return fallbackQs;
     } finally {
       setIsGenerating(false);
     }
   };
 
-  const handleContinueSession = () => {
-    if (pendingSession) {
-      setCategory(pendingSession.category);
-      setDifficulty(pendingSession.difficulty);
-      const conf = getSessionConfig(pendingSession.difficulty);
-      loadQuizQuestions(pendingSession.category, pendingSession.difficulty, false);
-      setCurrentIdx(pendingSession.currentIdx);
-      setTimer(pendingSession.timer);
-      setUserAnswers(pendingSession.userAnswers);
-      setSelectedIndex(pendingSession.selectedIndex);
-      setShowExplanation(pendingSession.showExplanation);
-      setQuizStartTime(pendingSession.quizStartTime);
-      setIsQuizStarted(true);
-    }
-    setShowContinuePrompt(false);
-    setPendingSession(null);
-  };
-
-  const handleExitSession = () => {
-    setShowContinuePrompt(false);
-    setPendingSession(null);
-    setIsQuizStarted(false);
-    resetQuizState();
-  };
-
   // Overall Timer Countdown Effect
   useEffect(() => {
     let interval: any;
-    if (isQuizStarted && !isQuizCompleted && !timeUpMessage && !showContinuePrompt && timer > 0) {
+    if (isQuizStarted && !isQuizCompleted && !timeUpMessage && timer > 0) {
       interval = setInterval(() => {
         setTimer((prev) => {
           if (prev <= 1) {
@@ -155,7 +118,7 @@ export const AptitudeView: React.FC = () => {
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [isQuizStarted, isQuizCompleted, timeUpMessage, showContinuePrompt, timer]);
+  }, [isQuizStarted, isQuizCompleted, timeUpMessage, timer]);
 
   const handleOverallTimerExpiry = () => {
     if (timeUpLockRef.current) return;
@@ -171,8 +134,11 @@ export const AptitudeView: React.FC = () => {
   };
 
   const handleStartQuiz = async () => {
+    if (isGenerating) return;
     const conf = getSessionConfig(difficulty);
-    await loadQuizQuestions(category, difficulty, true);
+    const loadedQs = await loadQuizQuestions(category, difficulty, true);
+    if (!loadedQs || loadedQs.length === 0) return;
+
     setIsQuizStarted(true);
     setCurrentIdx(0);
     setSelectedIndex(null);
@@ -202,6 +168,7 @@ export const AptitudeView: React.FC = () => {
 
   // NEXT QUIZ: Creates a BRAND NEW question set excluding previous history
   const handleNextQuiz = async () => {
+    if (isGenerating) return;
     const conf = getSessionConfig(difficulty);
     
     // Save current questions to used history before generating next
@@ -209,7 +176,8 @@ export const AptitudeView: React.FC = () => {
     SupabaseService.recordAptitudeUsedQuestions(user?.id, category, difficulty, currentHashes);
 
     setAttemptNumber((prev) => prev + 1);
-    await loadQuizQuestions(category, difficulty, true);
+    const loadedQs = await loadQuizQuestions(category, difficulty, true);
+    if (!loadedQs || loadedQs.length === 0) return;
 
     setIsQuizStarted(true);
     setCurrentIdx(0);
@@ -249,6 +217,28 @@ export const AptitudeView: React.FC = () => {
     timeUpLockRef.current = false;
     setQuizStartTime(Date.now());
   };
+
+  const handleDirectExitAptitude = useCallback(() => {
+    setIsQuizStarted(false);
+    setIsQuizCompleted(false);
+    setUserAnswers([]);
+    setCurrentIdx(0);
+    setSelectedIndex(null);
+    setShowExplanation(false);
+    setTimeUpMessage(null);
+  }, []);
+
+  useEffect(() => {
+    const isSessionActive = isQuizStarted && !isQuizCompleted;
+    registerSessionGuard({
+      moduleTab: 'aptitude',
+      isSessionActive,
+      clearSessionCallback: handleDirectExitAptitude
+    });
+    return () => {
+      unregisterSessionGuard('aptitude');
+    };
+  }, [isQuizStarted, isQuizCompleted, registerSessionGuard, unregisterSessionGuard, handleDirectExitAptitude]);
 
   const handleSelectOption = (index: number) => {
     if (isQuizCompleted) return;
@@ -361,18 +351,7 @@ export const AptitudeView: React.FC = () => {
         </div>
       )}
 
-      {/* Reusable Session Continuation Modal */}
-      <SessionResumeModal
-        isOpen={showContinuePrompt && !!pendingSession}
-        moduleName="Aptitude Practice"
-        progressText={
-          pendingSession
-            ? `You are currently on Question ${pendingSession.currentIdx + 1} of ${totalQuestionCount} (${pendingSession.category} - ${pendingSession.difficulty})`
-            : ''
-        }
-        onContinue={handleContinueSession}
-        onExit={handleExitSession}
-      />
+
 
       {/* Top Banner & Selectors */}
       <div className="glass-card rounded-3xl p-6 sm:p-8 border space-y-4">
@@ -410,11 +389,9 @@ export const AptitudeView: React.FC = () => {
             </div>
 
             <button
-              onClick={() => {
-                setActiveTab('dashboard');
-              }}
+              onClick={handleDirectExitAptitude}
               className="px-3 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
-              title="Exit to Dashboard"
+              title="Exit Practice"
             >
               <LogOut className="w-3.5 h-3.5" />
               <span>Exit</span>

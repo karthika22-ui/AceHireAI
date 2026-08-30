@@ -181,6 +181,8 @@ html:not(.dark) textarea::placeholder {
   background: rgba(100, 116, 139, 0.8);
 }
 
+
+
 /* Continuous Left-to-Right Button Shine Animation */
 @keyframes shineContinuous {
   0% {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Bot,
   Mic,
@@ -36,6 +36,7 @@ import {
   Copy,
   Trash2,
   Smile,
+  Sun,
   GraduationCap,
   FolderGit2,
   Award,
@@ -64,11 +65,10 @@ import {
   SavedInterviewState,
   InterviewFinalReport
 } from '../../types';
-import { SessionResumeModal } from '../Common/SessionResumeModal';
 import { SupabaseService } from '../../services/supabaseClient';
 
 export const MockInterviewView: React.FC = () => {
-  const { user, recordUserActivity, setActiveTab, registerWorkflowGuard, clearWorkflowGuard } = useApp();
+  const { user, recordUserActivity, setActiveTab, registerSessionGuard, unregisterSessionGuard } = useApp();
 
   // Synchronous initial state helper
   const getInitialSavedSession = (): SavedInterviewState | null => {
@@ -76,6 +76,9 @@ export const MockInterviewView: React.FC = () => {
   };
 
   const initialSaved = useRef(getInitialSavedSession()).current;
+
+  // Language Control State for Analysis View
+  const [selectedFeedbackLang, setSelectedFeedbackLang] = useState<'English' | 'Tanglish'>(() => user?.preferredLanguage || 'English');
 
   // 1. Category & Difficulty State
   const [selectedType, setSelectedType] = useState<'HR' | 'Technical'>(() => (initialSaved ? initialSaved.selectedType : 'HR'));
@@ -111,14 +114,7 @@ export const MockInterviewView: React.FC = () => {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(() => (initialSaved ? (initialSaved.currentQuestionIndex || 0) : 0));
   const [userAnswer, setUserAnswer] = useState<string>(() => (initialSaved ? (initialSaved.userAnswer || '') : ''));
 
-  // REGISTER GLOBAL EXIT GUARD FOR MOCK INTERVIEW
-  useEffect(() => {
-    const isDirty = sessionActive && !sessionCompleted;
-    registerWorkflowGuard('Mock Interview', isDirty);
-    return () => {
-      clearWorkflowGuard('Mock Interview');
-    };
-  }, [sessionActive, sessionCompleted, registerWorkflowGuard, clearWorkflowGuard]);
+
 
   // Automatically scroll to the top of the interview screen when session becomes active or question changes
   useEffect(() => {
@@ -181,10 +177,8 @@ export const MockInterviewView: React.FC = () => {
     }
   };
 
-  // 4. Persistence & Resume State
+  // 4. Persistence State
   const [savedSession, setSavedSession] = useState<SavedInterviewState | null>(initialSaved);
-  const [showResumeModal, setShowResumeModal] = useState<boolean>(() => !!initialSaved);
-  const [showExitModal, setShowExitModal] = useState<boolean>(false);
   const [timeExpired, setTimeExpired] = useState<boolean>(false);
 
   // Helper to render metric score dynamically or N/A
@@ -235,16 +229,16 @@ export const MockInterviewView: React.FC = () => {
   });
   const [showModelAnswer, setShowModelAnswer] = useState<boolean>(false);
 
-  // Dynamic Recording Timer Effect (Starts from 00:00 when camera is ON, pauses when evaluating or exit modal open)
+  // Dynamic Recording Timer Effect (Starts from 00:00 when camera is ON, pauses when evaluating)
   useEffect(() => {
     let interval: any;
-    if (cameraActive && !isEvaluating && !feedback && !showExitModal) {
+    if (cameraActive && !isEvaluating && !feedback) {
       interval = setInterval(() => {
         setRecSeconds((prev) => prev + 1);
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [cameraActive, isEvaluating, !!feedback, showExitModal]);
+  }, [cameraActive, isEvaluating, !!feedback]);
 
   const formatRecTime = (sec: number) => {
     const m = Math.floor(sec / 60).toString().padStart(2, '0');
@@ -310,7 +304,7 @@ export const MockInterviewView: React.FC = () => {
 
   // Timer Countdown (Fix: stops at 0 and sets timeExpired)
   useEffect(() => {
-    if (!sessionActive || sessionCompleted || isEvaluating || showExitModal || timeExpired) {
+    if (!sessionActive || sessionCompleted || isEvaluating || timeExpired) {
       return;
     }
     const interval = setInterval(() => {
@@ -328,7 +322,7 @@ export const MockInterviewView: React.FC = () => {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [sessionActive, sessionCompleted, isEvaluating, showExitModal, timeExpired]);
+  }, [sessionActive, sessionCompleted, isEvaluating, timeExpired]);
 
   // Timer Expiry Action Handlers (Requirement 1)
   const handleRetryFromTimerExpired = () => {
@@ -923,19 +917,32 @@ export const MockInterviewView: React.FC = () => {
     }
   };
 
-  // Exit Interview Modal Handlers
-  const handleExitSave = () => {
-    saveSessionToStorage();
-    setShowExitModal(false);
-    setSessionActive(false);
-  };
-
-  const handleExitDiscard = () => {
+  // Direct Exit Handler (No confirmation popup, immediate session state reset)
+  const handleDirectExitSession = useCallback(() => {
+    stopCamera();
     clearSessionStorage();
-    setShowExitModal(false);
+    setSavedSession(null);
     setSessionActive(false);
-    setActiveTab('dashboard');
-  };
+    setSessionCompleted(false);
+    setCurrentQuestionIndex(0);
+    setUserAnswer('');
+    setAnswersHistory([]);
+    setFeedback(null);
+    setShowModelAnswer(false);
+    setTimeExpired(false);
+  }, []);
+
+  useEffect(() => {
+    const isSessionActive = sessionActive && !sessionCompleted;
+    registerSessionGuard({
+      moduleTab: 'interview',
+      isSessionActive,
+      clearSessionCallback: handleDirectExitSession
+    });
+    return () => {
+      unregisterSessionGuard('interview');
+    };
+  }, [sessionActive, sessionCompleted, registerSessionGuard, unregisterSessionGuard, handleDirectExitSession]);
 
   const toggleAccordion = (key: string) => {
     setOpenAccordions((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -959,27 +966,7 @@ export const MockInterviewView: React.FC = () => {
   return (
     <div ref={mainContainerRef} className="w-full max-w-6xl mx-auto px-4 sm:px-6 flex-1 overflow-y-auto space-y-7 pb-12 animate-in fade-in duration-300 relative">
       
-      {/* Global Session Continuation Modal */}
-      <SessionResumeModal
-        isOpen={showResumeModal && !!initialSaved}
-        moduleName="AI Mock Interview"
-        progressText={
-          initialSaved
-            ? `Question ${(initialSaved.currentQuestionIndex || 0) + 1} of ${initialSaved.activeQuestions?.length || 5} (${initialSaved.selectedType} - ${initialSaved.difficulty})`
-            : ''
-        }
-        onContinue={() => {
-          setShowResumeModal(false);
-          setSessionActive(true);
-        }}
-        onExit={() => {
-          setShowResumeModal(false);
-          clearSessionStorage();
-          setSavedSession(null);
-          setSessionActive(false);
-          setCurrentQuestionIndex(0);
-        }}
-      />
+
 
       {/* 2. INTERVIEW COMPLETION SCREEN */}
       {sessionActive && sessionCompleted ? (
@@ -1490,7 +1477,7 @@ export const MockInterviewView: React.FC = () => {
 
                 {/* Exit Button */}
                 <button
-                  onClick={() => setShowExitModal(true)}
+                  onClick={handleDirectExitSession}
                   className="px-3.5 py-2 rounded-xl bg-slate-800/90 hover:bg-red-500/20 text-slate-300 hover:text-red-400 border border-slate-700 hover:border-red-500/40 transition-all text-xs font-bold flex items-center gap-1.5 cursor-pointer"
                 >
                   <LogOut className="w-3.5 h-3.5" />
@@ -1753,6 +1740,42 @@ export const MockInterviewView: React.FC = () => {
           {feedback && (
             <div className="space-y-4 animate-in slide-in-from-bottom-4 duration-500">
               
+              {/* AI Feedback Language Toggle Header (English | Tanglish) */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-slate-900/90 border border-slate-800 backdrop-blur-xl shadow-xl">
+                <div className="flex items-center gap-2.5">
+                  <Globe className="w-5 h-5 text-blue-400" />
+                  <div>
+                    <h4 className="text-sm font-extrabold text-white">AI Feedback Language</h4>
+                    <p className="text-[11px] text-slate-400">Controls explanatory language for all session analysis sections</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 p-1 bg-slate-950 rounded-xl border border-slate-800 self-start sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedFeedbackLang('English')}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
+                      selectedFeedbackLang === 'English'
+                        ? 'bg-blue-600 text-white shadow-md'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    English
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedFeedbackLang('Tanglish')}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
+                      selectedFeedbackLang === 'Tanglish'
+                        ? 'bg-indigo-600 text-white shadow-md'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Tanglish
+                  </button>
+                </div>
+              </div>
+              
               {/* ACCORDION 1: SECTION 1 - ANSWER EVALUATION */}
               <div className="glass-card rounded-2xl border border-slate-700/80 bg-slate-900/80 backdrop-blur-xl overflow-hidden shadow-xl">
                 <button
@@ -1790,7 +1813,7 @@ export const MockInterviewView: React.FC = () => {
                     </div>
 
                     <div className="p-4 rounded-xl bg-slate-950/90 border border-slate-800 text-sm font-medium text-slate-200 leading-relaxed">
-                      "{feedback.statusExplanation}"
+                      "{selectedFeedbackLang === 'Tanglish' && feedback.tanglishStatusExplanation ? feedback.tanglishStatusExplanation : feedback.statusExplanation}"
                     </div>
                   </div>
                 )}
@@ -1823,7 +1846,9 @@ export const MockInterviewView: React.FC = () => {
                             <span className="w-2 h-2 rounded-full bg-amber-400 mt-1.5 shrink-0" />
                             <div>
                               <strong className="text-white block font-extrabold">{m.type}</strong>
-                              <span className="text-slate-300 font-medium leading-relaxed">{m.explanation}</span>
+                              <span className="text-slate-300 font-medium leading-relaxed">
+                                {selectedFeedbackLang === 'Tanglish' && m.tanglishExplanation ? m.tanglishExplanation : m.explanation}
+                              </span>
                             </div>
                           </li>
                         ))}
@@ -1831,7 +1856,7 @@ export const MockInterviewView: React.FC = () => {
                     ) : (
                       <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs font-semibold text-emerald-300 flex items-center gap-2">
                         <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                        <span>No major mistakes found! Excellent response structure.</span>
+                        <span>{selectedFeedbackLang === 'Tanglish' ? 'Major mistakes edhum illa! Excellent response structure.' : 'No major mistakes found! Excellent response structure.'}</span>
                       </div>
                     )}
 
@@ -1924,15 +1949,17 @@ export const MockInterviewView: React.FC = () => {
                                   </div>
                                 </div>
 
-                                <div className="p-3 rounded-xl bg-blue-950/40 border border-blue-900/60 text-blue-200 space-y-1">
-                                  <strong className="text-blue-400 block uppercase font-bold text-[10px] tracking-wider">Reason:</strong>
-                                  <p className="leading-relaxed">{m.reason}</p>
-                                </div>
-
-                                <div className="p-3 rounded-xl bg-[#1E1B4B]/60 border border-indigo-900/60 text-indigo-200 space-y-1">
-                                  <strong className="text-indigo-400 block uppercase font-bold text-[10px] tracking-wider">Tanglish Explanation:</strong>
-                                  <p className="leading-relaxed">{m.tanglishReason}</p>
-                                </div>
+                                {selectedFeedbackLang === 'Tanglish' ? (
+                                  <div className="p-3 rounded-xl bg-[#1E1B4B]/60 border border-indigo-900/60 text-indigo-200 space-y-1">
+                                    <strong className="text-indigo-400 block uppercase font-bold text-[10px] tracking-wider">Tanglish Explanation:</strong>
+                                    <p className="leading-relaxed">{m.tanglishReason}</p>
+                                  </div>
+                                ) : (
+                                  <div className="p-3 rounded-xl bg-blue-950/40 border border-blue-900/60 text-blue-200 space-y-1">
+                                    <strong className="text-blue-400 block uppercase font-bold text-[10px] tracking-wider">Reason:</strong>
+                                    <p className="leading-relaxed">{m.reason}</p>
+                                  </div>
+                                )}
                               </div>
                             ))}
                           </div>
@@ -1943,7 +1970,7 @@ export const MockInterviewView: React.FC = () => {
                 )}
               </div>
 
-              {/* ACCORDION: CAMERA & BODY LANGUAGE ANALYSIS (Requirements 3, 4, 5, 6, 7, 9) */}
+              {/* ACCORDION: CAMERA & FACIAL EXPRESSION (Simplified & Objective) */}
               {feedback.cameraAnalysis && (
                 <div className="glass-card rounded-2xl border border-slate-700/80 bg-slate-900/80 backdrop-blur-xl overflow-hidden shadow-xl">
                   <button
@@ -1951,12 +1978,12 @@ export const MockInterviewView: React.FC = () => {
                     className="w-full p-5 flex items-center justify-between text-left hover:bg-slate-800/40 transition-colors cursor-pointer"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-400">
-                        <Video className="w-5 h-5 text-purple-400" />
+                      <div className="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-400">
+                        <Video className="w-5 h-5 text-blue-400" />
                       </div>
                       <div>
-                        <h3 className="text-base font-extrabold text-white">Camera & Body Language Analysis</h3>
-                        <p className="text-xs text-slate-400">Dynamic visual presence, gaze, and posture evaluation</p>
+                        <h3 className="text-base font-extrabold text-white">Camera & Facial Expression</h3>
+                        <p className="text-xs text-slate-400">Webcam connection status and objective visual feedback</p>
                       </div>
                     </div>
                     {openAccordions.camera ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
@@ -1964,95 +1991,39 @@ export const MockInterviewView: React.FC = () => {
 
                   {openAccordions.camera && (
                     <div className="p-5 pt-0 border-t border-slate-800/80 space-y-4 animate-in fade-in">
-                      {!feedback.cameraAnalysis.isCameraOn || feedback.cameraAnalysis.notice ? (
+                      {!feedback.cameraAnalysis.isCameraOn ? (
                         <div className="p-4 rounded-xl bg-slate-950/90 border border-slate-800 text-xs font-semibold text-slate-300 flex items-center gap-2.5">
                           <VideoOff className="w-4 h-4 text-slate-400 shrink-0" />
-                          <span>{feedback.cameraAnalysis.notice || 'Camera analysis was not performed because the camera was off.'}</span>
+                          <span>Facial expression analysis is unavailable for this response because reliable visual data was not detected.</span>
                         </div>
                       ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {feedback.cameraAnalysis.eyeContact && (
-                            <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2 text-xs">
-                              <div className="flex items-center justify-between">
-                                <span className="font-extrabold text-white flex items-center gap-1.5">
-                                  <Eye className="w-4 h-4 text-blue-400" />
-                                  <span>Eye Contact</span>
-                                </span>
-                                <span className="font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
-                                  {feedback.cameraAnalysis.eyeContact.rating}
-                                </span>
-                              </div>
-                              <p className="text-slate-300 font-medium leading-relaxed">
-                                {feedback.cameraAnalysis.eyeContact.evidence}
-                              </p>
-                              {feedback.cameraAnalysis.eyeContact.suggestion && (
-                                <p className="text-blue-300 font-semibold bg-blue-950/40 p-2.5 rounded-lg border border-blue-900/50">
-                                  💡 {feedback.cameraAnalysis.eyeContact.suggestion}
-                                </p>
-                              )}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {/* 1. Camera Status */}
+                          <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1.5 text-xs">
+                            <div className="flex items-center justify-between">
+                              <span className="font-extrabold text-slate-300 flex items-center gap-1.5">
+                                <Video className="w-4 h-4 text-emerald-400" />
+                                <span>Camera Status</span>
+                              </span>
+                              <span className="font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20 text-xs">
+                                Active & Detected
+                              </span>
                             </div>
-                          )}
+                            <p className="text-slate-400 font-medium text-[11px]">Webcam hardware streaming continuously</p>
+                          </div>
 
-                          {feedback.cameraAnalysis.facialExpression && (
-                            <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2 text-xs">
-                              <div className="flex items-center justify-between">
-                                <span className="font-extrabold text-white flex items-center gap-1.5">
-                                  <Smile className="w-4 h-4 text-purple-400" />
-                                  <span>Facial Expression</span>
-                                </span>
-                                <span className="font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
-                                  {feedback.cameraAnalysis.facialExpression.rating}
-                                </span>
-                              </div>
-                              <p className="text-slate-300 font-medium leading-relaxed">
-                                {feedback.cameraAnalysis.facialExpression.evidence}
-                              </p>
-                              {feedback.cameraAnalysis.facialExpression.suggestion && (
-                                <p className="text-blue-300 font-semibold bg-blue-950/40 p-2.5 rounded-lg border border-blue-900/50">
-                                  💡 {feedback.cameraAnalysis.facialExpression.suggestion}
-                                </p>
-                              )}
+                          {/* 2. Facial Expression (NO NUMERICAL SCORE / RATING PILL) */}
+                          <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1.5 text-xs">
+                            <div className="flex items-center justify-between">
+                              <span className="font-extrabold text-slate-300 flex items-center gap-1.5">
+                                <Smile className="w-4 h-4 text-purple-400" />
+                                <span>Facial Expression Analysis</span>
+                              </span>
                             </div>
-                          )}
-
-                          {feedback.cameraAnalysis.posture && (
-                            <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2 text-xs">
-                              <div className="flex items-center justify-between">
-                                <span className="font-extrabold text-white flex items-center gap-1.5">
-                                  <UserCheck className="w-4 h-4 text-cyan-400" />
-                                  <span>Posture & Body Language</span>
-                                </span>
-                                <span className="font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
-                                  {feedback.cameraAnalysis.posture.rating}
-                                </span>
-                              </div>
-                              <p className="text-slate-300 font-medium leading-relaxed">
-                                {feedback.cameraAnalysis.posture.evidence}
-                              </p>
-                              {feedback.cameraAnalysis.posture.suggestion && (
-                                <p className="text-blue-300 font-semibold bg-blue-950/40 p-2.5 rounded-lg border border-blue-900/50">
-                                  💡 {feedback.cameraAnalysis.posture.suggestion}
-                                </p>
-                              )}
-                            </div>
-                          )}
-
-                          {feedback.cameraAnalysis.overallVisualPresence && (
-                            <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2 text-xs">
-                              <div className="flex items-center justify-between">
-                                <span className="font-extrabold text-white flex items-center gap-1.5">
-                                  <Award className="w-4 h-4 text-amber-400" />
-                                  <span>Overall Visual Presence</span>
-                                </span>
-                                <span className="font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
-                                  {feedback.cameraAnalysis.overallVisualPresence.rating}
-                                </span>
-                              </div>
-                              <p className="text-slate-300 font-medium leading-relaxed">
-                                {feedback.cameraAnalysis.overallVisualPresence.evidence}
-                              </p>
-                            </div>
-                          )}
+                            <p className="text-slate-400 font-medium text-[11px]">
+                              {feedback.cameraAnalysis.notice || feedback.cameraAnalysis.facialExpression?.evidence || 'Facial expression evaluated directly from webcam stream.'}
+                            </p>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -2098,7 +2069,7 @@ export const MockInterviewView: React.FC = () => {
                           <Sparkles className="w-4 h-4 text-emerald-400" /> Correct Professional Answer
                         </span>
                         <p className="text-sm font-serif italic text-slate-200 leading-relaxed">
-                          "{feedback.correctProfessionalAnswer || feedback.improvedAnswer}"
+                          "{selectedFeedbackLang === 'Tanglish' && feedback.tanglishProfessionalAnswer ? feedback.tanglishProfessionalAnswer : (feedback.correctProfessionalAnswer || feedback.improvedAnswer)}"
                         </p>
                       </div>
                     )}
@@ -2106,42 +2077,7 @@ export const MockInterviewView: React.FC = () => {
                 )}
               </div>
 
-              {/* ACCORDION 4: SECTION 4 - EXPLANATION */}
-              <div className="glass-card rounded-2xl border border-slate-700/80 bg-slate-900/80 backdrop-blur-xl overflow-hidden shadow-xl">
-                <button
-                  onClick={() => toggleAccordion('explanation')}
-                  className="w-full p-5 flex items-center justify-between text-left hover:bg-slate-800/40 transition-colors cursor-pointer"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400">
-                      <Globe className="w-5 h-5 text-amber-400" />
-                    </div>
-                    <div>
-                      <h3 className="text-base font-extrabold text-white">Section 4: Explanation</h3>
-                      <p className="text-xs text-slate-400">Why your answer was rated and key interview concepts</p>
-                    </div>
-                  </div>
-                  {openAccordions.explanation ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
-                </button>
-
-                {openAccordions.explanation && (
-                  <div className="p-5 pt-0 border-t border-slate-800/80 space-y-3 animate-in fade-in">
-                    <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-white space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-extrabold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
-                          <Globe className="w-4 h-4" />
-                          {user.preferredLanguage === 'Tanglish' ? 'Tanglish Explanation' : 'English Explanation'}
-                        </span>
-                      </div>
-                      <div className="text-sm font-medium leading-relaxed text-slate-200 whitespace-pre-line">
-                        {feedback.explanationText}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* ACCORDION 5: PERFORMANCE SCORECARD WITH EMERALD GREEN PROGRESS BARS */}
+              {/* ACCORDION 5: PERFORMANCE SCORECARD (LEFT: CIRCULAR SCORE, RIGHT: WAVEFORM) */}
               <div className="glass-card rounded-2xl border border-slate-700/80 bg-slate-900/80 backdrop-blur-xl overflow-hidden shadow-xl">
                 <button
                   onClick={() => toggleAccordion('scorecard')}
@@ -2160,149 +2096,165 @@ export const MockInterviewView: React.FC = () => {
                 </button>
 
                 {openAccordions.scorecard && (
-                  <div className="p-5 pt-0 border-t border-slate-800/80 space-y-4 animate-in fade-in">
-                    <div className="flex items-center justify-between p-4 rounded-xl bg-slate-950 border border-emerald-500/30">
-                      <span className="text-xs font-extrabold uppercase tracking-wider text-slate-300">Overall Question Score</span>
-                      <span className="text-2xl font-black text-[#22C55E]">
-                        {feedback.overallScore} / 100
-                      </span>
-                    </div>
+                  <div className="p-5 pt-0 border-t border-slate-800/80 animate-in fade-in">
+                    <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 items-center pt-3">
+                      {/* LEFT SIDE: CIRCULAR RING OVERALL QUESTION SCORE INDICATOR */}
+                      <div className="lg:col-span-1 flex flex-col items-center justify-center p-5 rounded-2xl bg-slate-950/90 border border-emerald-500/30 text-center space-y-2.5 shadow-lg h-full">
+                        <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-300">
+                          Overall Question Score
+                        </span>
 
-                    {/* ✦ 2D COMPETENCY WAVEFORM GRAPH FOR PERFORMANCE SCORECARD ✦ */}
-                    {(() => {
-                      const scorecardMetrics = [
-                        { label: 'Relevance', val: Math.min(100, Math.max(0, Math.round(feedback.relevanceScore ?? 75))), color: '#06B6D4' },
-                        { label: 'Technical', val: Math.min(100, Math.max(0, Math.round(feedback.technicalAccuracyScore ?? 75))), color: '#3B82F6' },
-                        { label: 'Comm & Tone', val: Math.min(100, Math.max(0, Math.round(feedback.communicationScore ?? 75))), color: '#8B5CF6' },
-                        { label: 'Grammar', val: Math.min(100, Math.max(0, Math.round(feedback.grammarScore ?? 75))), color: '#EC4899' },
-                        { label: 'Vocabulary', val: Math.min(100, Math.max(0, Math.round(feedback.vocabularyScore ?? 75))), color: '#F59E0B' },
-                        { label: 'Completeness', val: Math.min(100, Math.max(0, Math.round(feedback.completenessScore ?? 75))), color: '#10B981' },
-                        { label: 'Professional', val: Math.min(100, Math.max(0, Math.round(feedback.professionalismScore ?? 75))), color: '#6366F1' }
-                      ];
-
-                      const wavePts = scorecardMetrics.map((d, idx) => {
-                        const x = 55 + idx * 105;
-                        const y = 135 - (d.val / 100) * 105;
-                        return { ...d, x, y };
-                      });
-
-                      let wavePathStr = `M ${wavePts[0].x} ${wavePts[0].y}`;
-                      for (let i = 0; i < wavePts.length - 1; i++) {
-                        const p0 = wavePts[i];
-                        const p1 = wavePts[i + 1];
-                        const cp1x = p0.x + (p1.x - p0.x) / 2;
-                        const cp1y = p0.y;
-                        const cp2x = p0.x + (p1.x - p0.x) / 2;
-                        const cp2y = p1.y;
-                        wavePathStr += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p1.x} ${p1.y}`;
-                      }
-                      const waveAreaStr = `${wavePathStr} L ${wavePts[wavePts.length - 1].x} 135 L ${wavePts[0].x} 135 Z`;
-
-                      return (
-                        <div className="pt-2 space-y-2">
-                          <div className="flex items-center justify-between px-1">
-                            <div className="flex items-center gap-2 text-xs font-extrabold text-white font-['Space_Grotesk']">
-                              <Activity className="w-4 h-4 text-cyan-400" />
-                              <span>Performance Competency Waveform Graph</span>
-                            </div>
-                            <span className="text-[10px] font-mono text-emerald-400 font-bold bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/30 uppercase">
-                              Deterministic Rating Wave
+                        <div className="relative w-24 h-24 flex items-center justify-center my-1">
+                          <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                            <path
+                              className="text-slate-800"
+                              strokeWidth="3.5"
+                              stroke="currentColor"
+                              fill="none"
+                              d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                            />
+                            <path
+                              className="text-emerald-500 transition-all duration-1000 ease-out"
+                              strokeDasharray={`${Math.min(100, Math.max(0, feedback.overallScore))}, 100`}
+                              strokeWidth="3.5"
+                              strokeLinecap="round"
+                              stroke="currentColor"
+                              fill="none"
+                              d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                            />
+                          </svg>
+                          <div className="absolute inset-0 flex flex-col items-center justify-center">
+                            <span className="text-2xl font-black text-white font-['Space_Grotesk']">
+                              {feedback.overallScore}
                             </span>
-                          </div>
-
-                          <div className="relative w-full h-44 sm:h-52 bg-slate-950/80 rounded-2xl border border-slate-800 p-2 overflow-hidden backdrop-blur-md">
-                            {/* Animated Ambient Light Reflections */}
-                            <div className="absolute inset-0 pointer-events-none overflow-hidden">
-                              <div className="absolute top-1/4 left-1/6 w-2 h-2 rounded-full bg-cyan-400/30 blur-xs animate-ping" style={{ animationDuration: '3s' }} />
-                              <div className="absolute top-1/2 left-1/2 w-2.5 h-2.5 rounded-full bg-purple-400/25 blur-xs animate-pulse" style={{ animationDuration: '2s' }} />
-                              <div className="absolute top-1/3 left-3/4 w-1.5 h-1.5 rounded-full bg-emerald-400/30 blur-xs animate-ping" style={{ animationDuration: '4s' }} />
-                            </div>
-
-                            <svg viewBox="0 0 740 170" className="w-full h-full overflow-visible relative z-10 select-none">
-                              <defs>
-                                <linearGradient id="scorecardWaveStroke" x1="0%" y1="0%" x2="100%" y2="0%">
-                                  <stop offset="0%" stopColor="#06B6D4" />
-                                  <stop offset="20%" stopColor="#3B82F6" />
-                                  <stop offset="40%" stopColor="#8B5CF6" />
-                                  <stop offset="60%" stopColor="#EC4899" />
-                                  <stop offset="80%" stopColor="#F59E0B" />
-                                  <stop offset="100%" stopColor="#10B981" />
-                                </linearGradient>
-
-                                <linearGradient id="scorecardWaveFill" x1="0%" y1="0%" x2="0%" y2="100%">
-                                  <stop offset="0%" stopColor="#06B6D4" stopOpacity="0.3" />
-                                  <stop offset="60%" stopColor="#8B5CF6" stopOpacity="0.1" />
-                                  <stop offset="100%" stopColor="#020617" stopOpacity="0.0" />
-                                </linearGradient>
-
-                                <filter id="scorecardGlow" x="-20%" y="-20%" width="140%" height="140%">
-                                  <feGaussianBlur stdDeviation="3" result="blur" />
-                                  <feMerge>
-                                    <feMergeNode in="blur" />
-                                    <feMergeNode in="SourceGraphic" />
-                                  </feMerge>
-                                </filter>
-                              </defs>
-
-                              {/* Horizontal Grid Lines */}
-                              <line x1="35" y1="25" x2="705" y2="25" stroke="#334155" strokeDasharray="3 3" strokeOpacity="0.4" />
-                              <text x="25" y="28" fill="#64748B" fontSize="9" fontWeight="bold" textAnchor="end">100%</text>
-
-                              <line x1="35" y1="80" x2="705" y2="80" stroke="#334155" strokeDasharray="3 3" strokeOpacity="0.4" />
-                              <text x="25" y="83" fill="#64748B" fontSize="9" fontWeight="bold" textAnchor="end">50%</text>
-
-                              <line x1="35" y1="135" x2="705" y2="135" stroke="#334155" strokeDasharray="3 3" strokeOpacity="0.4" />
-                              <text x="25" y="138" fill="#64748B" fontSize="9" fontWeight="bold" textAnchor="end">0%</text>
-
-                              {/* Axes */}
-                              <line x1="35" y1="15" x2="35" y2="135" stroke="#475569" strokeWidth="1.5" strokeLinecap="round" />
-                              <line x1="35" y1="135" x2="705" y2="135" stroke="#475569" strokeWidth="1.5" strokeLinecap="round" />
-
-                              {/* Wave Area Fill */}
-                              <path d={waveAreaStr} fill="url(#scorecardWaveFill)" />
-
-                              {/* Wave Curve Line */}
-                              <path
-                                d={wavePathStr}
-                                fill="none"
-                                stroke="url(#scorecardWaveStroke)"
-                                strokeWidth="3"
-                                strokeLinecap="round"
-                                filter="url(#scorecardGlow)"
-                                className="transition-all duration-1000 ease-out"
-                              />
-
-                              {/* Data Nodes & Badges */}
-                              {wavePts.map((pt, i) => (
-                                <g key={i} className="group cursor-pointer">
-                                  <circle cx={pt.x} cy={pt.y} r="7" fill={pt.color} fillOpacity="0.25" className="animate-ping" style={{ animationDuration: '3s' }} />
-                                  <circle cx={pt.x} cy={pt.y} r="4" fill="#020617" stroke={pt.color} strokeWidth="2.5" />
-                                  <text x={pt.x} y={pt.y - 9} fill="#F8FAFC" fontSize="10" fontWeight="900" textAnchor="middle" className="font-mono">
-                                    {pt.val}%
-                                  </text>
-                                  <text x={pt.x} y="153" fill="#94A3B8" fontSize="9" fontWeight="700" textAnchor="middle">
-                                    {pt.label}
-                                  </text>
-                                </g>
-                              ))}
-                            </svg>
+                            <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-tighter">/ 100</span>
                           </div>
                         </div>
-                      );
-                    })()}
 
-                    {/* Why this score? Dynamic Explanation (Requirement #3) */}
-                    {feedback.scoreExplanation && (
-                      <div className="p-4 rounded-xl bg-slate-950/90 border border-slate-800 space-y-1.5 mt-4 animate-in fade-in">
-                        <div className="text-xs font-extrabold uppercase tracking-wider text-blue-400 flex items-center gap-1.5">
-                          <HelpCircle className="w-4 h-4 text-blue-400" />
-                          <span>Why this score?</span>
-                        </div>
-                        <p className="text-xs text-slate-300 font-medium leading-relaxed">
-                          {feedback.scoreExplanation}
-                        </p>
+                        <span className="text-[11px] font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                          {feedback.overallScore >= 80 ? 'Excellent' : feedback.overallScore >= 60 ? 'Good' : 'Needs Practice'}
+                        </span>
                       </div>
-                    )}
+
+                      {/* RIGHT SIDE: 2D COMPETENCY WAVEFORM GRAPH */}
+                      <div className="lg:col-span-3">
+                        {(() => {
+                          const scorecardMetrics = [
+                            { label: 'Relevance', val: Math.min(100, Math.max(0, Math.round(feedback.relevanceScore ?? 75))), color: '#06B6D4' },
+                            { label: 'Technical', val: Math.min(100, Math.max(0, Math.round(feedback.technicalAccuracyScore ?? 75))), color: '#3B82F6' },
+                            { label: 'Comm & Tone', val: Math.min(100, Math.max(0, Math.round(feedback.communicationScore ?? 75))), color: '#8B5CF6' },
+                            { label: 'Grammar', val: Math.min(100, Math.max(0, Math.round(feedback.grammarScore ?? 75))), color: '#EC4899' },
+                            { label: 'Vocabulary', val: Math.min(100, Math.max(0, Math.round(feedback.vocabularyScore ?? 75))), color: '#F59E0B' },
+                            { label: 'Completeness', val: Math.min(100, Math.max(0, Math.round(feedback.completenessScore ?? 75))), color: '#10B981' },
+                            { label: 'Professional', val: Math.min(100, Math.max(0, Math.round(feedback.professionalismScore ?? 75))), color: '#6366F1' }
+                          ];
+
+                          const wavePts = scorecardMetrics.map((d, idx) => {
+                            const x = 55 + idx * 105;
+                            const y = 135 - (d.val / 100) * 105;
+                            return { ...d, x, y };
+                          });
+
+                          let wavePathStr = `M ${wavePts[0].x} ${wavePts[0].y}`;
+                          for (let i = 0; i < wavePts.length - 1; i++) {
+                            const p0 = wavePts[i];
+                            const p1 = wavePts[i + 1];
+                            const cp1x = p0.x + (p1.x - p0.x) / 2;
+                            const cp1y = p0.y;
+                            const cp2x = p0.x + (p1.x - p0.x) / 2;
+                            const cp2y = p1.y;
+                            wavePathStr += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p1.x} ${p1.y}`;
+                          }
+                          const waveAreaStr = `${wavePathStr} L ${wavePts[wavePts.length - 1].x} 135 L ${wavePts[0].x} 135 Z`;
+
+                          return (
+                            <div className="pt-2 space-y-2">
+                              <div className="flex items-center justify-between px-1">
+                                <div className="flex items-center gap-2 text-xs font-extrabold text-white font-['Space_Grotesk']">
+                                  <Activity className="w-4 h-4 text-cyan-400" />
+                                  <span>Performance Competency Waveform Graph</span>
+                                </div>
+                                <span className="text-[10px] font-mono text-emerald-400 font-bold bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/30 uppercase">
+                                  Deterministic Rating Wave
+                                </span>
+                              </div>
+
+                              <div className="relative w-full h-44 sm:h-52 bg-slate-950/80 rounded-2xl border border-slate-800 p-2 overflow-hidden backdrop-blur-md">
+                                <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                                  <div className="absolute top-1/4 left-1/6 w-2 h-2 rounded-full bg-cyan-400/30 blur-xs animate-ping" style={{ animationDuration: '3s' }} />
+                                  <div className="absolute top-1/2 left-1/2 w-2.5 h-2.5 rounded-full bg-purple-400/25 blur-xs animate-pulse" style={{ animationDuration: '2s' }} />
+                                  <div className="absolute top-1/3 left-3/4 w-1.5 h-1.5 rounded-full bg-emerald-400/30 blur-xs animate-ping" style={{ animationDuration: '4s' }} />
+                                </div>
+
+                                <svg viewBox="0 0 740 170" className="w-full h-full overflow-visible relative z-10 select-none">
+                                  <defs>
+                                    <linearGradient id="scorecardWaveStroke" x1="0%" y1="0%" x2="100%" y2="0%">
+                                      <stop offset="0%" stopColor="#06B6D4" />
+                                      <stop offset="20%" stopColor="#3B82F6" />
+                                      <stop offset="40%" stopColor="#8B5CF6" />
+                                      <stop offset="60%" stopColor="#EC4899" />
+                                      <stop offset="80%" stopColor="#F59E0B" />
+                                      <stop offset="100%" stopColor="#10B981" />
+                                    </linearGradient>
+
+                                    <linearGradient id="scorecardWaveFill" x1="0%" y1="0%" x2="0%" y2="100%">
+                                      <stop offset="0%" stopColor="#06B6D4" stopOpacity="0.3" />
+                                      <stop offset="60%" stopColor="#8B5CF6" stopOpacity="0.1" />
+                                      <stop offset="100%" stopColor="#020617" stopOpacity="0.0" />
+                                    </linearGradient>
+
+                                    <filter id="scorecardGlow" x="-20%" y="-20%" width="140%" height="140%">
+                                      <feGaussianBlur stdDeviation="3" result="blur" />
+                                      <feMerge>
+                                        <feMergeNode in="blur" />
+                                        <feMergeNode in="SourceGraphic" />
+                                      </feMerge>
+                                    </filter>
+                                  </defs>
+
+                                  <line x1="35" y1="25" x2="705" y2="25" stroke="#334155" strokeDasharray="3 3" strokeOpacity="0.4" />
+                                  <text x="25" y="28" fill="#64748B" fontSize="9" fontWeight="bold" textAnchor="end">100%</text>
+
+                                  <line x1="35" y1="80" x2="705" y2="80" stroke="#334155" strokeDasharray="3 3" strokeOpacity="0.4" />
+                                  <text x="25" y="83" fill="#64748B" fontSize="9" fontWeight="bold" textAnchor="end">50%</text>
+
+                                  <line x1="35" y1="135" x2="705" y2="135" stroke="#334155" strokeDasharray="3 3" strokeOpacity="0.4" />
+                                  <text x="25" y="138" fill="#64748B" fontSize="9" fontWeight="bold" textAnchor="end">0%</text>
+
+                                  <line x1="35" y1="15" x2="35" y2="135" stroke="#475569" strokeWidth="1.5" strokeLinecap="round" />
+                                  <line x1="35" y1="135" x2="705" y2="135" stroke="#475569" strokeWidth="1.5" strokeLinecap="round" />
+
+                                  <path d={waveAreaStr} fill="url(#scorecardWaveFill)" />
+
+                                  <path
+                                    d={wavePathStr}
+                                    fill="none"
+                                    stroke="url(#scorecardWaveStroke)"
+                                    strokeWidth="3"
+                                    strokeLinecap="round"
+                                    filter="url(#scorecardGlow)"
+                                    className="transition-all duration-1000 ease-out"
+                                  />
+
+                                  {wavePts.map((pt, i) => (
+                                    <g key={i} className="group cursor-pointer">
+                                      <circle cx={pt.x} cy={pt.y} r="7" fill={pt.color} fillOpacity="0.25" className="animate-ping" style={{ animationDuration: '3s' }} />
+                                      <circle cx={pt.x} cy={pt.y} r="4" fill="#020617" stroke={pt.color} strokeWidth="2.5" />
+                                      <text x={pt.x} y={pt.y - 9} fill="#F8FAFC" fontSize="10" fontWeight="900" textAnchor="middle" className="font-mono">
+                                        {pt.val}%
+                                      </text>
+                                      <text x={pt.x} y="153" fill="#94A3B8" fontSize="9" fontWeight="700" textAnchor="middle">
+                                        {pt.label}
+                                      </text>
+                                    </g>
+                                  ))}
+                                </svg>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -2324,40 +2276,7 @@ export const MockInterviewView: React.FC = () => {
         </div>
       )}
 
-      {/* 5. EXIT INTERVIEW POPUP MODAL (REQUIREMENT 10) */}
-      {showExitModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-xl flex items-center justify-center p-4 animate-in fade-in duration-300">
-          <div className="glass-card rounded-[28px] p-7 sm:p-8 max-w-md w-full border border-amber-500/40 bg-slate-900/95 shadow-[0_0_40px_rgba(245,158,11,0.2)] space-y-5 text-center relative overflow-hidden">
-            <div className="w-16 h-16 mx-auto rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-inner">
-              <LogOut className="w-8 h-8 text-amber-400" />
-            </div>
 
-            <div className="space-y-2">
-              <h3 className="text-xl font-extrabold text-white font-['Space_Grotesk']">Ongoing Interview Active</h3>
-              <p className="text-xs sm:text-sm text-slate-300 font-medium leading-relaxed">
-                You have an ongoing interview. Are you sure you want to exit?
-              </p>
-            </div>
-
-            <div className="space-y-3 pt-2">
-              <button
-                onClick={() => setShowExitModal(false)}
-                className="relative w-full py-3.5 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-600 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold text-xs sm:text-sm shadow-xl shadow-blue-600/30 transition-all cursor-pointer hover:scale-[1.01] overflow-hidden group"
-              >
-                <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shine-continuous pointer-events-none" />
-                <span className="relative z-10">Continue Interview</span>
-              </button>
-
-              <button
-                onClick={handleExitDiscard}
-                className="relative w-full py-3.5 rounded-2xl border border-red-500/40 bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 font-extrabold text-xs sm:text-sm transition-all cursor-pointer hover:scale-[1.01]"
-              >
-                <span>Exit Interview</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* 6. TIMER EXPIRED OVERLAY MODAL (REQUIREMENT 1) */}
       {timeExpired && (

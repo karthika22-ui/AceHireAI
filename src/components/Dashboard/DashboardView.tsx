@@ -123,6 +123,14 @@ export const DashboardView: React.FC = () => {
       ),
       color: 'from-purple-500/10 to-pink-500/10 border-purple-500/30'
     },
+    {
+      id: 'roadmap' as const,
+      title: 'AI Learning Roadmap',
+      description: 'Personalized step-by-step career path, skill-gap analysis & daily placement goals.',
+      progress: 35,
+      icon: <Map className="w-5 h-5 text-cyan-400" />,
+      color: 'from-cyan-500/10 to-teal-500/10 border-cyan-500/30'
+    }
   ];
 
   return (

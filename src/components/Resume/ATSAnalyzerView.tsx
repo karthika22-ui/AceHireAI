@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   FileText,
   Sparkles,
@@ -46,7 +46,7 @@ import { useApp } from '../../context/AppContext';
 import { analyzeResumeWithAI, fixResumeWithAI, buildCanonicalResumeText } from '../../services/aiEngine';
 import { SupabaseService } from '../../services/supabaseClient';
 import { ResumeData, ResumeAnalysis, ImprovedResumeResult } from '../../types';
-import { SessionResumeModal } from '../Common/SessionResumeModal';
+
 import { ResumePreviewTemplates } from './ResumePreviewTemplates';
 
 if (typeof window !== 'undefined' && pdfjsLib) {
@@ -166,7 +166,7 @@ interface ATSAnalyzerViewProps {
 }
 
 export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelection, initialResumeData }) => {
-  const { user, resume, setResume, recordUserActivity, setActiveTab, registerWorkflowGuard, clearWorkflowGuard } = useApp();
+  const { user, resume, setResume, recordUserActivity, setActiveTab, registerSessionGuard, unregisterSessionGuard } = useApp();
 
   const [uploadedFile, setUploadedFile] = useState<{ name: string; size: string; type: string; extractedText?: string; fileSizeRaw?: number; lastModified?: number } | null>(
     initialResumeData
@@ -501,14 +501,23 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
   const [isDownloadingPdf, setIsDownloadingPdf] = useState<boolean>(false);
   const improvedPreviewRef = useRef<HTMLDivElement | null>(null);
 
-  // REGISTER GLOBAL EXIT GUARD FOR ATS ANALYSIS
+  const handleDirectExitResume = useCallback(() => {
+    setUploadedFile(null);
+    setAnalysisResult(null);
+  }, []);
+
   useEffect(() => {
-    const isDirty = isAnalyzing || (!!uploadedFile && !analysisResult);
-    registerWorkflowGuard('ATS Analysis', isDirty);
+    const isSessionActive = isAnalyzing || (!!uploadedFile && !analysisResult);
+    registerSessionGuard({
+      moduleTab: 'resume',
+      isSessionActive,
+      clearSessionCallback: handleDirectExitResume
+    });
     return () => {
-      clearWorkflowGuard('ATS Analysis');
+      unregisterSessionGuard('resume');
     };
-  }, [isAnalyzing, uploadedFile, analysisResult, registerWorkflowGuard, clearWorkflowGuard]);
+  }, [isAnalyzing, uploadedFile, analysisResult, registerSessionGuard, unregisterSessionGuard, handleDirectExitResume]);
+
   const [openSuggestions, setOpenSuggestions] = useState<boolean>(true);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -1034,18 +1043,7 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
   return (
     <div className="flex-1 overflow-y-auto space-y-6 max-w-6xl mx-auto py-3 px-4 sm:px-6 relative animate-in fade-in duration-300 font-sans text-slate-100">
       
-      {/* Session Resume Exit Guard Modal */}
-      <SessionResumeModal
-        isOpen={showResumeSessionModal && !!uploadedFile}
-        moduleName="Resume Builder & ATS"
-        progressText={uploadedFile ? `Uploaded File: ${uploadedFile.name}` : ''}
-        onContinue={() => setShowResumeSessionModal(false)}
-        onExit={() => {
-          setShowResumeSessionModal(false);
-          setUploadedFile(null);
-          setAnalysisResult(null);
-        }}
-      />
+
       
       {/* STICKY TOP SCORE HEADER BAR */}
       {showStickyHeader && analysisResult && (
