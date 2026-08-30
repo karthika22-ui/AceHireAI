@@ -58,7 +58,7 @@ export function getMobileWebPushDiagnostics() {
 }
 
 // 2. Register Service Worker
-export async function registerHasHireServiceWorker(): Promise<ServiceWorkerRegistration | null> {
+export async function registerAceHireServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
     console.warn('Service Worker is not supported in this browser.');
     return null;
@@ -83,7 +83,7 @@ export async function initAutoPushSubscription(userId?: string): Promise<{
     return { success: false, subscription: null };
   }
 
-  const reg = await registerHasHireServiceWorker();
+  const reg = await registerAceHireServiceWorker();
   if (!reg) return { success: false, subscription: null };
 
   if (reg.installing) {
@@ -140,8 +140,8 @@ export function generateDynamicRoadmapPushPayload(
   const cleanModule = moduleName || 'Placement Practice';
 
   return {
-    title: "HasHire AI — Today's Preparation",
-    body: `Complete your Today Goal and today's ${cleanDay} ${cleanModule} session in HasHire AI.`
+    title: "AceHire AI — Today's Preparation",
+    body: `Complete your Today Goal and today's ${cleanDay} ${cleanModule} session in AceHire AI.`
   };
 }
 
@@ -201,7 +201,7 @@ export async function sendMobileTestPushNotification(
   }
 
   const autoRes = await initAutoPushSubscription(userId);
-  const reg = await registerHasHireServiceWorker();
+  const reg = await registerAceHireServiceWorker();
 
   // DYNAMIC PUSH PAYLOAD CONTENT GENERATED FROM REAL CALENDAR & ROADMAP DAY:
   const currentDayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
@@ -220,7 +220,7 @@ export async function sendMobileTestPushNotification(
         body: payload.body,
         icon: '/favicon.ico',
         badge: '/favicon.ico',
-        tag: 'hashire-ai-test-reminder',
+        tag: 'acehire-ai-test-reminder',
         renotify: true,
         data: { url: window.location.origin }
       } as any);

@@ -299,62 +299,62 @@ export const DashboardView: React.FC = () => {
                 </div>
               );
             })}
-
-            {/* 6th Card: Today's Goal Card (Rearranged into 3-column grid for zero empty space) */}
-            <div className="glass-card rounded-2xl p-5 border border-slate-300/80 dark:border-slate-700/80 bg-slate-900/70 backdrop-blur-xl shadow-md shadow-slate-950/20 hover:border-amber-500/60 hover:-translate-y-1 hover:shadow-xl hover:shadow-amber-500/15 transition-all duration-300 ease-out flex flex-col justify-between group">
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="p-2.5 rounded-xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-orange-500/10 shadow-sm brightness-110">
-                    <Target className="w-5 h-5 text-amber-400 brightness-110" />
-                  </div>
-                  <div className="text-right">
-                    <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Target Status</span>
-                    <span className={`text-xs font-extrabold px-2.5 py-0.5 rounded-full block mt-0.5 ${
-                      completedTasksCount > 0
-                        ? 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/20'
-                        : 'text-slate-400 bg-slate-800/60 border border-slate-700'
-                    }`}>
-                      {completedTasksCount > 0 ? `${completedTasksCount} / 3 Tasks` : '0 / 3 Tasks'}
-                    </span>
-                  </div>
-                </div>
-
-                <h3 className="text-base font-bold text-white group-hover:text-amber-400 transition-colors">
-                  Today's Goal
-                </h3>
-                <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                  {completedTasksCount === 0
-                    ? 'Complete 3 practice sessions (Mock Interview, Coding, Aptitude) to fulfill today\'s target.'
-                    : `You have completed ${completedTasksCount} out of 3 goal tasks today.`}
-                </p>
-              </div>
-
-              <div className="mt-5 pt-4 border-t border-slate-800 flex items-center justify-between">
-                <div className="w-24 bg-slate-800/90 h-1.5 rounded-full overflow-hidden border border-slate-700/50">
-                  <div
-                    className={`h-full rounded-full transition-all duration-500 ease-out ${
-                      completedTasksCount > 0 ? 'bg-[#22C55E]' : 'bg-slate-500'
-                    }`}
-                    style={{ width: `${Math.min(100, (completedTasksCount / 3) * 100)}%` }}
-                  />
-                </div>
-
-                <button
-                  onClick={() => handleLaunchModule('interview')}
-                  className="px-3.5 py-1.5 rounded-xl bg-blue-600 dark:bg-slate-800 text-white text-xs font-bold hover:bg-[#22C55E] dark:hover:bg-[#22C55E] hover:border-[#22C55E] border border-transparent dark:border-slate-700/60 hover:shadow-[0_0_18px_rgba(34,197,94,0.5)] transition-all duration-300 ease-out flex items-center gap-1.5 active:scale-95 cursor-pointer relative overflow-hidden group/btn"
-                >
-                  <span className="relative z-10 text-white font-bold">Continue</span>
-                  <ArrowRight className="w-3.5 h-3.5 relative z-10 text-white group-hover/btn:translate-x-1.5 transition-transform duration-300 ease-out brightness-110" />
-                </button>
-              </div>
-            </div>
           </div>
         </div>
 
-        {/* 3. Bottom Section: Recent Activity */}
-        <div className="w-full">
-          {/* Recent Activity Section */}
-          <div className="glass-card rounded-2xl p-6 border border-slate-300/80 dark:border-slate-700/80 bg-slate-900/70 backdrop-blur-xl shadow-md shadow-slate-950/20 hover:-translate-y-1 hover:shadow-xl hover:shadow-emerald-500/10 transition-all duration-300 ease-out flex flex-col justify-between">
+        {/* 3. Bottom Grid: Today's Goal (LEFT) & Recent Activity (RIGHT) Side-by-Side Row */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-2">
+          {/* Today's Goal Card (LEFT SIDE) */}
+          <div className="glass-card rounded-2xl p-5 border border-slate-300/80 dark:border-slate-700/80 bg-slate-900/70 backdrop-blur-xl shadow-md shadow-slate-950/20 hover:border-amber-500/60 hover:-translate-y-1 hover:shadow-xl hover:shadow-amber-500/15 transition-all duration-300 ease-out flex flex-col justify-between group">
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2.5 rounded-xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-orange-500/10 shadow-sm brightness-110">
+                  <Target className="w-5 h-5 text-amber-400 brightness-110" />
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Target Status</span>
+                  <span className={`text-xs font-extrabold px-2.5 py-0.5 rounded-full block mt-0.5 ${
+                    completedTasksCount > 0
+                      ? 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/20'
+                      : 'text-slate-400 bg-slate-800/60 border border-slate-700'
+                  }`}>
+                    {completedTasksCount > 0 ? `${completedTasksCount} / 3 Tasks` : '0 / 3 Tasks'}
+                  </span>
+                </div>
+              </div>
+
+              <h3 className="text-base font-bold text-white group-hover:text-amber-400 transition-colors">
+                Today's Goal
+              </h3>
+              <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                {completedTasksCount === 0
+                  ? 'Complete 3 practice sessions (Mock Interview, Coding, Aptitude) to fulfill today\'s target.'
+                  : `You have completed ${completedTasksCount} out of 3 goal tasks today.`}
+              </p>
+            </div>
+
+            <div className="mt-5 pt-4 border-t border-slate-800 flex items-center justify-between">
+              <div className="w-24 bg-slate-800/90 h-1.5 rounded-full overflow-hidden border border-slate-700/50">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ease-out ${
+                    completedTasksCount > 0 ? 'bg-[#22C55E]' : 'bg-slate-500'
+                  }`}
+                  style={{ width: `${Math.min(100, (completedTasksCount / 3) * 100)}%` }}
+                />
+              </div>
+
+              <button
+                onClick={() => handleLaunchModule('interview')}
+                className="px-3.5 py-1.5 rounded-xl bg-blue-600 dark:bg-slate-800 text-white text-xs font-bold hover:bg-[#22C55E] dark:hover:bg-[#22C55E] hover:border-[#22C55E] border border-transparent dark:border-slate-700/60 hover:shadow-[0_0_18px_rgba(34,197,94,0.5)] transition-all duration-300 ease-out flex items-center gap-1.5 active:scale-95 cursor-pointer relative overflow-hidden group/btn"
+              >
+                <span className="relative z-10 text-white font-bold">Continue</span>
+                <ArrowRight className="w-3.5 h-3.5 relative z-10 text-white group-hover/btn:translate-x-1.5 transition-transform duration-300 ease-out brightness-110" />
+              </button>
+            </div>
+          </div>
+
+          {/* Recent Activity Section (RIGHT SIDE) */}
+          <div className="glass-card rounded-2xl p-5 border border-slate-300/80 dark:border-slate-700/80 bg-slate-900/70 backdrop-blur-xl shadow-md shadow-slate-950/20 hover:-translate-y-1 hover:shadow-xl hover:shadow-emerald-500/10 transition-all duration-300 ease-out flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-base font-bold text-white flex items-center gap-2">

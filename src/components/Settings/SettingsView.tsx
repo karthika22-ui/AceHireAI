@@ -45,7 +45,7 @@ export const SettingsView: React.FC = () => {
   };
 
   return (
-    <div className="w-full space-y-6 relative animate-in fade-in pb-10">
+    <div className="flex-1 min-h-0 flex flex-col h-full overflow-hidden space-y-4 relative animate-in fade-in">
       {/* Top Banner */}
       <div className="glass-card rounded-3xl p-6 sm:p-8 border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shrink-0">
         <div>
@@ -183,7 +183,7 @@ export const SettingsView: React.FC = () => {
                   </div>
 
                   <p className="text-xs text-slate-300 leading-relaxed font-medium">
-                    Test whether HasHire AI can send a REAL PUSH NOTIFICATION to your mobile phone's system notification tray. Normal users receive daily notifications automatically without manual button clicks.
+                    Test whether AceHire AI can send a REAL PUSH NOTIFICATION to your mobile phone's system notification tray. Normal users receive daily notifications automatically without manual button clicks.
                   </p>
 
                   <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-1">

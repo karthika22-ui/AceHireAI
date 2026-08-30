@@ -20,7 +20,7 @@ export const ResumeSelectionScreen: React.FC<ResumeSelectionScreenProps> = ({ on
             <div className="space-y-3 max-w-2xl">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/20 text-cyan-200 text-xs font-bold backdrop-blur-md">
                 <Sparkles className="w-4 h-4 text-cyan-300" />
-                <span>HasHire AI Placement Suite</span>
+                <span>AceHire AI Placement Suite</span>
               </div>
               <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight font-['Space_Grotesk'] text-white">
                 Resume Builder & ATS

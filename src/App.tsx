@@ -116,7 +116,7 @@ const AppShell: React.FC = () => {
           />
 
           {/* Centered Modal Container */}
-          <div className="relative z-10 w-full max-w-3xl max-h-[calc(100vh-64px)] my-auto bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 fade-in duration-200">
+          <div className="relative z-10 w-full max-w-4xl h-[85vh] max-h-[calc(100vh-64px)] my-auto bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 fade-in duration-200">
             {/* Sticky Header with Close (X) button */}
             <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-slate-800 bg-slate-950/90 shrink-0">
               <div className="flex items-center gap-3">
@@ -137,8 +137,8 @@ const AppShell: React.FC = () => {
               </button>
             </div>
 
-            {/* Scrollable Modal Content (Single Visible Vertical Scrollbar, Smooth Mouse Wheel & Touchpad) */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6 w-full max-w-full overscroll-contain">
+            {/* Modal Inner View Container (Fixed layout, child views handle internal right-panel scrolling) */}
+            <div className="flex-1 min-h-0 p-4 sm:p-6 w-full max-w-full overflow-hidden flex flex-col">
               {activeDrawer === 'profile' ? <ProfileView /> : <SettingsView />}
             </div>
           </div>

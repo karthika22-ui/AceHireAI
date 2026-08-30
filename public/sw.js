@@ -1,4 +1,4 @@
-// HasHire AI Web App - Service Worker for Mobile Web Push Notifications
+// AceHire AI Web App - Service Worker for Mobile Web Push Notifications
 self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
@@ -7,8 +7,8 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
 
-const DEFAULT_TITLE = "HasHire AI — Today's Preparation";
-const DEFAULT_BODY = "Complete your Today Goal and today's scheduled session in HasHire AI.";
+const DEFAULT_TITLE = "AceHire AI — Today's Preparation";
+const DEFAULT_BODY = "Complete your Today Goal and today's scheduled session in AceHire AI.";
 
 // Handle incoming Web Push notifications from push service or scheduled service worker triggers
 self.addEventListener('push', (event) => {
@@ -33,7 +33,7 @@ self.addEventListener('push', (event) => {
     icon: '/favicon.ico',
     badge: '/favicon.ico',
     vibrate: [200, 100, 200],
-    tag: 'hashire-ai-test-reminder',
+    tag: 'acehire-ai-test-reminder',
     renotify: true,
     data: {
       url: self.location.origin,
@@ -80,7 +80,7 @@ self.addEventListener('message', (event) => {
           icon: '/favicon.ico',
           badge: '/favicon.ico',
           vibrate: [200, 100, 200],
-          tag: 'hashire-ai-test-reminder',
+          tag: 'acehire-ai-test-reminder',
           renotify: true,
           data: { url: self.location.origin }
         }
