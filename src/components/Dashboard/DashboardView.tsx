@@ -12,6 +12,7 @@ import {
   Target,
   Zap,
   RotateCcw,
+  PlayCircle,
   Trash2,
   History,
   Map,
