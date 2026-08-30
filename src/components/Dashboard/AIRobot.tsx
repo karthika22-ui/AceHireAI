@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 
-const robotImageSrc = '/@fs/C:/Users/admin/.gemini/antigravity-ide/brain/22557606-f372-44ac-a9a2-22397639a8c0/.user_uploaded/media_1788008584109.jpg';
+const robotImageSrc = '/images/robot.jpg';
 
 interface AIRobotProps {
   className?: string;
@@ -56,46 +56,53 @@ export const AIRobot: React.FC<AIRobotProps> = ({ className = "w-28 h-32 sm:w-32
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.src = robotImageSrc;
+    img.onerror = (err) => {
+      console.warn('Robot image canvas load fallback notice:', err);
+    };
     img.onload = () => {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
+      try {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
 
-      const width = img.naturalWidth || img.width;
-      const height = img.naturalHeight || img.height;
-      canvas.width = width;
-      canvas.height = height;
+        const width = img.naturalWidth || img.width;
+        const height = img.naturalHeight || img.height;
+        canvas.width = width;
+        canvas.height = height;
 
-      ctx.drawImage(img, 0, 0);
-      const imageData = ctx.getImageData(0, 0, width, height);
-      const data = imageData.data;
+        ctx.drawImage(img, 0, 0);
+        const imageData = ctx.getImageData(0, 0, width, height);
+        const data = imageData.data;
 
-      // Remove ONLY dark space background pixels, preserving full uploaded robot design
-      for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-          const i = (y * width + x) * 4;
-          const r = data[i];
-          const g = data[i + 1];
-          const b = data[i + 2];
+        // Remove ONLY dark space background pixels, preserving full uploaded robot design
+        for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            const i = (y * width + x) * 4;
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
 
-          const maxC = Math.max(r, g, b);
-          const sumC = r + g + b;
+            const maxC = Math.max(r, g, b);
+            const sumC = r + g + b;
 
-          const isOuterBorder = x < width * 0.015 || x > width * 0.985 || y < height * 0.015 || y > height * 0.985;
+            const isOuterBorder = x < width * 0.015 || x > width * 0.985 || y < height * 0.015 || y > height * 0.985;
 
-          if (isOuterBorder && maxC < 75) {
-            data[i + 3] = 0;
-          } else if (maxC < 42 || sumC < 110) {
-            data[i + 3] = 0;
-          } else if (maxC < 75) {
-            const alpha = (maxC - 42) / (75 - 42);
-            data[i + 3] = Math.floor(alpha * 255);
+            if (isOuterBorder && maxC < 75) {
+              data[i + 3] = 0;
+            } else if (maxC < 42 || sumC < 110) {
+              data[i + 3] = 0;
+            } else if (maxC < 75) {
+              const alpha = (maxC - 42) / (75 - 42);
+              data[i + 3] = Math.floor(alpha * 255);
+            }
           }
         }
-      }
 
-      ctx.putImageData(imageData, 0, 0);
-      setProcessedDataUrl(canvas.toDataURL('image/png'));
+        ctx.putImageData(imageData, 0, 0);
+        setProcessedDataUrl(canvas.toDataURL('image/png'));
+      } catch (canvasErr) {
+        console.warn('Canvas processing notice:', canvasErr);
+      }
     };
   }, []);
 
