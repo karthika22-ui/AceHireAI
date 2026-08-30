@@ -45,7 +45,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import { useApp } from '../../context/AppContext';
 import { analyzeResumeWithAI, fixResumeWithAI, buildCanonicalResumeText } from '../../services/aiEngine';
 import { SupabaseService } from '../../services/supabaseClient';
-import { ResumeData, ResumeAnalysis, ImprovedResumeResult } from '../../types';
+import { ResumeData, ResumeAnalysis, ImprovedResumeResult, UploadedResumeFile } from '../../types';
 
 import { ResumePreviewTemplates } from './ResumePreviewTemplates';
 
@@ -168,12 +168,13 @@ interface ATSAnalyzerViewProps {
 export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelection, initialResumeData }) => {
   const { user, resume, setResume, recordUserActivity, setActiveTab, registerSessionGuard, unregisterSessionGuard } = useApp();
 
-  const [uploadedFile, setUploadedFile] = useState<{ name: string; size: string; type: string; extractedText?: string; fileSizeRaw?: number; lastModified?: number } | null>(
+  const [uploadedFile, setUploadedFile] = useState<UploadedResumeFile | null>(
     initialResumeData
       ? {
           name: `${initialResumeData.fullName || 'Candidate'}_Generated_Resume.pdf`,
           size: '1.2 MB',
-          type: 'Generated Resume'
+          type: 'Generated Resume',
+          photoUrl: initialResumeData.photoUrl
         }
       : null
   );
@@ -360,7 +361,7 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
     try {
       const prevScore = analysisResult?.atsScore ?? displayScore ?? 75;
 
-      const candidatePhoto = editedResumeData?.photoUrl || improvedResult?.improvedResumeData?.photoUrl || (uploadedFile as any)?.photoUrl || initialResumeData?.photoUrl || resume?.photoUrl || user?.avatarUrl;
+      const candidatePhoto = editedResumeData?.photoUrl || improvedResult?.improvedResumeData?.photoUrl || uploadedFile?.photoUrl || initialResumeData?.photoUrl || resume?.photoUrl || user?.avatarUrl;
 
       const fullResumeData = improvedResult.improvedResumeData || {
         fullName: user?.name || 'Candidate Name',
@@ -389,8 +390,8 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
         setUploadedFile({
           ...uploadedFile,
           extractedText: buildCanonicalResumeText(fullResumeData),
-          photoUrl: candidatePhoto || (uploadedFile as any)?.photoUrl
-        } as any);
+          photoUrl: candidatePhoto || uploadedFile.photoUrl
+        });
       }
 
       const reResult = await analyzeResumeWithAI({
@@ -805,7 +806,7 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
 
       setImprovedResult(res);
 
-      const candidatePhoto = editedResumeData?.photoUrl || res.improvedResumeData?.photoUrl || (uploadedFile as any)?.photoUrl || initialResumeData?.photoUrl || resume?.photoUrl || user?.avatarUrl;
+      const candidatePhoto = editedResumeData?.photoUrl || res.improvedResumeData?.photoUrl || uploadedFile?.photoUrl || initialResumeData?.photoUrl || resume?.photoUrl || user?.avatarUrl;
 
       const defaultData: ResumeData = res.improvedResumeData || {
         fullName: user?.name || 'Candidate Name',
@@ -851,7 +852,7 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
     const candidateName = editedResumeData.fullName || 'Candidate Profile';
 
     // Preserve candidate photo in editedResumeData before final compilation
-    const candidatePhoto = editedResumeData.photoUrl || (uploadedFile as any)?.photoUrl || initialResumeData?.photoUrl || resume?.photoUrl || user?.avatarUrl;
+    const candidatePhoto = editedResumeData.photoUrl || uploadedFile?.photoUrl || initialResumeData?.photoUrl || resume?.photoUrl || user?.avatarUrl;
     if (candidatePhoto) {
       editedResumeData.photoUrl = candidatePhoto;
     }
@@ -916,7 +917,7 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
       const pageWidth = 180;
 
       // Render candidate's preserved original profile photo if present
-      const candidatePhoto = editedResumeData.photoUrl || (uploadedFile as any)?.photoUrl || user?.avatarUrl;
+      const candidatePhoto = editedResumeData.photoUrl || uploadedFile?.photoUrl || user?.avatarUrl;
       if (candidatePhoto) {
         try {
           const imgType = candidatePhoto.includes('image/png') ? 'PNG' : 'JPEG';

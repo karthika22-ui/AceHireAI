@@ -292,6 +292,16 @@ export interface ResumeData {
   photoUrl?: string;
 }
 
+export interface UploadedResumeFile {
+  name: string;
+  size: string;
+  type: string;
+  extractedText?: string;
+  fileSizeRaw?: number;
+  lastModified?: number;
+  photoUrl?: string;
+}
+
 export interface KeywordAnalysis {
   detectedKeywords: string[];
   weakKeywords: string[];
