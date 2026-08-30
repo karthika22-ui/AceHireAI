@@ -338,6 +338,12 @@ export const RoadmapView: React.FC = () => {
 
   const [notificationPermission, setNotificationPermission] = useState<string>('default');
   const [roadmapData, setRoadmapData] = useState<RebuiltRoadmapState | null>(null);
+  const [isNotifPromptDismissed, setIsNotifPromptDismissed] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('acehire_notif_prompt_dismissed') === 'true';
+    }
+    return false;
+  });
   const [notifState, setNotifState] = useState<{
     status: 'idle' | 'loading' | 'success' | 'denied' | 'error';
     message: string;
@@ -346,6 +352,20 @@ export const RoadmapView: React.FC = () => {
     status: 'idle',
     message: ''
   });
+
+  const handleDismissNotifPrompt = () => {
+    setIsNotifPromptDismissed(true);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('acehire_notif_prompt_dismissed', 'true');
+    }
+  };
+
+  const handleReEnableNotifPrompt = () => {
+    setIsNotifPromptDismissed(false);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('acehire_notif_prompt_dismissed');
+    }
+  };
 
   // Check Browser Notification Permission on Mount & Auto Subscribe
   useEffect(() => {
@@ -617,85 +637,106 @@ export const RoadmapView: React.FC = () => {
         </div>
       )}
 
-      {/* AUTOMATIC DAILY WEB PUSH REMINDER CARD */}
+      {/* AUTOMATIC DAILY WEB PUSH REMINDER ONBOARDING CARD */}
       <div className="glass-card rounded-2xl p-5 bg-slate-950 border border-blue-500/30 space-y-4 text-xs shadow-xl">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-blue-500/20 text-cyan-400 shrink-0">
-              <Bell className="w-5 h-5 text-cyan-400 animate-pulse" />
+        {/* CASE A: DISMISSED NOTIFICATION PROMPT ("Not Now" clicked) */}
+        {notificationPermission === 'default' && isNotifPromptDismissed ? (
+          <div className="flex items-center justify-between gap-4 text-xs text-slate-400">
+            <div className="flex items-center gap-2">
+              <Bell className="w-4 h-4 text-slate-500" />
+              <span>Daily notifications are currently turned off. You can enable them anytime.</span>
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <strong className="text-cyan-300 block font-extrabold uppercase text-[10px] tracking-wider font-['Space_Grotesk']">
-                  Dynamic Daily Roadmap Reminders
-                </strong>
-                <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase ${
-                  notificationPermission === 'granted'
-                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+            <button
+              type="button"
+              onClick={handleReEnableNotifPrompt}
+              className="text-xs font-bold text-cyan-400 hover:text-cyan-300 underline cursor-pointer shrink-0"
+            >
+              Enable Notifications
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-blue-500/20 text-cyan-400 shrink-0">
+                <Bell className="w-5 h-5 text-cyan-400 animate-pulse" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <strong className="text-cyan-300 block font-extrabold uppercase text-[10px] tracking-wider font-['Space_Grotesk']">
+                    Daily Roadmap Notifications
+                  </strong>
+                  <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase ${
+                    notificationPermission === 'granted'
+                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                      : notificationPermission === 'denied'
+                      ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                      : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                  }`}>
+                    {notificationPermission === 'granted' && '🟢 Automatic Reminders Active'}
+                    {notificationPermission === 'denied' && '❌ Permission Blocked'}
+                    {notificationPermission === 'default' && '🔔 Notification Preference'}
+                  </span>
+                </div>
+                
+                <h4 className="text-sm font-extrabold text-white font-['Space_Grotesk'] mt-1">
+                  {notificationPermission === 'granted'
+                    ? 'Automatic Daily Preparation Reminders Active'
                     : notificationPermission === 'denied'
-                    ? 'bg-red-500/20 text-red-400 border border-red-500/30'
-                    : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                }`}>
-                  {notificationPermission === 'granted' && '🟢 Automatic Reminders Active'}
-                  {notificationPermission === 'denied' && '❌ Permission Blocked'}
-                  {notificationPermission === 'default' && '⚠️ Permission Needed'}
+                    ? 'Notifications Blocked in Browser Settings'
+                    : 'Would you like to receive daily reminders for your roadmap sessions?'}
+                </h4>
+                
+                <span className="text-slate-300 font-medium block mt-0.5 text-xs">
+                  {notificationPermission === 'granted'
+                    ? `Daily push reminders will automatically arrive on your phone/laptop for your scheduled ${currentDayName} ${roadmapData.todaySession?.moduleName || 'practice'} session.`
+                    : notificationPermission === 'denied'
+                    ? 'Browser notifications are blocked in your site settings. Enable notifications to receive daily goal reminders.'
+                    : `Get daily push reminders for your scheduled ${currentDayName} ${roadmapData.todaySession?.moduleName || 'practice'} session.`}
                 </span>
               </div>
-              <span className="text-slate-300 font-medium block mt-0.5">
-                {notificationPermission === 'granted'
-                  ? `Daily push reminders will automatically arrive on your phone/laptop for your scheduled ${currentDayName} ${roadmapData.todaySession?.moduleName || 'practice'} session.`
-                  : notificationPermission === 'denied'
-                  ? 'Browser notifications are blocked in your site settings. Enable notifications to receive daily goal reminders.'
-                  : 'Enable browser notifications to automatically receive your daily placement roadmap reminders.'}
-              </span>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center gap-2 shrink-0 w-full sm:w-auto">
+              {notificationPermission === 'default' && (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleRequestNotificationPermission}
+                    className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-400 hover:from-blue-400 hover:to-cyan-300 text-slate-950 font-black text-xs transition-all cursor-pointer shadow-md shadow-cyan-400/20"
+                  >
+                    Allow Notifications
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDismissNotifPrompt}
+                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-extrabold text-xs transition-all cursor-pointer"
+                  >
+                    Not Now
+                  </button>
+                </>
+              )}
+
+              {/* DEVELOPER / ADMIN TEST BUTTON — HIDDEN FROM NORMAL USERS */}
+              {typeof window !== 'undefined' && ((import.meta as any).env?.DEV || window.location.search.includes('dev=true')) && (
+                <button
+                  type="button"
+                  disabled={notifState.status === 'loading'}
+                  onClick={handleSendTestNotification}
+                  className="w-full sm:w-auto px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-cyan-300 border border-cyan-500/30 font-bold text-[11px] flex items-center justify-center gap-1.5 cursor-pointer transition-all disabled:opacity-50"
+                >
+                  <Bell className="w-3 h-3 text-cyan-400" />
+                  <span>Dev Test Push</span>
+                </button>
+              )}
             </div>
           </div>
+        )}
 
-          <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
-            {notificationPermission === 'default' && (
-              <button
-                type="button"
-                onClick={handleRequestNotificationPermission}
-                className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-400 hover:from-blue-400 hover:to-cyan-300 text-slate-950 font-black text-xs transition-all cursor-pointer shadow-md"
-              >
-                Enable Daily Notifications
-              </button>
-            )}
-
-            {/* DEVELOPER / ADMIN TEST BUTTON — HIDDEN FROM NORMAL USERS */}
-            {typeof window !== 'undefined' && ((import.meta as any).env?.DEV || window.location.search.includes('dev=true')) && (
-              <button
-                type="button"
-                disabled={notifState.status === 'loading'}
-                onClick={handleSendTestNotification}
-                className="w-full sm:w-auto px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 font-extrabold text-[11px] flex items-center justify-center gap-1.5 cursor-pointer transition-all disabled:opacity-50"
-              >
-                <Bell className="w-3 h-3 text-cyan-400" />
-                <span>Dev Test Push</span>
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* STATUS FEEDBACK INLINE CARD (FOR DEV TESTING) */}
+        {/* STATUS FEEDBACK INLINE CARD (FOR DEV TESTING / LOADING) */}
         {notifState.status === 'loading' && (
           <div className="p-3.5 rounded-xl bg-blue-500/10 border border-blue-500/30 flex items-center gap-3 text-cyan-300 text-xs font-semibold animate-pulse">
             <div className="w-4 h-4 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" />
             <span>{notifState.message}</span>
-          </div>
-        )}
-
-        {notifState.status === 'success' && (
-          <div className="p-3.5 rounded-xl bg-emerald-950/60 border border-emerald-500/40 flex items-start gap-3 text-xs text-emerald-200 animate-in fade-in">
-            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <strong className="text-white font-bold text-xs block">{notifState.message}</strong>
-              <p className="text-emerald-300/90 font-medium text-[11px]">{notifState.details}</p>
-              <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-[10px] font-mono text-emerald-300 space-y-0.5">
-                <div>Title: <strong>HasHire AI — Today's Preparation</strong></div>
-                <div>Body: <strong>Complete your Today Goal and today's {currentDayName} {roadmapData.todaySession?.moduleName || 'practice'} session in HasHire AI.</strong></div>
-              </div>
-            </div>
           </div>
         )}
 
@@ -710,7 +751,7 @@ export const RoadmapView: React.FC = () => {
               Your browser is blocking notifications for this website. To enable push notifications on your phone or laptop:
             </p>
             <div className="p-3 rounded-lg bg-slate-900/90 border border-slate-800 space-y-1.5 text-[11px] text-slate-300 font-medium">
-              <div className="font-bold text-cyan-300">📱 How to enable in your mobile browser settings:</div>
+              <div className="font-bold text-cyan-300">📱 How to enable in your browser settings:</div>
               <ol className="list-decimal list-inside space-y-1 text-slate-300 pl-1">
                 <li>Tap the <strong>Lock icon 🔒</strong> or <strong>Site Info icon 🎛️</strong> next to the URL in your browser address bar.</li>
                 <li>Select <strong>Site settings</strong> or <strong>Permissions</strong>.</li>
