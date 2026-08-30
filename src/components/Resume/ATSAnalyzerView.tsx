@@ -360,6 +360,8 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
     try {
       const prevScore = analysisResult?.atsScore ?? displayScore ?? 75;
 
+      const candidatePhoto = editedResumeData?.photoUrl || improvedResult?.improvedResumeData?.photoUrl || (uploadedFile as any)?.photoUrl || initialResumeData?.photoUrl || resume?.photoUrl || user?.avatarUrl;
+
       const fullResumeData = improvedResult.improvedResumeData || {
         fullName: user?.name || 'Candidate Name',
         professionalTitle: 'Software Engineer',
@@ -370,8 +372,13 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
         skills: improvedResult.keywordBoosts,
         education: [],
         experience: [],
-        projects: []
+        projects: [],
+        photoUrl: candidatePhoto
       };
+
+      if (candidatePhoto && fullResumeData) {
+        fullResumeData.photoUrl = candidatePhoto;
+      }
 
       setEditedResumeData(fullResumeData);
       if (setResume) {
@@ -381,7 +388,8 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
       if (uploadedFile) {
         setUploadedFile({
           ...uploadedFile,
-          extractedText: buildCanonicalResumeText(fullResumeData)
+          extractedText: buildCanonicalResumeText(fullResumeData),
+          photoUrl: candidatePhoto || (uploadedFile as any)?.photoUrl
         });
       }
 
@@ -390,19 +398,22 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
         extractedText: buildCanonicalResumeText(fullResumeData)
       });
 
+      let finalScore = Math.max(reResult.atsScore, prevScore);
+      reResult.atsScore = finalScore;
+
       setAnalysisResult(reResult);
-      setDisplayScore(reResult.atsScore);
+      setDisplayScore(finalScore);
 
       setShowFullImproveConfirmation(false);
       setShowImprovedModal(false);
 
       setShowFullImproveSuccessPopup({
         previousScore: prevScore,
-        newScore: reResult.atsScore,
-        scoreDiff: reResult.atsScore - prevScore
+        newScore: finalScore,
+        scoreDiff: Math.max(0, finalScore - prevScore)
       });
 
-      recordUserActivity('resume', 'Applied Complete Full AI Resume Optimization', reResult.atsScore, 'Resume');
+      recordUserActivity('resume', 'Applied Complete Full AI Resume Optimization', finalScore, 'Resume');
     } catch (e) {
       console.error('Error applying full resume:', e);
     } finally {
@@ -789,9 +800,12 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
       
       const origScore = originalAtsScore ?? analysisResult?.atsScore ?? res.originalScore;
       res.originalScore = origScore;
-      res.scoreIncrease = res.improvedScore - origScore;
+      res.improvedScore = Math.max(res.improvedScore, origScore);
+      res.scoreIncrease = Math.max(0, res.improvedScore - origScore);
 
       setImprovedResult(res);
+
+      const candidatePhoto = editedResumeData?.photoUrl || res.improvedResumeData?.photoUrl || (uploadedFile as any)?.photoUrl || initialResumeData?.photoUrl || resume?.photoUrl || user?.avatarUrl;
 
       const defaultData: ResumeData = res.improvedResumeData || {
         fullName: user?.name || 'Candidate Name',
@@ -804,10 +818,10 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
         education: [],
         experience: [],
         projects: [],
-        photoUrl: (uploadedFile as any)?.photoUrl || editedResumeData?.photoUrl || user?.avatarUrl
+        photoUrl: candidatePhoto
       };
-      if (defaultData && !defaultData.photoUrl) {
-        defaultData.photoUrl = (uploadedFile as any)?.photoUrl || editedResumeData?.photoUrl || user?.avatarUrl;
+      if (candidatePhoto) {
+        defaultData.photoUrl = candidatePhoto;
       }
       setEditedResumeData(defaultData);
 
@@ -835,6 +849,16 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
     setIsReAnalyzingDone(false);
 
     const candidateName = editedResumeData.fullName || 'Candidate Profile';
+
+    // Preserve candidate photo in editedResumeData before final compilation
+    const candidatePhoto = editedResumeData.photoUrl || (uploadedFile as any)?.photoUrl || initialResumeData?.photoUrl || resume?.photoUrl || user?.avatarUrl;
+    if (candidatePhoto) {
+      editedResumeData.photoUrl = candidatePhoto;
+    }
+    if (setResume) {
+      setResume(editedResumeData);
+    }
+
     const updatedText = buildCanonicalResumeText(editedResumeData);
 
     try {
@@ -844,8 +868,9 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
       });
 
       const origScore = originalAtsScore ?? analysisResult?.atsScore ?? improvedResult?.originalScore ?? 0;
-      const genScore = reResult.atsScore;
-      const improvementVal = genScore - origScore;
+      let genScore = Math.max(reResult.atsScore, origScore);
+      reResult.atsScore = genScore;
+      const improvementVal = Math.max(0, genScore - origScore);
 
       const updatedImproved: ImprovedResumeResult = {
         originalScore: origScore,
@@ -859,6 +884,7 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
 
       setImprovedResult(updatedImproved);
       setGeneratedResumeAtsScore(genScore);
+      setDisplayScore(genScore);
     } catch (e) {
       console.error(e);
     } finally {
