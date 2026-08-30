@@ -45,7 +45,7 @@ export const SettingsView: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden space-y-6 relative animate-in fade-in">
+    <div className="w-full space-y-6 relative animate-in fade-in pb-10">
       {/* Top Banner */}
       <div className="glass-card rounded-3xl p-6 sm:p-8 border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shrink-0">
         <div>

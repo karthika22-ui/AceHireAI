@@ -12,9 +12,6 @@ import {
   Target,
   Zap,
   RotateCcw,
-  Upload,
-  Search,
-  PlayCircle,
   Trash2,
   History,
   Map,
@@ -171,33 +168,56 @@ export const DashboardView: React.FC = () => {
 
                 {/* Requirement 4: High-Contrast Placement Readiness Gauge Card */}
                 <div id="dashboard-readiness-card" className="p-4 sm:p-5 rounded-2xl bg-slate-900/85 dark:bg-slate-950/85 border border-slate-700/80 shadow-2xl flex items-center gap-4.5 shrink-0 min-w-[260px] sm:min-w-[280px] relative z-0">
-                  {/* Circular Progress Gauge */}
-                  <div className="relative w-20 h-20 flex items-center justify-center shrink-0">
-                    <svg className="w-20 h-20 transform -rotate-90">
+                  {/* Unique Modern Animated Circular Readiness Gauge */}
+                  <div className="relative w-22 h-22 sm:w-24 sm:h-24 flex items-center justify-center shrink-0 group">
+                    {/* Ambient Outer Refractive Glow */}
+                    <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-cyan-500/30 via-emerald-500/25 to-purple-500/30 blur-md animate-pulse" />
+
+                    <svg className="w-22 h-22 sm:w-24 sm:h-24 transform -rotate-90 relative z-10 filter drop-shadow-[0_0_10px_rgba(34,197,94,0.4)]">
+                      <defs>
+                        <linearGradient id="readinessCircleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                          <stop offset="0%" stopColor="#22D3EE" />   {/* Vibrant Cyan */}
+                          <stop offset="50%" stopColor="#10B981" />  {/* Vibrant Emerald */}
+                          <stop offset="100%" stopColor="#A855F7" /> {/* Vibrant Purple */}
+                        </linearGradient>
+                        <linearGradient id="readinessTrackGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                          <stop offset="0%" stopColor="#0F172A" />
+                          <stop offset="100%" stopColor="#1E293B" />
+                        </linearGradient>
+                      </defs>
+
+                      {/* Background Track Ring */}
                       <circle
-                        cx="40"
-                        cy="40"
-                        r="34"
-                        stroke="#334155"
-                        strokeWidth="7"
+                        cx="48"
+                        cy="48"
+                        r="38"
+                        stroke="url(#readinessTrackGrad)"
+                        strokeWidth="8"
+                        className="stroke-slate-800/90"
                         fill="transparent"
                       />
+
+                      {/* Animated Progress Gradient Ring */}
                       <circle
-                        cx="40"
-                        cy="40"
-                        r="34"
-                        stroke="#22C55E"
-                        strokeWidth="7"
-                        className="transition-all duration-1000 ease-out"
-                        strokeDasharray={213}
-                        strokeDashoffset={213 - (213 * readinessScore.overall) / 100}
+                        cx="48"
+                        cy="48"
+                        r="38"
+                        stroke="url(#readinessCircleGrad)"
+                        strokeWidth="8"
+                        strokeDasharray={238.76}
+                        strokeDashoffset={238.76 - (238.76 * readinessScore.overall) / 100}
                         strokeLinecap="round"
                         fill="transparent"
+                        className="transition-all duration-1000 ease-out"
                       />
                     </svg>
-                    <span className="absolute text-3xl font-black text-white drop-shadow-md tracking-tight">
-                      {readinessScore.overall}%
-                    </span>
+
+                    {/* Center Glass Badge & Percentage */}
+                    <div className="absolute inset-2.5 rounded-full bg-slate-950/85 backdrop-blur-md border border-slate-700/60 flex items-center justify-center shadow-inner z-20">
+                      <span className="text-xl sm:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white via-cyan-100 to-emerald-200 tracking-tight font-['Space_Grotesk'] drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]">
+                        {readinessScore.overall}%
+                      </span>
+                    </div>
                   </div>
                   <div>
                     <span className="text-xs text-slate-300 uppercase font-extrabold tracking-wider block">
@@ -330,57 +350,8 @@ export const DashboardView: React.FC = () => {
           </div>
         </div>
 
-        {/* 3. Bottom Grid: Quick Actions & Recent Activity (Balanced 2-Column Layout) */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-          {/* Quick Actions Section */}
-          <div className="glass-card rounded-2xl p-6 border border-slate-300/80 dark:border-slate-700/80 bg-slate-900/70 backdrop-blur-xl shadow-md shadow-slate-950/20 hover:-translate-y-1 hover:shadow-xl hover:shadow-emerald-500/10 transition-all duration-300 ease-out flex flex-col justify-between">
-            <div>
-              <h3 className="text-base font-bold text-white mb-4 flex items-center gap-2">
-                <Zap className="w-5 h-5 text-[#38BDF8] fill-[#38BDF8]/20 brightness-110" />
-                <span>Quick Actions</span>
-              </h3>
-
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => handleLaunchModule('interview')}
-                  className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-purple-500/50 hover:bg-purple-500/10 text-left transition-all duration-300 hover:scale-[1.02] active:scale-95 group cursor-pointer"
-                  title="Start AI Mock Interview"
-                >
-                  <PlayCircle className="w-5 h-5 text-purple-300 mb-2 group-hover:scale-110 transition-transform brightness-110" />
-                  <h4 className="text-xs font-bold text-white leading-snug">Start Mock Interview</h4>
-                </button>
-
-                <button
-                  onClick={() => handleLaunchModule('coding')}
-                  className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-emerald-500/50 hover:bg-emerald-500/10 text-left transition-all duration-300 hover:scale-[1.02] active:scale-95 group cursor-pointer"
-                  title="Practice Coding"
-                >
-                  <Code2 className="w-5 h-5 text-emerald-300 mb-2 group-hover:scale-110 transition-transform brightness-110" />
-                  <h4 className="text-xs font-bold text-white leading-snug">Practice Coding</h4>
-                </button>
-
-                <button
-                  onClick={() => handleLaunchModule('resume')}
-                  className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-blue-500/50 hover:bg-blue-500/10 text-left transition-all duration-300 hover:scale-[1.02] active:scale-95 group cursor-pointer"
-                  title="Upload Resume"
-                >
-                  <Upload className="w-5 h-5 text-blue-300 mb-2 group-hover:scale-110 transition-transform brightness-110" />
-                  <h4 className="text-xs font-bold text-white leading-snug">Upload Resume</h4>
-                </button>
-
-                <button
-                  onClick={() => handleLaunchModule('resume')}
-                  className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-cyan-500/50 hover:bg-cyan-500/10 text-left transition-all duration-300 hover:scale-[1.02] active:scale-95 group cursor-pointer"
-                  title="ATS Resume Check"
-                >
-                  <Search className="w-5 h-5 text-cyan-300 mb-2 group-hover:scale-110 transition-transform brightness-110" />
-                  <h4 className="text-xs font-bold text-white leading-snug">ATS Resume Check</h4>
-                </button>
-              </div>
-            </div>
-          </div>
-
+        {/* 3. Bottom Section: Recent Activity */}
+        <div className="w-full">
           {/* Recent Activity Section */}
           <div className="glass-card rounded-2xl p-6 border border-slate-300/80 dark:border-slate-700/80 bg-slate-900/70 backdrop-blur-xl shadow-md shadow-slate-950/20 hover:-translate-y-1 hover:shadow-xl hover:shadow-emerald-500/10 transition-all duration-300 ease-out flex flex-col justify-between">
             <div>
