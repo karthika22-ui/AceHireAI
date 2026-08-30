@@ -282,6 +282,25 @@ CREATE TRIGGER trigger_user_settings_updated_at
   BEFORE UPDATE ON public.user_settings
   FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
 
+-- ----------------------------------------------------------------------------
+-- 14. PUSH SUBSCRIPTIONS TABLE
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.push_subscriptions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id TEXT NOT NULL,
+  endpoint TEXT UNIQUE NOT NULL,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  user_agent TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TRIGGER trigger_push_subscriptions_updated_at
+  BEFORE UPDATE ON public.push_subscriptions
+  FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+
+
 -- ============================================================================
 -- AUTOMATIC PROFILE CREATION TRIGGER ON AUTH SIGNUP
 -- ============================================================================

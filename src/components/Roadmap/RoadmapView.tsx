@@ -20,7 +20,8 @@ import {
   Bell,
   BookOpen,
   Clock,
-  Info
+  Info,
+  AlertTriangle
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
@@ -337,6 +338,14 @@ export const RoadmapView: React.FC = () => {
 
   const [notificationPermission, setNotificationPermission] = useState<string>('default');
   const [roadmapData, setRoadmapData] = useState<RebuiltRoadmapState | null>(null);
+  const [notifState, setNotifState] = useState<{
+    status: 'idle' | 'loading' | 'success' | 'denied' | 'error';
+    message: string;
+    details?: string;
+  }>({
+    status: 'idle',
+    message: ''
+  });
 
   // Check Browser Notification Permission on Mount
   useEffect(() => {
@@ -352,11 +361,63 @@ export const RoadmapView: React.FC = () => {
       try {
         const res = await Notification.requestPermission();
         setNotificationPermission(res);
+        if (res === 'denied') {
+          setNotifState({
+            status: 'denied',
+            message: 'Browser notification permission is currently DENIED.',
+            details: 'Notifications for this site have been blocked in your browser site settings.'
+          });
+        }
       } catch (e) {
         console.warn('Error requesting notification permission:', e);
       }
     }
   };
+
+  const handleSendTestNotification = async () => {
+    setNotifState({
+      status: 'loading',
+      message: 'Checking notification permission & initializing Web Push Service Worker...'
+    });
+
+    try {
+      const { sendMobileTestPushNotification } = await import('../../utils/webPushHelper');
+      const res = await sendMobileTestPushNotification(user?.id);
+
+      if (typeof window !== 'undefined' && 'Notification' in window) {
+        setNotificationPermission(Notification.permission);
+      }
+
+      if (res.permissionState === 'denied' || (!res.success && res.message.includes('DENIED'))) {
+        setNotifState({
+          status: 'denied',
+          message: 'Browser notification permission is currently DENIED.',
+          details: 'Notifications for this site have been blocked in your browser site settings.'
+        });
+        return;
+      }
+
+      if (!res.success) {
+        setNotifState({
+          status: 'error',
+          message: res.message || 'Push notification registration failed.'
+        });
+        return;
+      }
+
+      setNotifState({
+        status: 'success',
+        message: '✓ Test notification sent to your device!',
+        details: res.message
+      });
+    } catch (err: any) {
+      setNotifState({
+        status: 'error',
+        message: err.message || 'Failed to dispatch test notification.'
+      });
+    }
+  };
+
 
   // Load Persisted State & Re-calculate based on REAL data
   useEffect(() => {
@@ -548,45 +609,110 @@ export const RoadmapView: React.FC = () => {
       )}
 
       {/* MOBILE WEB PUSH TEST & PERMISSION CARD */}
-      <div className="p-4 rounded-2xl bg-slate-950 border border-blue-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs">
-        <div className="flex items-center gap-3">
-          <Bell className="w-5 h-5 text-cyan-400 shrink-0 animate-pulse" />
-          <div>
-            <strong className="text-cyan-300 block font-extrabold uppercase text-[10px] tracking-wider">
-              Mobile Device Web Push Testing
-            </strong>
-            <span className="text-slate-300 font-medium">
-              {notificationPermission === 'denied'
-                ? 'Browser notifications are disabled in site settings. Please enable notifications to test real mobile push notifications.'
-                : 'Test real Service Worker push notification on your mobile phone.'}
-            </span>
+      <div className="glass-card rounded-2xl p-5 bg-slate-950 border border-blue-500/30 space-y-4 text-xs shadow-xl">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-blue-500/20 text-cyan-400 shrink-0">
+              <Bell className="w-5 h-5 text-cyan-400 animate-pulse" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <strong className="text-cyan-300 block font-extrabold uppercase text-[10px] tracking-wider font-['Space_Grotesk']">
+                  Mobile Device Web Push Infrastructure
+                </strong>
+                <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase ${
+                  notificationPermission === 'granted'
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    : notificationPermission === 'denied'
+                    ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                    : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                }`}>
+                  {notificationPermission === 'granted' && '✓ Permission Granted'}
+                  {notificationPermission === 'denied' && '❌ Permission Denied'}
+                  {notificationPermission === 'default' && '⚠️ Permission Needed'}
+                </span>
+              </div>
+              <span className="text-slate-300 font-medium block mt-0.5">
+                {notificationPermission === 'denied'
+                  ? 'Browser notifications are blocked in your site settings. Please unblock to receive reminders.'
+                  : 'Test real Service Worker push notification on your mobile phone or laptop browser.'}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+            {notificationPermission === 'default' && (
+              <button
+                type="button"
+                onClick={handleRequestNotificationPermission}
+                className="px-3.5 py-2.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 text-xs font-extrabold transition-all cursor-pointer"
+              >
+                Request Permission
+              </button>
+            )}
+
+            <button
+              type="button"
+              disabled={notifState.status === 'loading'}
+              onClick={handleSendTestNotification}
+              className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-400 hover:from-blue-400 hover:to-cyan-300 text-white font-black text-xs flex items-center justify-center gap-2 shadow-md shadow-blue-500/20 cursor-pointer transition-all hover:scale-105 disabled:opacity-50"
+            >
+              <Bell className="w-3.5 h-3.5" />
+              <span>{notifState.status === 'loading' ? 'Sending Push Notification...' : 'Send Test Notification'}</span>
+            </button>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
-          {notificationPermission === 'default' && (
-            <button
-              type="button"
-              onClick={handleRequestNotificationPermission}
-              className="px-3.5 py-2 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 text-xs font-extrabold transition-all cursor-pointer"
-            >
-              Enable Notifications
-            </button>
-          )}
+        {/* STATUS FEEDBACK INLINE CARD */}
+        {notifState.status === 'loading' && (
+          <div className="p-3.5 rounded-xl bg-blue-500/10 border border-blue-500/30 flex items-center gap-3 text-cyan-300 text-xs font-semibold animate-pulse">
+            <div className="w-4 h-4 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" />
+            <span>{notifState.message}</span>
+          </div>
+        )}
 
-          <button
-            type="button"
-            onClick={async () => {
-              const { sendMobileTestPushNotification } = await import('../../utils/webPushHelper');
-              const res = await sendMobileTestPushNotification(user?.id);
-              alert(res.message);
-            }}
-            className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-400 hover:from-blue-400 hover:to-cyan-300 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-blue-500/20 cursor-pointer transition-all hover:scale-105"
-          >
-            <Bell className="w-3.5 h-3.5" />
-            <span>Send Test Notification</span>
-          </button>
-        </div>
+        {notifState.status === 'success' && (
+          <div className="p-3.5 rounded-xl bg-emerald-950/60 border border-emerald-500/40 flex items-start gap-3 text-xs text-emerald-200 animate-in fade-in">
+            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <strong className="text-white font-bold text-xs block">{notifState.message}</strong>
+              <p className="text-emerald-300/90 font-medium text-[11px]">{notifState.details}</p>
+              <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-[10px] font-mono text-emerald-300 space-y-0.5">
+                <div>Title: <strong>HasHire AI — Today Goal Reminder</strong></div>
+                <div>Body: <strong>Complete your Today Goal and today's scheduled session in HasHire AI.</strong></div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* DENIED PERMISSION INSTRUCTIONS PANEL */}
+        {(notificationPermission === 'denied' || notifState.status === 'denied') && (
+          <div className="p-4 rounded-xl bg-red-950/40 border border-red-500/40 space-y-2.5 text-xs text-red-200 animate-in fade-in">
+            <div className="flex items-center gap-2 text-red-300 font-extrabold text-xs">
+              <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+              <span>Browser Notification Permission is Currently Blocked</span>
+            </div>
+            <p className="text-slate-300 text-[11px] leading-relaxed">
+              Your browser is blocking notifications for this website. To enable push notifications on your phone or laptop:
+            </p>
+            <div className="p-3 rounded-lg bg-slate-900/90 border border-slate-800 space-y-1.5 text-[11px] text-slate-300 font-medium">
+              <div className="font-bold text-cyan-300">📱 How to enable in your mobile browser settings:</div>
+              <ol className="list-decimal list-inside space-y-1 text-slate-300 pl-1">
+                <li>Tap the <strong>Lock icon 🔒</strong> or <strong>Site Info icon 🎛️</strong> next to the URL in your browser address bar.</li>
+                <li>Select <strong>Site settings</strong> or <strong>Permissions</strong>.</li>
+                <li>Find <strong>Notifications</strong> and change the setting from <em>Block</em> to <strong>Allow</strong>.</li>
+                <li>Return to this page and click <strong>Send Test Notification</strong> again.</li>
+              </ol>
+            </div>
+          </div>
+        )}
+
+        {notifState.status === 'error' && (
+          <div className="p-3.5 rounded-xl bg-amber-950/60 border border-amber-500/40 flex items-center gap-3 text-xs text-amber-200">
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>{notifState.message}</span>
+          </div>
+        )}
       </div>
 
       {/* AI RECOMMENDATION BANNER */}

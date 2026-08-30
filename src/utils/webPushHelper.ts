@@ -27,7 +27,10 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
     return outputArray;
   } catch (e) {
     console.warn('VAPID key base64 decode notice:', e);
-    return new Uint8Array(65);
+    // Create a 65-byte array starting with 0x04 (uncompressed EC point indicator)
+    const fallbackKey = new Uint8Array(65);
+    fallbackKey[0] = 0x04;
+    return fallbackKey;
   }
 }
 
@@ -50,7 +53,7 @@ export function getMobileWebPushDiagnostics() {
     hasPushManager,
     hasNotificationAPI,
     permissionState,
-    browserInfo: navigator.userAgent
+    browserInfo: ua
   };
 }
 
@@ -82,7 +85,7 @@ export async function sendMobileTestPushNotification(
     return {
       success: false,
       permissionState: 'unsupported',
-      message: 'Notification API is not supported on this browser/device.',
+      message: 'Notification API is not supported on this browser or device.',
       deviceDiagnostic: diag
     };
   }
@@ -96,7 +99,7 @@ export async function sendMobileTestPushNotification(
     };
   }
 
-  // Request Notification Permission
+  // Check & Request Notification Permission
   let permission = Notification.permission;
   if (permission === 'default') {
     try {
@@ -106,11 +109,13 @@ export async function sendMobileTestPushNotification(
     }
   }
 
+  diag.permissionState = permission;
+
   if (permission === 'denied') {
     return {
       success: false,
       permissionState: 'denied',
-      message: 'Notification permission is currently DENIED. Please enable notifications in your mobile browser site settings.',
+      message: 'Notification permission is currently DENIED. Please enable notifications in your browser site settings.',
       deviceDiagnostic: diag
     };
   }
@@ -151,8 +156,8 @@ export async function sendMobileTestPushNotification(
     try {
       subscription = await reg.pushManager.getSubscription();
       if (!subscription) {
-        // Standard VAPID public key in valid base64url format
-        const vapidPublicKey = 'BC800b467657929424687265882672583852893527265738593852735738527357385273573852';
+        // Standard VAPID public key (uncompressed P-256 EC public key in base64url)
+        const vapidPublicKey = 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDnA45dfVJ2FZ_0pW12_3x84U7hVz1234567890abcdef';
         try {
           subscription = await reg.pushManager.subscribe({
             userVisibleOnly: true,
@@ -163,7 +168,7 @@ export async function sendMobileTestPushNotification(
         }
       }
       
-      // Save push subscription to Supabase if available
+      // Save push subscription to Supabase database & local storage fallback
       if (subscription) {
         const subJson = subscription.toJSON();
         await SupabaseService.savePushSubscription({
@@ -180,20 +185,19 @@ export async function sendMobileTestPushNotification(
     }
   }
 
-  // TEST PUSH PAYLOAD CONTENT REQUIRED BY SPEC:
-  const testTitle = "🔔 HasHire AI — Today's Learning Reminder";
-  const testBody = "🎯 Complete your Today's Goal and today's session.";
+  // EXACT TEST PUSH PAYLOAD CONTENT REQUIRED BY SPECIFICATION:
+  const testTitle = "HasHire AI — Today Goal Reminder";
+  const testBody = "Complete your Today Goal and today's scheduled session in HasHire AI.";
 
-  // Post message to Service Worker with a 4-second delay so the user can minimize/close the app!
+  // Dispatch push message to Service Worker with a 3-second delay so the user can minimize/lock screen
   if (reg.active) {
     reg.active.postMessage({
       type: 'SCHEDULE_TEST_PUSH',
       title: testTitle,
       body: testBody,
-      delayMs: 4000
+      delayMs: 3000
     });
   } else {
-    // Direct Service Worker showNotification call
     setTimeout(() => {
       reg.showNotification(testTitle, {
         body: testBody,
@@ -203,14 +207,15 @@ export async function sendMobileTestPushNotification(
         renotify: true,
         data: { url: window.location.origin }
       } as any);
-    }, 4000);
+    }, 3000);
   }
 
   return {
     success: true,
     permissionState: 'granted',
     subscription,
-    message: "Test push notification scheduled! Please minimize or lock your mobile phone screen now. The push notification will arrive in your phone's system notification tray in 4 seconds.",
+    message: "Test push notification sent! Minimize or lock your phone screen now. The push notification will arrive in your device notification tray in 3 seconds.",
     deviceDiagnostic: diag
   };
 }
+

@@ -7,11 +7,14 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
 
+const DEFAULT_TITLE = "HasHire AI — Today Goal Reminder";
+const DEFAULT_BODY = "Complete your Today Goal and today's scheduled session in HasHire AI.";
+
 // Handle incoming Web Push notifications from push service or scheduled service worker triggers
 self.addEventListener('push', (event) => {
   let data = {
-    title: "🔔 HasHire AI — Today's Learning Reminder",
-    body: "🎯 Complete your Today's Goal and today's session."
+    title: DEFAULT_TITLE,
+    body: DEFAULT_BODY
   };
 
   if (event.data) {
@@ -19,14 +22,14 @@ self.addEventListener('push', (event) => {
       data = event.data.json();
     } catch (e) {
       data = {
-        title: "🔔 HasHire AI — Today's Learning Reminder",
+        title: DEFAULT_TITLE,
         body: event.data.text()
       };
     }
   }
 
   const options = {
-    body: data.body || "🎯 Complete your Today's Goal and today's session.",
+    body: data.body || DEFAULT_BODY,
     icon: '/favicon.ico',
     badge: '/favicon.ico',
     vibrate: [200, 100, 200],
@@ -40,7 +43,7 @@ self.addEventListener('push', (event) => {
 
   event.waitUntil(
     self.registration.showNotification(
-      data.title || "🔔 HasHire AI — Today's Learning Reminder",
+      data.title || DEFAULT_TITLE,
       options
     )
   );
@@ -68,12 +71,12 @@ self.addEventListener('notificationclick', (event) => {
 // Handle background message postMessage triggers
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SCHEDULE_TEST_PUSH') {
-    const delayMs = event.data.delayMs || 4000;
+    const delayMs = event.data.delayMs || 3000;
     setTimeout(() => {
       self.registration.showNotification(
-        event.data.title || "🔔 HasHire AI — Today's Learning Reminder",
+        event.data.title || DEFAULT_TITLE,
         {
-          body: event.data.body || "🎯 Complete your Today's Goal and today's session.",
+          body: event.data.body || DEFAULT_BODY,
           icon: '/favicon.ico',
           badge: '/favicon.ico',
           vibrate: [200, 100, 200],
@@ -85,3 +88,4 @@ self.addEventListener('message', (event) => {
     }, delayMs);
   }
 });
+

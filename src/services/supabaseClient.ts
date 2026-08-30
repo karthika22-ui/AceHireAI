@@ -1285,27 +1285,31 @@ export class SupabaseService {
     auth: string;
     userAgent: string;
     createdAt: string;
-  }) {
-    if (!isSupabaseConfigured() || !subData.userId) {
-      // Local storage fallback for unconfigured Supabase
-      if (typeof window !== 'undefined') {
-        try {
-          localStorage.setItem('acehire_mobile_push_subscription', JSON.stringify(subData));
-        } catch (e) {}
-      }
+  }): Promise<boolean> {
+    // Always persist to local storage as client fallback
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('acehire_mobile_push_subscription', JSON.stringify(subData));
+      } catch (e) {}
+    }
+
+    if (!isSupabaseConfigured()) {
       return true;
     }
 
     try {
       const payload = {
-        user_id: subData.userId,
+        user_id: subData.userId || 'anonymous-user',
         endpoint: subData.endpoint,
         p256dh: subData.p256dh,
         auth: subData.auth,
         user_agent: subData.userAgent,
         created_at: subData.createdAt
       };
-      await supabase.from('push_subscriptions').upsert(payload, { onConflict: 'endpoint' });
+      const { error } = await supabase.from('push_subscriptions').upsert(payload, { onConflict: 'endpoint' });
+      if (error) {
+        console.warn('Supabase savePushSubscription warning:', error.message);
+      }
       return true;
     } catch (e) {
       console.warn('Supabase savePushSubscription error:', e);

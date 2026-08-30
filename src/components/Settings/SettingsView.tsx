@@ -202,11 +202,7 @@ export const SettingsView: React.FC = () => {
                     onClick={async () => {
                       const { sendMobileTestPushNotification } = await import('../../utils/webPushHelper');
                       const res = await sendMobileTestPushNotification(user?.id);
-                      if (res.success) {
-                        triggerToast(res.message);
-                      } else {
-                        alert(res.message);
-                      }
+                      triggerToast(res.message);
                     }}
                     className="w-full sm:w-auto px-6 py-3.5 rounded-2xl bg-gradient-to-r from-blue-500 to-cyan-400 hover:from-blue-400 hover:to-cyan-300 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 cursor-pointer transition-all hover:scale-[1.02]"
                   >
