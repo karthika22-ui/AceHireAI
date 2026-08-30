@@ -390,7 +390,7 @@ export const ATSAnalyzerView: React.FC<ATSAnalyzerViewProps> = ({ onBackToSelect
           ...uploadedFile,
           extractedText: buildCanonicalResumeText(fullResumeData),
           photoUrl: candidatePhoto || (uploadedFile as any)?.photoUrl
-        });
+        } as any);
       }
 
       const reResult = await analyzeResumeWithAI({
