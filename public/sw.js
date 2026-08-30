@@ -7,7 +7,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
 
-const DEFAULT_TITLE = "HasHire AI — Today Goal Reminder";
+const DEFAULT_TITLE = "HasHire AI — Today's Preparation";
 const DEFAULT_BODY = "Complete your Today Goal and today's scheduled session in HasHire AI.";
 
 // Handle incoming Web Push notifications from push service or scheduled service worker triggers

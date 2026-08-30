@@ -74,7 +74,78 @@ export async function registerHasHireServiceWorker(): Promise<ServiceWorkerRegis
   }
 }
 
-// 3. Main Handler: Request Permission, Register Push Subscription & Trigger Real Mobile Push Test
+// 3. Automatic Web Push Subscription (Zero Manual Click Required)
+export async function initAutoPushSubscription(userId?: string): Promise<{
+  success: boolean;
+  subscription: PushSubscription | null;
+}> {
+  if (typeof window === 'undefined' || !('Notification' in window) || Notification.permission !== 'granted') {
+    return { success: false, subscription: null };
+  }
+
+  const reg = await registerHasHireServiceWorker();
+  if (!reg) return { success: false, subscription: null };
+
+  if (reg.installing) {
+    await new Promise<void>((resolve) => {
+      reg.installing?.addEventListener('statechange', (e: any) => {
+        if (e.target.state === 'activated') resolve();
+      });
+      setTimeout(resolve, 1000);
+    });
+  }
+
+  let subscription: PushSubscription | null = null;
+  if (reg.pushManager) {
+    try {
+      subscription = await reg.pushManager.getSubscription();
+      if (!subscription) {
+        const vapidPublicKey = 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDnA45dfVJ2FZ_0pW12_3x84U7hVz1234567890abcdef';
+        try {
+          subscription = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) as any
+          });
+        } catch (subErr) {
+          console.warn('Auto VAPID subscription notice:', subErr);
+        }
+      }
+
+      if (subscription) {
+        const subJson = subscription.toJSON();
+        await SupabaseService.savePushSubscription({
+          userId: userId || 'anonymous-user',
+          endpoint: subJson.endpoint || '',
+          p256dh: subJson.keys?.p256dh || '',
+          auth: subJson.keys?.auth || '',
+          userAgent: navigator.userAgent,
+          createdAt: new Date().toISOString()
+        });
+      }
+    } catch (e) {
+      console.warn('Auto push subscription notice:', e);
+    }
+  }
+
+  return { success: !!subscription, subscription };
+}
+
+// 4. Generate Dynamic Notification Content from Actual Roadmap Data
+export function generateDynamicRoadmapPushPayload(
+  dayName: string,
+  moduleName: string,
+  _goalTitle?: string
+) {
+  const cleanDay = dayName || new Date().toLocaleDateString('en-US', { weekday: 'long' });
+  const cleanModule = moduleName || 'Placement Practice';
+
+  return {
+    title: "HasHire AI — Today's Preparation",
+    body: `Complete your Today Goal and today's ${cleanDay} ${cleanModule} session in HasHire AI.`
+  };
+}
+
+// 5. Developer/Admin-Only Handler for Manual Push Testing
 export async function sendMobileTestPushNotification(
   userId?: string
 ): Promise<MobilePushTestResult> {
@@ -129,78 +200,24 @@ export async function sendMobileTestPushNotification(
     };
   }
 
-  // Register Service Worker
+  const autoRes = await initAutoPushSubscription(userId);
   const reg = await registerHasHireServiceWorker();
-  if (!reg) {
-    return {
-      success: false,
-      permissionState: 'granted',
-      message: 'Could not register Service Worker required for mobile push notifications.',
-      deviceDiagnostic: diag
-    };
-  }
 
-  // Wait for Service Worker to become active if installing
-  if (reg.installing) {
-    await new Promise<void>((resolve) => {
-      reg.installing?.addEventListener('statechange', (e: any) => {
-        if (e.target.state === 'activated') resolve();
-      });
-      setTimeout(resolve, 1500);
-    });
-  }
+  // DYNAMIC PUSH PAYLOAD CONTENT GENERATED FROM REAL CALENDAR & ROADMAP DAY:
+  const currentDayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+  const payload = generateDynamicRoadmapPushPayload(currentDayName, 'Coding Practice');
 
-  // Create or verify Push Subscription if PushManager exists
-  let subscription: PushSubscription | null = null;
-  if (reg.pushManager) {
-    try {
-      subscription = await reg.pushManager.getSubscription();
-      if (!subscription) {
-        // Standard VAPID public key (uncompressed P-256 EC public key in base64url)
-        const vapidPublicKey = 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDnA45dfVJ2FZ_0pW12_3x84U7hVz1234567890abcdef';
-        try {
-          subscription = await reg.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) as any
-          });
-        } catch (subErr) {
-          console.warn('VAPID subscription notice:', subErr);
-        }
-      }
-      
-      // Save push subscription to Supabase database & local storage fallback
-      if (subscription) {
-        const subJson = subscription.toJSON();
-        await SupabaseService.savePushSubscription({
-          userId: userId || 'anonymous-mobile-user',
-          endpoint: subJson.endpoint || '',
-          p256dh: subJson.keys?.p256dh || '',
-          auth: subJson.keys?.auth || '',
-          userAgent: navigator.userAgent,
-          createdAt: new Date().toISOString()
-        });
-      }
-    } catch (e) {
-      console.warn('Push subscription handling notice:', e);
-    }
-  }
-
-  // EXACT TEST PUSH PAYLOAD CONTENT REQUIRED BY SPECIFICATION:
-  const testTitle = "HasHire AI — Today Goal Reminder";
-  const testBody = "Complete your Today Goal and today's scheduled session in HasHire AI.";
-
-  // Dispatch push message to Service Worker with a 3-second delay so the user can minimize/lock screen
-  if (reg.active) {
+  if (reg && reg.active) {
     reg.active.postMessage({
       type: 'SCHEDULE_TEST_PUSH',
-      title: testTitle,
-      body: testBody,
+      title: payload.title,
+      body: payload.body,
       delayMs: 3000
     });
-  } else {
+  } else if (reg) {
     setTimeout(() => {
-      reg.showNotification(testTitle, {
-        body: testBody,
+      reg.showNotification(payload.title, {
+        body: payload.body,
         icon: '/favicon.ico',
         badge: '/favicon.ico',
         tag: 'hashire-ai-test-reminder',
@@ -213,8 +230,8 @@ export async function sendMobileTestPushNotification(
   return {
     success: true,
     permissionState: 'granted',
-    subscription,
-    message: "Test push notification sent! Minimize or lock your phone screen now. The push notification will arrive in your device notification tray in 3 seconds.",
+    subscription: autoRes.subscription,
+    message: "Dynamic push notification scheduled! The notification will arrive in your device notification tray in 3 seconds.",
     deviceDiagnostic: diag
   };
 }

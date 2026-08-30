@@ -347,21 +347,30 @@ export const RoadmapView: React.FC = () => {
     message: ''
   });
 
-  // Check Browser Notification Permission on Mount
+  // Check Browser Notification Permission on Mount & Auto Subscribe
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
-      setNotificationPermission(Notification.permission);
+      const perm = Notification.permission;
+      setNotificationPermission(perm);
+      if (perm === 'granted') {
+        import('../../utils/webPushHelper').then(({ initAutoPushSubscription }) => {
+          initAutoPushSubscription(user?.id);
+        });
+      }
     } else {
       setNotificationPermission('unsupported');
     }
-  }, []);
+  }, [user?.id]);
 
   const handleRequestNotificationPermission = async () => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
       try {
         const res = await Notification.requestPermission();
         setNotificationPermission(res);
-        if (res === 'denied') {
+        if (res === 'granted') {
+          const { initAutoPushSubscription } = await import('../../utils/webPushHelper');
+          await initAutoPushSubscription(user?.id);
+        } else if (res === 'denied') {
           setNotifState({
             status: 'denied',
             message: 'Browser notification permission is currently DENIED.',
@@ -608,7 +617,7 @@ export const RoadmapView: React.FC = () => {
         </div>
       )}
 
-      {/* MOBILE WEB PUSH TEST & PERMISSION CARD */}
+      {/* AUTOMATIC DAILY WEB PUSH REMINDER CARD */}
       <div className="glass-card rounded-2xl p-5 bg-slate-950 border border-blue-500/30 space-y-4 text-xs shadow-xl">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -618,7 +627,7 @@ export const RoadmapView: React.FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <strong className="text-cyan-300 block font-extrabold uppercase text-[10px] tracking-wider font-['Space_Grotesk']">
-                  Mobile Device Web Push Infrastructure
+                  Dynamic Daily Roadmap Reminders
                 </strong>
                 <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase ${
                   notificationPermission === 'granted'
@@ -627,15 +636,17 @@ export const RoadmapView: React.FC = () => {
                     ? 'bg-red-500/20 text-red-400 border border-red-500/30'
                     : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                 }`}>
-                  {notificationPermission === 'granted' && '✓ Permission Granted'}
-                  {notificationPermission === 'denied' && '❌ Permission Denied'}
+                  {notificationPermission === 'granted' && '🟢 Automatic Reminders Active'}
+                  {notificationPermission === 'denied' && '❌ Permission Blocked'}
                   {notificationPermission === 'default' && '⚠️ Permission Needed'}
                 </span>
               </div>
               <span className="text-slate-300 font-medium block mt-0.5">
-                {notificationPermission === 'denied'
-                  ? 'Browser notifications are blocked in your site settings. Please unblock to receive reminders.'
-                  : 'Test real Service Worker push notification on your mobile phone or laptop browser.'}
+                {notificationPermission === 'granted'
+                  ? `Daily push reminders will automatically arrive on your phone/laptop for your scheduled ${currentDayName} ${roadmapData.todaySession?.moduleName || 'practice'} session.`
+                  : notificationPermission === 'denied'
+                  ? 'Browser notifications are blocked in your site settings. Enable notifications to receive daily goal reminders.'
+                  : 'Enable browser notifications to automatically receive your daily placement roadmap reminders.'}
               </span>
             </div>
           </div>
@@ -645,25 +656,28 @@ export const RoadmapView: React.FC = () => {
               <button
                 type="button"
                 onClick={handleRequestNotificationPermission}
-                className="px-3.5 py-2.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 text-xs font-extrabold transition-all cursor-pointer"
+                className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-400 hover:from-blue-400 hover:to-cyan-300 text-slate-950 font-black text-xs transition-all cursor-pointer shadow-md"
               >
-                Request Permission
+                Enable Daily Notifications
               </button>
             )}
 
-            <button
-              type="button"
-              disabled={notifState.status === 'loading'}
-              onClick={handleSendTestNotification}
-              className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-400 hover:from-blue-400 hover:to-cyan-300 text-white font-black text-xs flex items-center justify-center gap-2 shadow-md shadow-blue-500/20 cursor-pointer transition-all hover:scale-105 disabled:opacity-50"
-            >
-              <Bell className="w-3.5 h-3.5" />
-              <span>{notifState.status === 'loading' ? 'Sending Push Notification...' : 'Send Test Notification'}</span>
-            </button>
+            {/* DEVELOPER / ADMIN TEST BUTTON — HIDDEN FROM NORMAL USERS */}
+            {typeof window !== 'undefined' && ((import.meta as any).env?.DEV || window.location.search.includes('dev=true')) && (
+              <button
+                type="button"
+                disabled={notifState.status === 'loading'}
+                onClick={handleSendTestNotification}
+                className="w-full sm:w-auto px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 font-extrabold text-[11px] flex items-center justify-center gap-1.5 cursor-pointer transition-all disabled:opacity-50"
+              >
+                <Bell className="w-3 h-3 text-cyan-400" />
+                <span>Dev Test Push</span>
+              </button>
+            )}
           </div>
         </div>
 
-        {/* STATUS FEEDBACK INLINE CARD */}
+        {/* STATUS FEEDBACK INLINE CARD (FOR DEV TESTING) */}
         {notifState.status === 'loading' && (
           <div className="p-3.5 rounded-xl bg-blue-500/10 border border-blue-500/30 flex items-center gap-3 text-cyan-300 text-xs font-semibold animate-pulse">
             <div className="w-4 h-4 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" />
@@ -678,8 +692,8 @@ export const RoadmapView: React.FC = () => {
               <strong className="text-white font-bold text-xs block">{notifState.message}</strong>
               <p className="text-emerald-300/90 font-medium text-[11px]">{notifState.details}</p>
               <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-[10px] font-mono text-emerald-300 space-y-0.5">
-                <div>Title: <strong>HasHire AI — Today Goal Reminder</strong></div>
-                <div>Body: <strong>Complete your Today Goal and today's scheduled session in HasHire AI.</strong></div>
+                <div>Title: <strong>HasHire AI — Today's Preparation</strong></div>
+                <div>Body: <strong>Complete your Today Goal and today's {currentDayName} {roadmapData.todaySession?.moduleName || 'practice'} session in HasHire AI.</strong></div>
               </div>
             </div>
           </div>
@@ -701,16 +715,9 @@ export const RoadmapView: React.FC = () => {
                 <li>Tap the <strong>Lock icon 🔒</strong> or <strong>Site Info icon 🎛️</strong> next to the URL in your browser address bar.</li>
                 <li>Select <strong>Site settings</strong> or <strong>Permissions</strong>.</li>
                 <li>Find <strong>Notifications</strong> and change the setting from <em>Block</em> to <strong>Allow</strong>.</li>
-                <li>Return to this page and click <strong>Send Test Notification</strong> again.</li>
+                <li>Return to this page and refresh to complete automatic push registration.</li>
               </ol>
             </div>
-          </div>
-        )}
-
-        {notifState.status === 'error' && (
-          <div className="p-3.5 rounded-xl bg-amber-950/60 border border-amber-500/40 flex items-center gap-3 text-xs text-amber-200">
-            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-            <span>{notifState.message}</span>
           </div>
         )}
       </div>
@@ -910,10 +917,10 @@ export const RoadmapView: React.FC = () => {
               <PartyPopper className="w-6 h-6 text-emerald-400 animate-bounce" />
             </div>
             <h4 className="text-lg font-black text-white font-['Space_Grotesk']">
-              Today's Goals Completed 🎉
+              Today is Completed 🎉
             </h4>
-            <p className="text-xs text-emerald-200 font-medium max-w-md mx-auto">
-              Great work! You have completed today's preparation. Come back tomorrow for your next AI-generated goals.
+            <p className="text-xs sm:text-sm text-emerald-200 font-extrabold max-w-md mx-auto leading-relaxed">
+              Today is completed. Great job! Come back tomorrow for your next preparation plan.
             </p>
           </div>
         ) : (

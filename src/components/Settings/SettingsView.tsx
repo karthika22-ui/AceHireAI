@@ -165,56 +165,43 @@ export const SettingsView: React.FC = () => {
                 })}
               </div>
 
-              {/* MOBILE PHONE WEB PUSH NOTIFICATION TEST CONTROL PANEL */}
-              <div className="p-6 rounded-3xl bg-slate-900 text-white border border-blue-500/40 space-y-4 shadow-xl">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                  <div className="space-y-0.5">
-                    <span className="text-[10px] font-black uppercase text-cyan-400 tracking-wider block">
-                      📱 Mobile Device Push Testing
+              {/* MOBILE PHONE WEB PUSH NOTIFICATION TEST CONTROL PANEL (DEV / ADMIN ONLY) */}
+              {typeof window !== 'undefined' && ((import.meta as any).env?.DEV || window.location.search.includes('dev=true')) && (
+                <div className="p-6 rounded-3xl bg-slate-900 text-white border border-blue-500/40 space-y-4 shadow-xl">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] font-black uppercase text-cyan-400 tracking-wider block">
+                        🛠️ Developer Push Testing
+                      </span>
+                      <h4 className="text-base font-extrabold text-white font-['Space_Grotesk']">
+                        Developer Push Notification Test
+                      </h4>
+                    </div>
+                    <span className="text-xs font-mono font-bold text-slate-400 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">
+                      DEV MODE ONLY
                     </span>
-                    <h4 className="text-base font-extrabold text-white font-['Space_Grotesk']">
-                      Mobile Phone Real Web Push Test
-                    </h4>
                   </div>
-                  <span className="text-xs font-mono font-bold text-slate-400 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">
-                    Web Push API
-                  </span>
-                </div>
 
-                <p className="text-xs text-slate-300 leading-relaxed font-medium">
-                  Test whether HasHire AI can send a REAL PUSH NOTIFICATION to your mobile phone's system notification tray. After clicking <strong>Send Test Notification</strong>, leave, minimize, or close the web app to verify the notification arrives in your phone's notification bar.
-                </p>
+                  <p className="text-xs text-slate-300 leading-relaxed font-medium">
+                    Test whether HasHire AI can send a REAL PUSH NOTIFICATION to your mobile phone's system notification tray. Normal users receive daily notifications automatically without manual button clicks.
+                  </p>
 
-                <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2 text-xs">
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400 font-semibold">Test Title:</span>
-                    <span className="font-extrabold text-cyan-300">🔔 HasHire AI — Today's Learning Reminder</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400 font-semibold">Test Message:</span>
-                    <span className="font-extrabold text-purple-300">🎯 Complete your Today's Goal and today's session.</span>
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-1">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const { sendMobileTestPushNotification } = await import('../../utils/webPushHelper');
+                        const res = await sendMobileTestPushNotification(user?.id);
+                        triggerToast(res.message);
+                      }}
+                      className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 font-black text-xs flex items-center justify-center gap-2 cursor-pointer transition-all"
+                    >
+                      <Bell className="w-4 h-4 text-cyan-400 animate-pulse" />
+                      <span>Dev Test Push</span>
+                    </button>
                   </div>
                 </div>
-
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-1">
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const { sendMobileTestPushNotification } = await import('../../utils/webPushHelper');
-                      const res = await sendMobileTestPushNotification(user?.id);
-                      triggerToast(res.message);
-                    }}
-                    className="w-full sm:w-auto px-6 py-3.5 rounded-2xl bg-gradient-to-r from-blue-500 to-cyan-400 hover:from-blue-400 hover:to-cyan-300 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 cursor-pointer transition-all hover:scale-[1.02]"
-                  >
-                    <Bell className="w-4 h-4 text-white animate-pulse" />
-                    <span>Send Test Notification</span>
-                  </button>
-
-                  <span className="text-[11px] text-slate-400 font-medium">
-                    ⚡ Works on Android Chrome / iOS Safari (PWA)
-                  </span>
-                </div>
-              </div>
+              )}
             </div>
           )}
 
