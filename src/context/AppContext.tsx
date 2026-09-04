@@ -91,6 +91,9 @@ interface AppContextType {
   activeDrawer: 'profile' | 'settings' | null;
   setActiveDrawer: (drawer: 'profile' | 'settings' | null) => void;
   closeDrawer: () => void;
+  showCreatePasswordModal: boolean;
+  setShowCreatePasswordModal: (val: boolean) => void;
+  createHasHirePassword: (newPassword: string) => Promise<boolean>;
 }
 
 export interface SessionGuard {
@@ -260,8 +263,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [showCreatePasswordModal, setShowCreatePasswordModal] = useState<boolean>(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [achievements] = useState<AchievementBadge[]>([]);
+
+  const createHasHirePassword = async (newPassword: string): Promise<boolean> => {
+    const { error } = await SupabaseService.updatePassword(newPassword);
+    if (error) {
+      throw new Error(error.message || 'Failed to set HasHire AI password.');
+    }
+    const updatedProfile = { ...user, hasCreatedPassword: true };
+    setUser(updatedProfile);
+    setShowCreatePasswordModal(false);
+    return true;
+  };
 
   // 1. SUPABASE AUTH & DATA SYNC LISTENER
   useEffect(() => {
@@ -276,7 +291,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Check existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
-        handleAuthUserChange(session.user.id, session.user.email || '', session.user.user_metadata);
+        handleAuthUserChange(session.user.id, session.user.email || '', session.user.user_metadata, session.user);
         cleanUrlAuthParams();
       }
     });
@@ -284,7 +299,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Listen to real-time auth changes
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
-        await handleAuthUserChange(session.user.id, session.user.email || '', session.user.user_metadata);
+        await handleAuthUserChange(session.user.id, session.user.email || '', session.user.user_metadata, session.user);
         cleanUrlAuthParams();
       } else if (event === 'SIGNED_OUT') {
         setIsLoggedIn(false);
@@ -297,7 +312,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, []);
 
-  const handleAuthUserChange = async (userId: string, email: string, userMetadata?: Record<string, any>) => {
+  const handleAuthUserChange = async (
+    userId: string,
+    email: string,
+    userMetadata?: Record<string, any>,
+    authUser?: any
+  ) => {
     const isNewLoginEvent = !isLoggedIn || currentUserId !== userId;
     setIsLoggedIn(true);
     setCurrentUserId(userId);
@@ -383,6 +403,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           localStorage.setItem('acehire_active_user', JSON.stringify(fetchedProfile));
         } catch (e) {}
       }
+    }
+
+    // Check if authenticated via Google OAuth and has NOT set HasHire AI password yet
+    const isGoogleAuth =
+      authUser?.app_metadata?.provider === 'google' ||
+      userMetadata?.iss?.includes('google') ||
+      (authUser?.identities && authUser.identities.some((i: any) => i.provider === 'google'));
+
+    const hasPassword = Boolean(
+      userMetadata?.has_created_password ||
+      fetchedProfile?.hasCreatedPassword
+    );
+
+    if (isGoogleAuth && !hasPassword) {
+      setShowCreatePasswordModal(true);
     }
 
     if (fetchedScores && typeof fetchedScores.overall === 'number' && (fetchedScores.overall > 0 || fetchedScores.lastUpdated !== 'Never')) {
@@ -941,7 +976,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         cancelExitSession,
         activeDrawer,
         setActiveDrawer,
-        closeDrawer
+        closeDrawer,
+        showCreatePasswordModal,
+        setShowCreatePasswordModal,
+        createHasHirePassword
       }}
     >
       {children}

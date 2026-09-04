@@ -151,6 +151,7 @@ export class SupabaseService {
           target_industry: profileData?.targetIndustry || '',
           passout_year: profileData?.passoutYear || '',
           preferred_language: profileData?.preferredLanguage || 'Tanglish',
+          has_created_password: true,
           avatar_url: profileData?.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'
         }
       }
@@ -204,6 +205,7 @@ export class SupabaseService {
         avatarUrl: profileData?.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
         loginCount: 1,
         isFirstLogin: true,
+        hasCreatedPassword: true,
         lastLoginAt: new Date().toISOString(),
         createdAt: new Date().toISOString()
       };
@@ -270,7 +272,10 @@ export class SupabaseService {
 
   static async updatePassword(newPassword: string) {
     if (!isSupabaseConfigured()) return { error: null };
-    return await supabase.auth.updateUser({ password: newPassword });
+    return await supabase.auth.updateUser({
+      password: newPassword,
+      data: { has_created_password: true }
+    });
   }
 
   static async getCurrentUser() {
@@ -344,6 +349,7 @@ export class SupabaseService {
         avatarUrl: data.avatar_url || fallback.avatarUrl,
         loginCount: remoteExtra.loginCount !== undefined ? remoteExtra.loginCount : fallback.loginCount,
         isFirstLogin: remoteExtra.isFirstLogin !== undefined ? remoteExtra.isFirstLogin : fallback.isFirstLogin,
+        hasCreatedPassword: remoteExtra.hasCreatedPassword !== undefined ? remoteExtra.hasCreatedPassword : fallback.hasCreatedPassword,
         lastLoginAt: remoteExtra.lastLoginAt || fallback.lastLoginAt,
         createdAt: data.created_at || fallback.createdAt
       };

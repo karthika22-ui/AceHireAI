@@ -44,6 +44,7 @@ export interface UserProfile {
   avatarUrl?: string;
   loginCount?: number;
   isFirstLogin?: boolean;
+  hasCreatedPassword?: boolean;
   lastLoginAt?: string;
   createdAt: string;
 }

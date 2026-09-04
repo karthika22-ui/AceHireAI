@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { SplashScreen } from './components/Splash/SplashScreen';
 import { AuthModal } from './components/Auth/AuthModal';
+import { CreatePasswordModal } from './components/Auth/CreatePasswordModal';
 import { LoginPage } from './components/Auth/LoginPage';
 import { Navbar } from './components/Navigation/Navbar';
 import { Sidebar } from './components/Navigation/Sidebar';
@@ -96,6 +97,7 @@ const AppShell: React.FC = () => {
       {showSplash && <SplashScreen onDismiss={() => setShowSplash(false)} />}
       
       <AuthModal />
+      <CreatePasswordModal />
 
       <Navbar />
 
